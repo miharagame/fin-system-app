@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>タスク＆長期プロジェクト管理</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .task-card { transition: all 0.2s ease; }
+    .task-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
+    .tab-btn.active { color: #818cf8; border-bottom: 2px solid #818cf8; font-weight: 900; }
+    input, select, textarea { outline: none; }
+    @keyframes pulse-fast { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .timer-active { animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; color: #f59e0b; }
+    
+    @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7); } 50% { box-shadow: 0 0 15px 5px rgba(244, 63, 94, 0.3); } }
+    .alert-card { animation: pulse-red 2s infinite; }
+
+    .numpad-btn { background: #1e293b; border: 1px solid #334155; color: #f8fafc; font-size: 1.5rem; font-weight: 900; padding: 1rem; border-radius: 0.75rem; transition: all 0.1s; }
+    .numpad-btn:active { background: #38bdf8; color: #020617; transform: scale(0.95); }
+    .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #64748b; transition: all 0.2s; }
+    .pin-dot.filled { background-color: #38bdf8; border-color: #38bdf8; box-shadow: 0 0 10px rgba(56,189,248,0.5); }
+
+    .range-slider { -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #334155; outline: none; }
+    .range-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #6366f1; cursor: pointer; transition: transform 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    .range-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    
+    .day-chk:checked + span { background-color: #6366f1; border-color: #6366f1; color: white; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
+    <div class="flex items-center gap-3">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white mr-4 transition-colors"><i class="fa-solid fa-arrow-left"></i> ポータルへ</button>
+      <h1 class="text-lg font-black hidden sm:block"><i class="fa-solid fa-list-check text-indigo-400 mr-2"></i>タスク管理</h1>
+      <div class="ml-2 sm:ml-4 flex items-center bg-slate-950 border border-slate-700 rounded-lg px-2 py-1">
+        <i class="fa-solid fa-store text-slate-500 text-xs mr-2"></i>
+        <select id="branchSelector" onchange="switchBranch()" class="bg-slate-950 text-sm font-bold text-white outline-none cursor-pointer"></select>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <button onclick="logout()" class="text-xs font-bold text-slate-500 hover:text-rose-400 transition-colors"><i class="fa-solid fa-right-from-bracket"></i></button>
+    </div>
+  </nav>
+
+  <div class="bg-indigo-950/40 border-b border-indigo-900/50 p-3 flex justify-between items-center z-30 shadow-sm sticky top-[68px] sm:top-[73px] backdrop-blur-md">
+    <div class="flex items-center gap-2">
+      <div class="bg-indigo-500 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-indigo-300 shrink-0">
+        <i class="fa-solid fa-user text-white text-xs"></i>
+      </div>
+      <div>
+        <p class="text-[10px] text-indigo-300 font-bold mb-0.5 leading-none">現在の操作スタッフ</p>
+        <p id="currentStaffName" class="text-white font-black text-sm leading-none flex items-center gap-2">
+          未設定 (タップして認証)
+        </p>
+      </div>
+    </div>
+    <button onclick="openStaffAuthModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-all shrink-0">
+      <i class="fa-solid fa-key mr-1"></i>スタッフ切替
+    </button>
+  </div>
+
+  <div id="loading" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col justify-center items-center z-50">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-indigo-500 mb-4"></i>
+    <p class="text-indigo-400 text-sm font-bold animate-pulse">データを同期中...</p>
+  </div>
+
+  <main id="content" class="hidden max-w-7xl mx-auto p-4 w-full flex-grow flex flex-col gap-6">
+    
+    <div id="readOnlyBadge" class="hidden bg-rose-500/20 border border-rose-500/50 text-rose-400 text-xs font-bold px-4 py-2 rounded-xl flex items-center justify-center gap-2">
+      <i class="fa-solid fa-lock"></i> 他店舗のタスクは閲覧専用です
+    </div>
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg gap-4">
+      <div class="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+        <div class="flex gap-4 overflow-x-auto whitespace-nowrap">
+          <button onclick="switchTab('routine')" id="tab_routine" class="tab-btn active text-sm text-slate-400 pb-1 px-2 transition-all">今日のルーティン</button>
+          <button onclick="switchTab('kanban')" id="tab_kanban" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all">単発タスク</button>
+          <button onclick="switchTab('project')" id="tab_project" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-diagram-project mr-1"></i>長期プロジェクト</button>
+          <button onclick="switchTab('routineMaster')" id="tab_routineMaster" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-gear mr-1"></i>ルーティン設定</button>
+        </div>
+        
+        <div class="hidden lg:block border-l border-slate-700 h-6 mx-2"></div>
+        
+        <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800 shrink-0">
+          <button onclick="setTaskFilter('all')" id="filter_all" class="bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-md transition-all shadow">全員のタスク</button>
+          <button onclick="setTaskFilter('mine')" id="filter_mine" class="text-slate-500 text-[10px] font-bold px-3 py-1.5 rounded-md hover:text-white transition-all">自分のタスク</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 border-slate-800 pt-3 lg:pt-0">
+        <input type="date" id="targetDate" onchange="loadTasks()" class="bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-2 cursor-pointer w-32 sm:w-auto [color-scheme:dark]">
+        <button id="btnAddTask" onclick="openAddTaskModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-all shrink-0"><i class="fa-solid fa-plus mr-1"></i>追加</button>
+      </div>
+    </div>
+
+    <div id="view_routine" class="flex flex-col gap-4">
+      <div class="bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl">
+        <h2 class="text-white font-bold mb-4 border-b border-slate-800 pb-2 flex justify-between items-end">
+          <span><i class="fa-solid fa-clipboard-list text-emerald-400 mr-2"></i>本日のルーティン業務</span>
+          <span class="text-[10px] text-slate-500 font-normal">※対象曜日のマスタから自動生成されます</span>
+        </h2>
+        <div id="routineList" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <div id="view_kanban" class="hidden flex-col md:flex-row gap-4 h-full items-start">
+      <div class="bg-slate-900/50 rounded-2xl p-4 border border-slate-800/50 w-full md:w-1/3 flex flex-col h-full min-h-[400px]">
+        <h3 class="font-bold text-slate-400 mb-3 flex justify-between items-center">
+          <span>未対応 (Todo)</span><span id="cntTodo" class="bg-slate-800 text-[10px] px-2 py-0.5 rounded-full">0</span>
+        </h3>
+        <div id="kanbanTodo" class="flex-col gap-3 flex-grow space-y-3"></div>
+      </div>
+      <div class="bg-indigo-950/20 rounded-2xl p-4 border border-indigo-900/30 w-full md:w-1/3 flex flex-col h-full min-h-[400px]">
+        <h3 class="font-bold text-indigo-400 mb-3 flex justify-between items-center">
+          <span>対応中 (Doing)</span><span id="cntDoing" class="bg-indigo-900 text-indigo-200 text-[10px] px-2 py-0.5 rounded-full">0</span>
+        </h3>
+        <div id="kanbanDoing" class="flex-col gap-3 flex-grow space-y-3"></div>
+      </div>
+      <div class="bg-emerald-950/20 rounded-2xl p-4 border border-emerald-900/30 w-full md:w-1/3 flex flex-col h-full min-h-[400px]">
+        <h3 class="font-bold text-emerald-400 mb-3 flex justify-between items-center">
+          <span>完了 (Done)</span><span id="cntDone" class="bg-emerald-900 text-emerald-200 text-[10px] px-2 py-0.5 rounded-full">0</span>
+        </h3>
+        <div id="kanbanDone" class="flex-col gap-3 flex-grow space-y-3"></div>
+      </div>
+    </div>
+
+    <div id="view_project" class="hidden flex-col gap-4">
+      <div class="flex justify-between items-center bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl">
+        <div>
+          <h2 class="text-white font-bold text-lg"><i class="fa-solid fa-diagram-project text-fuchsia-400 mr-2"></i>長期プロジェクト管理</h2>
+          <p class="text-[10px] text-slate-400 mt-1">イベント運営など、期限と進捗率で管理する長期的なタスク群です。</p>
+        </div>
+        <button id="btnCreateProject" onclick="openAddProjectModal()" class="hidden bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-all shrink-0"><i class="fa-solid fa-folder-plus mr-1"></i>プロジェクト作成</button>
+      </div>
+      
+      <div id="projectEmptyMsg" class="hidden bg-slate-900 border border-slate-800 border-dashed rounded-2xl p-10 flex flex-col justify-center items-center text-center">
+        <i class="fa-solid fa-folder-open text-4xl text-slate-600 mb-3"></i>
+        <p class="text-slate-400 font-bold text-sm">進行中のプロジェクトはありません。</p>
+        <p class="text-[10px] text-slate-500 mt-1">※プロジェクトの新規作成は店長以上の権限が必要です。</p>
+      </div>
+
+      <div id="projectListContainer" class="space-y-6 pb-10"></div>
+    </div>
+
+    <div id="view_routineMaster" class="hidden flex-col gap-4">
+      <div class="bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl">
+        <h2 class="text-white font-bold mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-gear text-emerald-400 mr-2"></i>ルーティン設定（自動生成マスタ）</h2>
+        <p class="text-[10px] text-slate-400 mb-4">ここで登録されているルールに基づき、毎日のルーティンタスクが自動生成されます。不要になったルーティンはここから削除してください。</p>
+        <div id="routineMasterContainer" class="space-y-3"></div>
+      </div>
+    </div>
+
+  </main>
+  
+  <div id="addTaskModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-50 p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <h3 class="text-white font-black"><i class="fa-solid fa-plus text-indigo-400 mr-2"></i>新規タスクの追加</h3>
+        <button onclick="closeAddTaskModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-6 space-y-5">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">タスクの種類</label>
+          <select id="newTaskType" class="w-full bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-xl px-4 py-3 cursor-pointer">
+            <option value="routine">定期ルーティンとして登録</option>
+            <option value="kanban">単発タスクとして登録</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">タスク名・内容</label>
+          <input type="text" id="newTaskName" class="w-full bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-xl px-4 py-3 focus:border-indigo-500" placeholder="例: 特価コーナーの補充">
+        </div>
+        
+        <div id="routineDaysContainer" class="bg-indigo-950/20 p-4 rounded-xl border border-indigo-900/30">
+          <label class="text-xs text-indigo-300 mb-2 block font-bold"><i class="fa-solid fa-calendar-week mr-1"></i>実行する曜日を選択</label>
+          <div class="flex flex-wrap gap-2">
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="1" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">月</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="2" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">火</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="3" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">水</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="4" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">木</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="5" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">金</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="6" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">土</span></label>
+            <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="0" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">日</span></label>
+          </div>
+          <div class="mt-2 text-[10px] text-slate-500">※すべて選択で毎日実行</div>
+        </div>
+        
+        <div>
+          <label class="text-xs text-slate-400 mb-2 block font-bold">担当者の指定 (複数選択可)</label>
+          <div id="assigneeButtonsContainer" class="flex flex-wrap gap-2"></div>
+          <p id="assigneeLockMsg" class="text-[10px] text-amber-500 mt-2 hidden"><i class="fa-solid fa-lock mr-1"></i>一般スタッフは自分以外のタスクを作成できません。</p>
+        </div>
+        
+        <button onclick="saveNewTask()" id="btnSaveTask" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-lg transition-all mt-4 flex items-center justify-center gap-2">追加する</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="addProjectModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-50 p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <h3 class="text-white font-black"><i class="fa-solid fa-folder-plus text-fuchsia-400 mr-2"></i>新規プロジェクトの立ち上げ</h3>
+        <button onclick="closeAddProjectModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">プロジェクト名</label>
+          <input type="text" id="newProjName" class="w-full bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-xl px-4 py-3 focus:border-fuchsia-500" placeholder="例: 夏の大型買取イベント">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="text-xs text-slate-400 mb-1 block font-bold">開始予定日</label><input type="date" id="newProjStart" class="w-full bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl px-3 py-3 [color-scheme:dark]"></div>
+          <div><label class="text-xs text-rose-400 mb-1 block font-bold">完了期限日</label><input type="date" id="newProjDue" class="w-full bg-slate-950 border border-rose-900/50 text-rose-300 text-xs font-bold rounded-xl px-3 py-3 [color-scheme:dark]"></div>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">概要・メモ</label>
+          <textarea id="newProjMemo" class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-4 py-3 focus:border-fuchsia-500 resize-y min-h-[80px]" placeholder="プロジェクトの目的や注意事項など"></textarea>
+        </div>
+        <button onclick="saveProject()" id="btnSaveProj" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black py-4 rounded-xl shadow-lg transition-all mt-2">プロジェクト作成</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="addSubTaskModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-50 p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <h3 class="text-white font-black"><i class="fa-solid fa-list-check text-sky-400 mr-2"></i>子タスクの追加</h3>
+        <button onclick="closeAddSubTaskModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="subParentId">
+        <p class="text-[10px] text-slate-400">親プロジェクト: <span id="subParentName" class="font-bold text-white"></span></p>
+        
+        <div><label class="text-xs text-slate-400 mb-1 block font-bold">タスク名</label><input type="text" id="newSubName" class="w-full bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-xl px-4 py-3 focus:border-sky-500" placeholder="例: 告知POPの作成"></div>
+        <div><label class="text-xs text-rose-400 mb-1 block font-bold">タスク期限日</label><input type="date" id="newSubDue" class="w-full bg-slate-950 border border-rose-900/50 text-rose-300 text-xs font-bold rounded-xl px-3 py-3 [color-scheme:dark]"></div>
+        
+        <div>
+          <label class="text-xs text-slate-400 mb-2 block font-bold">担当者の指定 (複数選択可)</label>
+          <div id="subAssigneeContainer" class="flex flex-wrap gap-2"></div>
+        </div>
+        
+        <button onclick="saveSubTask()" id="btnSaveSub" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-black py-4 rounded-xl shadow-lg transition-all mt-2">タスクを追加</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="staffAuthModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md hidden flex-col justify-center items-center z-[60] p-4">
+    <div id="staffSelectStep" class="w-full max-w-md flex flex-col items-center">
+      <h2 class="text-2xl font-black text-white mb-2"><i class="fa-solid fa-users text-indigo-400 mr-2"></i>スタッフ選択</h2>
+      <p class="text-slate-400 text-sm mb-6 font-bold">誰が作業を行いますか？タップして選んでください</p>
+      
+      <div id="staffListContainer" class="w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 shadow-2xl max-h-[50vh] overflow-y-auto"></div>
+      <button onclick="closeStaffAuthModal()" class="mt-6 text-slate-500 hover:text-white font-bold bg-slate-800 px-6 py-2 rounded-full border border-slate-700 transition-colors">キャンセル</button>
+    </div>
+
+    <div id="pinInputStep" class="hidden w-full max-w-sm flex flex-col items-center">
+      <h2 class="text-xl font-black text-white mb-2" id="pinTargetName">〇〇 さんの認証</h2>
+      <p class="text-sky-400 text-sm mb-6 font-bold">4桁のPINコードを入力</p>
+      
+      <div class="flex gap-4 mb-8">
+        <div class="pin-dot" id="pinDot1"></div>
+        <div class="pin-dot" id="pinDot2"></div>
+        <div class="pin-dot" id="pinDot3"></div>
+        <div class="pin-dot" id="pinDot4"></div>
+      </div>
+      <div id="pinErrorMsg" class="h-6 text-rose-500 font-bold text-sm mb-2 opacity-0 transition-opacity">PINが違います</div>
+
+      <div class="grid grid-cols-3 gap-3 w-full px-6">
+        <button onclick="inputPin('1')" class="numpad-btn">1</button>
+        <button onclick="inputPin('2')" class="numpad-btn">2</button>
+        <button onclick="inputPin('3')" class="numpad-btn">3</button>
+        <button onclick="inputPin('4')" class="numpad-btn">4</button>
+        <button onclick="inputPin('5')" class="numpad-btn">5</button>
+        <button onclick="inputPin('6')" class="numpad-btn">6</button>
+        <button onclick="inputPin('7')" class="numpad-btn">7</button>
+        <button onclick="inputPin('8')" class="numpad-btn">8</button>
+        <button onclick="inputPin('9')" class="numpad-btn">9</button>
+        <button onclick="clearPin()" class="numpad-btn text-rose-400 bg-slate-900"><i class="fa-solid fa-c"></i></button>
+        <button onclick="inputPin('0')" class="numpad-btn">0</button>
+        <button onclick="backToStaffSelect()" class="numpad-btn text-slate-500 bg-slate-900"><i class="fa-solid fa-arrow-left"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ★追加: タスク詳細・メモ用モーダル -->
+  <div id="taskDetailModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[50] p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950 shrink-0">
+        <h3 class="text-white font-black text-sm"><i class="fa-solid fa-list-check text-sky-400 mr-2"></i>タスク詳細</h3>
+        <button onclick="closeTaskDetailModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-5 space-y-5 overflow-y-auto flex-grow">
+        
+        <div>
+          <p class="text-[10px] text-slate-500 font-bold mb-1">タスク名</p>
+          <h2 id="detailTaskName" class="text-base font-black text-white leading-tight">--</h2>
+        </div>
+        
+        <div class="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div>
+            <p class="text-[10px] text-slate-500 font-bold mb-0.5">担当者</p>
+            <p id="detailTaskAssignee" class="text-xs font-bold text-slate-300">--</p>
+          </div>
+          <div id="detailTaskStatus" class="text-right"></div>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400 mb-2 block font-bold"><i class="fa-regular fa-comment-dots mr-1"></i>引き継ぎメモ・進捗状況</label>
+          <textarea id="detailTaskMemo" class="w-full bg-slate-950 border border-slate-700 text-slate-200 text-sm p-4 rounded-xl outline-none focus:border-sky-500 transition-colors min-h-[120px] resize-y" placeholder="なぜ未着手なのか、どこまで進んでいるか等を自由に記入してください..."></textarea>
+        </div>
+
+        <div id="detailTaskActions" class="pt-2 border-t border-slate-800"></div>
+        
+        <button id="btnSaveTaskMemo" onclick="updateTaskDetail()" class="w-full bg-slate-800 text-sky-400 hover:text-white font-bold py-3 rounded-xl border border-slate-700 transition-colors text-sm shadow-sm mt-2"><i class="fa-solid fa-floppy-disk mr-1"></i>メモだけ保存して閉じる</button>
+
+      </div>
+    </div>
+  </div>
+  <script>
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let appUrl = "", currentUser = null, targetBranch = "", todayStr = "", currentMonthStr = "";
+    let tasksData = [];
+    let projectsData = [], subtasksData = [];
+    let routineMastersData = []; 
+    
+    let timerInterval = null, activeTimers = {}; 
+    let pollingInterval = null; 
+    let lastActionTime = 0; 
+    
+    let storeStaffs = [], currentTaskStaff = null, authTargetStaff = null, currentPinInput = ""; 
+    let taskFilterMode = 'all'; 
+    let selectedAssignees = []; 
+    let selectedSubAssignees = [];
+
+    document.getElementById('newTaskType').addEventListener('change', function() {
+       if (this.value === 'routine') {
+           document.getElementById('routineDaysContainer').classList.remove('hidden');
+       } else {
+           document.getElementById('routineDaysContainer').classList.add('hidden');
+       }
+    });
+
+    window.onload = async () => {
+      google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      const userStr = sessionStorage.getItem('finUser');
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+      if(currentUser.permissions.canTasks === false) {
+          document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
+      }
+
+      // Supabaseの認証トークンを復元
+      const accToken = sessionStorage.getItem('sb_access');
+      const refToken = sessionStorage.getItem('sb_refresh');
+      if (accToken && refToken) {
+          await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+      }
+
+      targetBranch = currentUser.branch === "全店舗" ? "秋覇原店" : currentUser.branch;
+      const sel = document.getElementById('branchSelector');
+      sel.innerHTML = "";
+      if (currentUser.permissions.viewAll) {
+          ["大阪本店", "バトルタワー店", "秋葉原店", "福岡天神店", "名古屋大須店", "池袋店"].forEach(b => {
+              const opt = document.createElement('option');
+              opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white";
+              if (b === targetBranch) opt.selected = true;
+              sel.appendChild(opt);
+          });
+      } else {
+          const opt = document.createElement('option');
+          opt.value = targetBranch; opt.text = targetBranch; opt.className = "bg-slate-950 text-white";
+          sel.appendChild(opt);
+          sel.disabled = true;
+      }
+
+      const now = new Date(); const tzOffset = now.getTimezoneOffset() * 60000;
+      todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
+      currentMonthStr = todayStr.substring(0, 7);
+      document.getElementById('targetDate').value = todayStr;
+      
+      // ★修正1: 共有PCでの運用を考慮し、ページ入り直しの際は必ずスタッフを「未設定」にリセットする
+      sessionStorage.removeItem('finTaskStaff');
+      currentTaskStaff = null;
+      updateStaffHeader();
+
+      loadTasks();
+      timerInterval = setInterval(updateActiveTimersUI, 1000);
+      pollingInterval = setInterval(silentPolling, 15000);
+    };
+
+    function goHome() { if (appUrl) { window.open(appUrl + "?p=portal", "_top"); } }
+    
+    function logout() { 
+        sessionStorage.removeItem('finUser'); 
+        sessionStorage.removeItem('finTaskStaff'); 
+        sessionStorage.removeItem('sb_access');
+        sessionStorage.removeItem('sb_refresh');
+        goHome(); 
+    }
+
+    function switchBranch() { 
+        targetBranch = document.getElementById('branchSelector').value; 
+        currentTaskStaff = null; 
+        sessionStorage.removeItem('finTaskStaff');
+        storeStaffs = []; 
+        updateStaffHeader();
+        setTaskFilter('all'); 
+        loadTasks(); 
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tab_routine').classList.remove('active');
+      document.getElementById('tab_kanban').classList.remove('active');
+      document.getElementById('tab_project').classList.remove('active');
+      document.getElementById('tab_routineMaster').classList.remove('active');
+      
+      document.getElementById('view_routine').classList.add('hidden');
+      document.getElementById('view_kanban').classList.add('hidden');
+      document.getElementById('view_project').classList.add('hidden');
+      document.getElementById('view_routineMaster').classList.add('hidden');
+
+      document.getElementById('tab_' + tab).classList.add('active');
+      document.getElementById('view_' + tab).classList.remove('hidden');
+      
+      if(tab === 'kanban') document.getElementById('view_kanban').classList.add('flex');
+      else if(tab === 'project') document.getElementById('view_project').classList.add('flex');
+      else if(tab === 'routineMaster') {
+          document.getElementById('view_routineMaster').classList.add('flex');
+          renderRoutineMasters();
+      }
+      else document.getElementById('view_routine').classList.add('flex');
+      
+      if (tab === 'project') { renderProjects(); }
+    }
+
+    function setTaskFilter(mode) {
+      taskFilterMode = mode;
+      if (mode === 'all') {
+        document.getElementById('filter_all').classList.add('bg-slate-800', 'text-white', 'shadow');
+        document.getElementById('filter_all').classList.remove('text-slate-500');
+        document.getElementById('filter_mine').classList.remove('bg-slate-800', 'text-white', 'shadow');
+        document.getElementById('filter_mine').classList.add('text-slate-500');
+      } else {
+        if (!currentTaskStaff) {
+            alert("自分のタスクを表示するには、右上の「スタッフ切替」から本人認証を行ってください。");
+            setTaskFilter('all');
+            return;
+        }
+        document.getElementById('filter_mine').classList.add('bg-slate-800', 'text-white', 'shadow');
+        document.getElementById('filter_mine').classList.remove('text-slate-500');
+        document.getElementById('filter_all').classList.remove('bg-slate-800', 'text-white', 'shadow');
+        document.getElementById('filter_all').classList.add('text-slate-500');
+      }
+      renderTasks();
+      renderProjects();
+    }
+
+    function updateStaffHeader() {
+        const el = document.getElementById('currentStaffName');
+        if (currentTaskStaff) { 
+            let badge = currentTaskStaff.level === "店長・副店長" 
+              ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` 
+              : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
+            el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
+            el.className = "text-white font-black text-sm leading-none flex items-center"; 
+            
+            const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
+            if (isManager && (targetBranch === currentUser.branch || currentUser.permissions.editAll)) {
+                document.getElementById('btnCreateProject').classList.remove('hidden');
+            } else {
+                document.getElementById('btnCreateProject').classList.add('hidden');
+            }
+        } 
+        else { 
+            el.innerHTML = "未設定 (タップして認証)"; 
+            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse"; 
+            document.getElementById('btnCreateProject').classList.add('hidden');
+        }
+    }
+
+    function openStaffAuthModal() {
+        if (!storeStaffs || storeStaffs.length === 0) { 
+            alert("スタッフ情報を取得中です。数秒待ってから再度お試しください。"); 
+            return; 
+        }
+        const container = document.getElementById('staffListContainer'); container.innerHTML = "";
+        storeStaffs.forEach(s => {
+            const isManager = s.level === "店長・副店長";
+            const iconColor = isManager ? "text-amber-400" : "text-indigo-400";
+            const bgColor = isManager ? "bg-amber-500/20" : "bg-indigo-500/20";
+            const bdColor = isManager ? "border-amber-500/50" : "border-indigo-500/50";
+            
+            container.innerHTML += `<button onclick="selectStaffForAuth('${s.name}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-4 rounded-2xl flex flex-col items-center gap-2 transition-all active:scale-95 shadow-md"><div class="${bgColor} w-12 h-12 rounded-full flex items-center justify-center ${iconColor} text-xl border ${bdColor}"><i class="fa-solid fa-user"></i></div><span class="text-white font-bold text-xs whitespace-nowrap">${s.name}</span></button>`;
+        });
+        document.getElementById('staffSelectStep').classList.remove('hidden');
+        document.getElementById('pinInputStep').classList.add('hidden');
+        document.getElementById('staffAuthModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeStaffAuthModal() { document.getElementById('staffAuthModal').classList.replace('flex', 'hidden'); clearPin(); }
+
+    function selectStaffForAuth(name) {
+        authTargetStaff = storeStaffs.find(s => s.name === name);
+        if (!authTargetStaff) return;
+        if (!authTargetStaff.pin || authTargetStaff.pin === "undefined" || authTargetStaff.pin === "") { completeAuth(); return; }
+        document.getElementById('pinTargetName').innerText = `${name} さんの認証`;
+        document.getElementById('staffSelectStep').classList.add('hidden');
+        document.getElementById('pinInputStep').classList.remove('hidden');
+        clearPin();
+    }
+
+    function backToStaffSelect() { document.getElementById('pinInputStep').classList.add('hidden'); document.getElementById('staffSelectStep').classList.remove('hidden'); clearPin(); }
+
+    function inputPin(num) {
+        if (currentPinInput.length >= 4) return;
+        currentPinInput += num; updatePinDots();
+        if (currentPinInput.length === 4) {
+            if (String(currentPinInput) === String(authTargetStaff.pin)) { completeAuth(); } 
+            else { const errMsg = document.getElementById('pinErrorMsg'); errMsg.style.opacity = '1'; setTimeout(() => { errMsg.style.opacity = '0'; clearPin(); }, 1000); }
+        }
+    }
+
+    function clearPin() { currentPinInput = ""; updatePinDots(); }
+    function updatePinDots() { for (let i = 1; i <= 4; i++) { const dot = document.getElementById('pinDot' + i); if (i <= currentPinInput.length) { dot.classList.add('filled'); } else { dot.classList.remove('filled'); } } }
+
+    function completeAuth() {
+        currentTaskStaff = authTargetStaff; sessionStorage.setItem('finTaskStaff', JSON.stringify(currentTaskStaff));
+        updateStaffHeader(); closeStaffAuthModal();
+        renderTasks(); 
+        renderProjects();
+    }
+
+    function requireStaffAuth() { if (!currentTaskStaff) { openStaffAuthModal(); return false; } return true; }
+
+    function openAddTaskModal() { 
+      if (!requireStaffAuth()) return; 
+      selectedAssignees = []; 
+      renderAssigneeButtons(); 
+      
+      const typeSelect = document.getElementById('newTaskType');
+      typeSelect.innerHTML = "";
+      
+      if (currentTaskStaff && currentTaskStaff.level !== "一般スタッフ") {
+          typeSelect.innerHTML += '<option value="routine">定期ルーティンとして登録</option>';
+          document.getElementById('routineDaysContainer').classList.remove('hidden');
+      } else {
+          document.getElementById('routineDaysContainer').classList.add('hidden');
+      }
+      typeSelect.innerHTML += '<option value="kanban">単発タスクとして登録</option>';
+      
+      document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
+    }
+    
+    function closeAddTaskModal() { document.getElementById('addTaskModal').classList.replace('flex', 'hidden'); }
+
+    function renderAssigneeButtons() {
+      const container = document.getElementById('assigneeButtonsContainer');
+      const msg = document.getElementById('assigneeLockMsg');
+      container.innerHTML = "";
+      
+      if (currentTaskStaff.level === "一般スタッフ") {
+          selectedAssignees = [currentTaskStaff.name];
+          container.innerHTML = `<button class="bg-indigo-600 text-white border-indigo-500 font-bold px-4 py-2 rounded-xl text-xs transition-all shadow-sm opacity-50 cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>${currentTaskStaff.name}</button>`;
+          msg.classList.remove('hidden');
+      } else {
+          msg.classList.add('hidden');
+          const isUndeclared = selectedAssignees.length === 0;
+          container.innerHTML += `<button onclick="toggleAssignee('未定')" class="${isUndeclared ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'} font-bold px-4 py-2 rounded-xl border text-xs transition-all shadow-sm">未定 (全員)</button>`;
+          storeStaffs.forEach(s => {
+              const isSelected = selectedAssignees.includes(s.name);
+              const colorClass = isSelected ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
+              const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : '';
+              container.innerHTML += `<button onclick="toggleAssignee('${s.name}')" class="${colorClass} font-bold px-4 py-2 rounded-xl border text-xs transition-all shadow-sm">${iconHtml}${s.name}</button>`;
+          });
+      }
+    }
+
+    function toggleAssignee(name) {
+      if (name === '未定') { selectedAssignees = []; } 
+      else {
+          if (selectedAssignees.includes(name)) selectedAssignees = selectedAssignees.filter(n => n !== name); 
+          else selectedAssignees.push(name); 
+      }
+      renderAssigneeButtons();
+    }
+
+    function formatTime(totalSeconds) {
+      const h = Math.floor(totalSeconds / 3600); const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0'); const s = (totalSeconds % 60).toString().padStart(2, '0');
+      if (h > 0) return `${h}:${m}:${s}`; return `${m}:${s}`;
+    }
+
+    function getCreatedAt(taskId) {
+      if(!taskId || (!String(taskId).startsWith('T') && !String(taskId).startsWith('P') && !String(taskId).startsWith('S'))) return "";
+      const ts = parseInt(taskId.substring(1, 14));
+      if(isNaN(ts)) return "";
+      const d = new Date(ts);
+      return `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    function updateActiveTimersUI() {
+      const nowMs = new Date().getTime();
+      for (const taskId in activeTimers) {
+        const t = activeTimers[taskId];
+        if (!t.startTime || isNaN(t.startTime) || t.startTime <= 0) continue; 
+        const diffSec = Math.floor((nowMs - t.startTime) / 1000);
+        let currentTotalSec = (parseInt(t.elapsedSeconds) || 0) + diffSec;
+        if (currentTotalSec < 0) currentTotalSec = 0;
+        const el = document.getElementById('timer_' + taskId);
+        if (el) el.innerText = formatTime(currentTotalSec);
+      }
+    }
+
+    style = "";
+    function checkDeadlineAlert(dateStr, progress) {
+        if (!dateStr || progress >= 100) return { alert: false, text: "", class: "border-slate-800" };
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        const due = new Date(dateStr);
+        due.setHours(0,0,0,0);
+        const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 0) {
+            return { alert: true, text: `期限超過 (${-diffDays}日)`, class: "border-rose-500 bg-rose-950/20 alert-card" };
+        } else if (diffDays <= 3) {
+            return { alert: true, text: `期限まであと ${diffDays} 日`, class: "border-amber-500" };
+        }
+        return { alert: false, text: "", class: "border-slate-800" };
+    }
+
+    function silentPolling() {
+      const modals = ['addTaskModal', 'addProjectModal', 'addSubTaskModal', 'staffAuthModal', 'taskDetailModal'];
+      let isAnyModalOpen = modals.some(id => {
+          const m = document.getElementById(id);
+          return m && !m.classList.contains('hidden');
+      });
+      if (isAnyModalOpen) return;
+      
+      if (currentUser) loadTasks(true);
+    }
+
+    async function loadTasks(isSilent = false) {
+      if (!isSilent) document.getElementById('loading').classList.remove('hidden');
+      const tDate = document.getElementById('targetDate').value;
+      const requestTime = new Date().getTime(); 
+
+      try {
+          if (requestTime < lastActionTime) return; 
+
+          const [resTasks, resProj, resRM] = await Promise.all([
+              db.from('tasks').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
+              db.from('projects').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
+              db.from('routine_master').select('*').eq('branch', targetBranch).eq('status', 'active')
+          ]);
+
+          if (resTasks.error) throw resTasks.error;
+          if (resProj.error) throw resProj.error;
+          if (resRM.error) throw resRM.error;
+
+          const activeRoutineNames = resRM.data.map(rm => rm.name);
+
+          const validTasks = resTasks.data.filter(t => {
+              const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
+              if (t.type === 'kanban') {
+                  return t.status !== 'done' || (t.status === 'done' && d === tDate);
+              } else if (t.type === 'routine') {
+                  return d === tDate || (d < tDate && t.status !== 'done' && activeRoutineNames.includes(t.name));
+              }
+              return false;
+          });
+
+          tasksData = [];
+          const routineMapToday = {};
+          const pastUnachievedMap = {};
+
+          validTasks.forEach(t => {
+              const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
+              // ★追加: DBから取得した時点で不正な文字列をサニタイズ（無害化）する
+              let st = t.start_time;
+              if (st === "undefined" || st === "null" || st === "") st = null;
+              
+              let ra = t.real_assignee;
+              if (ra === "undefined" || ra === "null" || ra === "不明") ra = "";
+
+              if (t.type === 'routine') {
+                  if (d === tDate) {
+                      routineMapToday[t.name] = t;
+                  } else if (d < tDate && t.status !== 'done') {
+                      if (!pastUnachievedMap[t.name] || pastUnachievedMap[t.name].target_date < t.target_date) {
+                          pastUnachievedMap[t.name] = t;
+                      }
+                  }
+              } else {
+                  tasksData.push({
+                      id: t.id, branch: t.branch, date: d, type: t.type, name: t.name, assignee: t.assignee, 
+                      status: t.status, elapsedSeconds: t.elapsed_seconds || 0, startTime: st, 
+                      realAssignee: ra, isPastUnachieved: false, memo: t.memo || ""
+                  });
+              }
+          });
+
+          const routinesToInsert = [];
+          const nowStr = new Date().toISOString();
+          const targetDay = new Date(tDate.replace(/-/g, '/')).getDay();
+
+          resRM.data.forEach(rm => {
+              const daysArr = rm.routine_days ? String(rm.routine_days).split(',') : [];
+              if (daysArr.includes(String(targetDay))) {
+                  if (!routineMapToday[rm.name]) {
+                      const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000) + routinesToInsert.length;
+                      const newTask = {
+                          id: newId, branch: targetBranch, target_date: tDate, type: 'routine',
+                          name: rm.name, assignee: rm.assignee, status: 'todo',
+                          elapsed_seconds: 0, start_time: null, real_assignee: '', updated_at: nowStr, memo: ""
+                      };
+                      routinesToInsert.push(newTask);
+                      routineMapToday[rm.name] = newTask;
+                  }
+              }
+          });
+
+          for (const rName in pastUnachievedMap) {
+              if (!routineMapToday[rName]) {
+                  const pr = pastUnachievedMap[rName];
+                  const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000) + routinesToInsert.length;
+                  const newTask = {
+                      id: newId, branch: targetBranch, target_date: tDate, type: 'routine',
+                      name: pr.name, assignee: pr.assignee, status: 'todo',
+                      elapsed_seconds: 0, start_time: null, real_assignee: '', updated_at: nowStr, memo: pr.memo || ""
+                  };
+                  routinesToInsert.push(newTask);
+                  routineMapToday[rName] = newTask;
+              }
+          }
+
+          if (routinesToInsert.length > 0) {
+              await db.from('tasks').insert(routinesToInsert);
+          }
+
+          for (const rName in routineMapToday) {
+              const t = routineMapToday[rName];
+              const isPastUnachieved = !!(pastUnachievedMap[rName] && t.status !== 'done');
+              
+              // ★追加: ルーティンもサニタイズ
+              let st = t.start_time;
+              if (st === "undefined" || st === "null" || st === "") st = null;
+              let ra = t.real_assignee;
+              if (ra === "undefined" || ra === "null" || ra === "不明") ra = "";
+
+              tasksData.push({
+                  id: t.id, branch: t.branch, date: tDate, type: 'routine', name: t.name,
+                  assignee: t.assignee, status: t.status, elapsedSeconds: t.elapsed_seconds || 0,
+                  startTime: st, realAssignee: ra, isPastUnachieved: isPastUnachieved,
+                  memo: t.memo || ""
+              });
+          }
+
+          projectsData = resProj.data.filter(p => p.type === 'project').map(p => ({
+              id: p.id, parentId: p.parent_id, branch: p.branch, type: p.type, name: p.name,
+              startDate: p.start_date, dueDate: p.due_date, progress: p.progress, assignee: p.assignee,
+              realAssignee: p.real_assignee, memo: p.memo, status: p.status
+          }));
+          subtasksData = resProj.data.filter(p => p.type === 'subtask').map(p => ({
+              id: p.id, parentId: p.parent_id, branch: p.branch, type: p.type, name: p.name,
+              dueDate: p.due_date, progress: p.progress, assignee: p.assignee,
+              realAssignee: p.real_assignee, memo: p.memo, status: p.status
+          }));
+
+          routineMastersData = resRM.data.map(rm => ({
+              id: rm.id, branch: rm.branch, name: rm.name, assignee: rm.assignee, days: rm.routine_days ? rm.routine_days.split(',') : []
+          }));
+
+          google.script.run.withSuccessHandler(resGAS => {
+              if (resGAS.error) { console.error(resGAS.error); return; }
+              storeStaffs = resGAS.staffs || [];
+              
+              const sel = document.getElementById('branchSelector'); 
+              if (sel.options.length <= 1 && resGAS.branches) {
+                  sel.innerHTML = "";
+                  resGAS.branches.forEach(b => { 
+                      const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
+                      if(b === targetBranch) opt.selected = true; 
+                      sel.appendChild(opt); 
+                  });
+                  if(!currentUser.permissions.viewAll) sel.disabled = true;
+              }
+          }).getTasks(currentUser, targetBranch, tDate);
+
+          renderTasks();
+          renderProjects();
+          if(!document.getElementById('view_routineMaster').classList.contains('hidden')) renderRoutineMasters();
+
+          if (!isSilent) {
+              document.getElementById('loading').classList.add('hidden'); 
+              document.getElementById('content').classList.remove('hidden');
+          }
+      } catch (err) {
+          if (!isSilent) {
+              document.getElementById('loading').classList.add('hidden'); 
+              alert("通信エラー: " + err.message);
+              if (err.message && (err.message.includes('JWT') || err.message.includes('Auth'))) {
+                  logout();
+              }
+          }
+      }
+    }
+
+    function renderRoutineMasters() {
+      const container = document.getElementById('routineMasterContainer');
+      container.innerHTML = "";
+      
+      const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
+      
+      if (routineMastersData.length === 0) {
+          container.innerHTML = '<p class="text-center text-xs text-slate-500 py-4 font-bold">登録されているルールはありません。</p>';
+          return;
+      }
+      
+      const dayMap = {0:"日", 1:"月", 2:"火", 3:"水", 4:"木", 5:"金", 6:"土"};
+
+      routineMastersData.forEach(rm => {
+         let daysText = rm.days.length === 7 ? "毎日" : rm.days.map(d => dayMap[d]).join("・");
+         let deleteBtn = !isReadOnly ? `<button onclick="deleteRoutineMaster('${rm.id}')" class="text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors text-[10px] font-bold"><i class="fa-solid fa-trash mr-1"></i>設定削除</button>` : '';
+         
+         container.innerHTML += `
+           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center shadow-sm hover:border-slate-700 transition-colors">
+             <div>
+               <div class="flex items-center gap-2 mb-1">
+                 <span class="bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded text-[10px] font-bold"><i class="fa-solid fa-rotate mr-1"></i>${daysText}</span>
+                 <span class="text-[10px] text-slate-500"><i class="fa-solid fa-users mr-1"></i>${rm.assignee || '未定'}</span>
+               </div>
+               <p class="font-bold text-slate-200 text-sm">${rm.name}</p>
+             </div>
+             <div>${deleteBtn}</div>
+           </div>
+         `;
+      });
+    }
+
+    async function deleteRoutineMaster(masterId) {
+      if (!requireStaffAuth()) return;
+      if (!confirm("このルーティン設定を削除しますか？\n（以降、自動生成されなくなります）")) return;
+      
+      lastActionTime = new Date().getTime(); 
+      try {
+          const { error } = await db.from('routine_master').update({ status: 'deleted' }).eq('id', masterId);
+          if (error) throw error;
+          loadTasks(true); 
+      } catch(err) {
+          alert("通信エラー: " + err.message); loadTasks(true); 
+      }
+    }
+
+    // ★大改修: すべてのカード操作をポップアップ詳細に一本化（競合を永久に根絶）
+    function renderTasks() {
+      activeTimers = {};
+      const routineContainer = document.getElementById('routineList'); const kanbanTodo = document.getElementById('kanbanTodo'); const kanbanDoing = document.getElementById('kanbanDoing'); const kanbanDone = document.getElementById('kanbanDone');
+      routineContainer.innerHTML = ""; kanbanTodo.innerHTML = ""; kanbanDoing.innerHTML = ""; kanbanDone.innerHTML = "";
+      let cTodo = 0, cDoing = 0, cDone = 0, routineCount = 0;
+
+      const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
+      if (isReadOnly) {
+        document.getElementById('readOnlyBadge').classList.remove('hidden');
+        document.getElementById('btnAddTask').classList.add('hidden');
+      } else {
+        document.getElementById('readOnlyBadge').classList.add('hidden');
+        document.getElementById('btnAddTask').classList.remove('hidden');
+      }
+
+      tasksData.forEach(task => {
+        if (taskFilterMode === 'mine' && currentTaskStaff) {
+            const isAssignedToMe = String(task.assignee || "").includes(currentTaskStaff.name);
+            const amIRealDoer = task.realAssignee === currentTaskStaff.name;
+            const isUnassigned = task.assignee === '未定' || task.assignee === '';
+            
+            if (!isAssignedToMe && !amIRealDoer && !isUnassigned) {
+                return; 
+            }
+        }
+
+        let displayAssigneeHtml = "";
+        if (task.status === "todo") {
+            displayAssigneeHtml = `<span class="text-[10px] font-bold bg-slate-900 border border-slate-700 text-slate-400 px-2 py-1 rounded"><i class="fa-solid fa-users mr-1"></i>${task.assignee || '未定'}</span>`;
+        } else {
+            // 安全な空文字チェックを実装
+            const doerName = task.realAssignee ? task.realAssignee : "不明";
+            displayAssigneeHtml = `<span class="text-[10px] font-bold bg-indigo-900/50 border border-indigo-500 text-indigo-300 px-2 py-1 rounded"><i class="fa-solid fa-user-check mr-1"></i>${doerName} が対応</span>`;
+        }
+
+        let alertBadgeHtml = "";
+        let cardBorderClass = "border-slate-800";
+        let cardBgClass = "bg-slate-950";
+        
+        if (task.type === 'routine' && task.isPastUnachieved) {
+            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-triangle-exclamation"></i>過去の未達成を引き継ぎ</div>`;
+            cardBorderClass = "border-rose-900/50";
+        } else if (task.type === 'kanban' && task.date < todayStr && task.status !== 'done') {
+            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-clock"></i>期限超過（過去のタスク）</div>`;
+            cardBorderClass = "border-rose-900/50";
+            cardBgClass = "bg-rose-950/10";
+        }
+
+        let memoIconHtml = task.memo ? `<span class="text-amber-500 text-[10px] ml-2" title="メモあり"><i class="fa-regular fa-note-sticky"></i> メモ</span>` : "";
+        let clickAction = `onclick="openTaskDetailModal('${task.id}')"`;
+
+        if (task.type === 'routine') {
+          routineCount++;
+          let statusIcon = '<i class="fa-regular fa-square text-slate-500 text-2xl"></i>';
+          let timerClass = "text-slate-500"; 
+          let totalSec = parseInt(task.elapsedSeconds) || 0;
+          
+          if (task.status === 'doing') {
+            statusIcon = '<i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl"></i>';
+            timerClass = "timer-active font-black text-lg";
+            if (task.startTime && !isNaN(task.startTime) && task.startTime > 0) { 
+                activeTimers[task.id] = { startTime: task.startTime, elapsedSeconds: totalSec }; 
+                totalSec += Math.floor((new Date().getTime() - task.startTime) / 1000); 
+            } else {
+                totalSec = 0;
+            }
+          } else if (task.status === 'done') {
+            statusIcon = '<i class="fa-solid fa-check-square text-emerald-500 text-2xl"></i>';
+            timerClass = "text-emerald-500 font-black";
+          }
+          if (totalSec < 0) totalSec = 0;
+          let timeStr = formatTime(totalSec);
+          let deleteBtn = !isReadOnly ? `<button onclick="deleteTask('${task.id}'); event.stopPropagation();" class="text-slate-600 hover:text-rose-400 px-2 shrink-0" title="今日だけスキップ"><i class="fa-solid fa-trash"></i></button>` : '';
+          
+          routineContainer.innerHTML += `
+            <div class="flex items-center justify-between p-4 sm:p-5 rounded-2xl ${cardBgClass} border ${cardBorderClass} task-card shadow-sm cursor-pointer" ${clickAction}>
+              <div class="flex items-start gap-4 overflow-hidden w-full">
+                <div class="shrink-0 mt-1">${statusIcon}</div>
+                <div class="flex flex-col truncate w-full">
+                  ${alertBadgeHtml}
+                  <span class="text-base font-black text-slate-200 truncate ${task.status === 'done' ? 'line-through opacity-50' : ''}">${task.name}${memoIconHtml}</span>
+                  <div class="flex items-center gap-3 mt-1.5">
+                    ${displayAssigneeHtml}
+                    <span class="text-[12px] font-mono ${timerClass}"><i class="fa-solid fa-stopwatch mr-1"></i><span id="timer_${task.id}">${timeStr}</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 ml-2 pl-2 border-l border-slate-800 shrink-0">
+                ${deleteBtn}
+              </div>
+            </div>`;
+        } else if (task.type === 'kanban') {
+          let timerClass = "text-slate-500"; 
+          let totalSec = parseInt(task.elapsedSeconds) || 0;
+          
+          if (task.status === 'todo') { 
+              cTodo++; 
+          } 
+          else if (task.status === 'doing') { 
+              cDoing++; timerClass = "timer-active font-black text-base"; 
+              if (task.startTime && !isNaN(task.startTime) && task.startTime > 0) { 
+                  activeTimers[task.id] = { startTime: task.startTime, elapsedSeconds: totalSec }; 
+                  totalSec += Math.floor((new Date().getTime() - task.startTime) / 1000); 
+              } else {
+                  totalSec = 0;
+              }
+          } 
+          else if (task.status === 'done') { 
+              cDone++; timerClass = "text-emerald-500 font-black text-sm"; 
+          }
+          if (totalSec < 0) totalSec = 0;
+          let timeStr = formatTime(totalSec);
+          let deleteBtn = !isReadOnly ? `<button onclick="deleteTask('${task.id}'); event.stopPropagation();" class="absolute top-3 right-3 text-slate-600 hover:text-rose-400 hidden group-hover:block"><i class="fa-solid fa-trash text-xs"></i></button>` : '';
+          
+          let createdStr = getCreatedAt(task.id);
+          
+          // ★修正3: 看板タスクもボタン操作をすべて排除し、ルーティンと同じすっきりしたデザインの詳細モーダル起動に変更
+          let cardHtml = `
+            <div class="${cardBgClass} p-4 rounded-2xl border ${cardBorderClass} shadow-lg task-card flex flex-col relative group cursor-pointer" ${clickAction}>
+              ${deleteBtn}
+              <div class="flex justify-between items-start mb-1">
+                <p class="text-[9px] text-slate-500 font-mono"><i class="fa-solid fa-pen-nib mr-1"></i>作成: ${createdStr}</p>
+              </div>
+              ${alertBadgeHtml}
+              <p class="text-sm font-bold text-slate-200 leading-snug mb-3 pr-4 ${task.status==='done'?'line-through opacity-50':''}">${task.name}${memoIconHtml}</p>
+              <div class="flex justify-between items-end mt-auto pt-2 border-t border-slate-800/50">
+                ${displayAssigneeHtml}
+                <span class="text-[11px] font-mono ${timerClass}"><i class="fa-solid fa-stopwatch mr-1"></i><span id="timer_${task.id}">${timeStr}</span></span>
+              </div>
+            </div>
+          `;
+          
+          if (task.status === 'todo') kanbanTodo.innerHTML += cardHtml; else if (task.status === 'doing') kanbanDoing.innerHTML += cardHtml; else if (task.status === 'done') kanbanDone.innerHTML += cardHtml;
+        }
+      });
+
+      if(routineCount === 0) routineContainer.innerHTML = '<p class="text-center text-xs text-slate-500 py-4 font-bold">表示するルーティン業務はありません。</p>';
+      if(cTodo === 0) kanbanTodo.innerHTML = '<div class="bg-slate-950/50 border border-slate-800 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-slate-600">タスクなし</p></div>';
+      if(cDoing === 0) kanbanDoing.innerHTML = '<div class="bg-indigo-950/30 border border-indigo-900/30 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-indigo-900/50">対応中なし</p></div>';
+      if(cDone === 0) kanbanDone.innerHTML = '<div class="bg-emerald-950/30 border border-emerald-900/30 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-emerald-900/50">完了なし</p></div>';
+
+      document.getElementById('cntTodo').innerText = cTodo; document.getElementById('cntDoing').innerText = cDoing; document.getElementById('cntDone').innerText = cDone;
+    }
+
+    // ==========================================
+    // ★追加: PC版 タスク詳細ポップアップ用関数群
+    // ==========================================
+    let currentDetailTask = null;
+
+    function openTaskDetailModal(taskId) {
+      const task = tasksData.find(t => t.id === taskId);
+      if (!task) return;
+      currentDetailTask = task;
+
+      document.getElementById('detailTaskName').innerText = task.name;
+      document.getElementById('detailTaskAssignee').innerText = task.assignee || '未定';
+      
+      const statusEl = document.getElementById('detailTaskStatus');
+      const actionContainer = document.getElementById('detailTaskActions');
+      let statusHtml = '';
+      let actionHtml = '';
+
+      if (task.status === 'todo') {
+          statusHtml = `<span class="bg-slate-800 text-slate-400 px-3 py-1 rounded-xl text-xs font-bold border border-slate-700">未対応</span>`;
+          actionHtml = `<button onclick="updateTaskDetail('doing')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-play"></i> 作業を開始する</button>`;
+      } else if (task.status === 'doing') {
+          const doerName = task.realAssignee ? task.realAssignee : "不明";
+          statusHtml = `<span class="bg-indigo-900/50 text-indigo-400 px-3 py-1 rounded-xl text-xs font-bold border border-indigo-500 animate-pulse">対応中 (${doerName})</span>`;
+          let isOtherPersonDoing = task.realAssignee && (!currentTaskStaff || task.realAssignee !== currentTaskStaff.name);
+          
+          if (isOtherPersonDoing) {
+              actionHtml = `<button onclick="updateTaskDetail('doing')" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-people-arrows"></i> 自分が引き継ぐ</button>`;
+          } else {
+              actionHtml = `
+                <div class="flex gap-3 w-full">
+                  <button onclick="updateTaskDetail('todo')" class="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white font-bold py-4 rounded-xl border border-slate-700 transition-colors flex justify-center items-center gap-1"><i class="fa-solid fa-pause"></i> 中断</button>
+                  <button onclick="updateTaskDetail('done')" class="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-check"></i> 完了にする</button>
+                </div>
+              `;
+          }
+      } else if (task.status === 'done') {
+          statusHtml = `<span class="bg-emerald-900/50 text-emerald-400 px-3 py-1 rounded-xl text-xs font-bold border border-emerald-500">完了</span>`;
+          let canRevert = !currentTaskStaff || task.realAssignee === (currentTaskStaff ? currentTaskStaff.name : null);
+          if (canRevert) {
+              actionHtml = `<button onclick="updateTaskDetail('todo')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-500 hover:text-white font-bold py-3 rounded-xl border border-slate-700 transition-colors text-sm">未完了に戻す</button>`;
+          } else {
+              actionHtml = `<div class="text-center text-slate-500 text-xs font-bold py-2">このタスクは完了済みです</div>`;
+          }
+      }
+
+      statusEl.innerHTML = statusHtml;
+      actionContainer.innerHTML = actionHtml;
+
+      // メモの編集権限を厳密にチェック（店長以上、または着手スタッフ本人）
+      const isManager = (currentUser.permissions.editAll) || (currentTaskStaff && currentTaskStaff.level === "店長・副店長");
+      const isRealAssignee = task.realAssignee && currentTaskStaff && task.realAssignee === currentTaskStaff.name;
+      const canEditMemo = isManager || isRealAssignee;
+      
+      const memoEl = document.getElementById('detailTaskMemo');
+      const saveBtn = document.getElementById('btnSaveTaskMemo');
+      memoEl.value = task.memo || '';
+      
+      if (canEditMemo) {
+          memoEl.readOnly = false;
+          memoEl.placeholder = "なぜ未着手なのか、どこまで進んでいるか等を自由に記入してください...";
+          saveBtn.classList.remove('hidden');
+      } else {
+          memoEl.readOnly = true;
+          memoEl.placeholder = "メモを編集する権限がありません（着手中の担当者または店長・副店長のみ編集可能）";
+          saveBtn.classList.add('hidden');
+      }
+
+      document.getElementById('taskDetailModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeTaskDetailModal() {
+        document.getElementById('taskDetailModal').classList.replace('flex', 'hidden');
+        currentDetailTask = null;
+    }
+
+    async function updateTaskDetail(newStatus = null) {
+      if (!currentDetailTask) return;
+      
+      const memo = document.getElementById('detailTaskMemo').value;
+      const taskId = currentDetailTask.id;
+      const targetStatus = newStatus || currentDetailTask.status; 
+      
+      // 変更前の状態を記憶
+      const originalStatus = currentDetailTask.status; 
+      
+      if (newStatus && targetStatus !== originalStatus && !requireStaffAuth()) return;
+      
+      lastActionTime = new Date().getTime(); 
+      
+      let upd = { 
+          status: targetStatus, 
+          memo: memo,
+          updated_at: new Date().toISOString() 
+      };
+
+      let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
+
+      // タイマーの加算計算
+      if (originalStatus === 'doing' && targetStatus !== 'doing') {
+          let st = currentDetailTask.startTime;
+          if (st && !isNaN(st) && st > 0) {
+              const diffSec = Math.floor((new Date().getTime() - st) / 1000);
+              currentTotalSec += diffSec;
+          }
+          currentDetailTask.elapsedSeconds = currentTotalSec;
+          upd.elapsed_seconds = currentTotalSec;
+      }
+
+      // 「変更前の状態(originalStatus)」と比較して名前と時間をセットする
+      if (targetStatus === "doing" && originalStatus !== 'doing') {
+          if (!currentTaskStaff || !currentTaskStaff.name) {
+              alert("スタッフの認証が切れています。右上のボタンから再度ご自身の名前を選択してください。");
+              openStaffAuthModal();
+              return; 
+          }
+          currentDetailTask.realAssignee = currentTaskStaff.name;
+          currentDetailTask.startTime = new Date().getTime();
+          upd.real_assignee = currentDetailTask.realAssignee;
+          upd.start_time = currentDetailTask.startTime;
+
+      } else if (targetStatus === "todo" && originalStatus === 'doing') {
+          currentDetailTask.realAssignee = "";
+          currentDetailTask.startTime = null;
+          upd.real_assignee = "";
+          upd.start_time = null;
+      }
+
+      // すべての判定が終わった後に状態を最新化する
+      currentDetailTask.status = targetStatus;
+      currentDetailTask.memo = memo;
+
+      const actionContainer = document.getElementById('detailTaskActions');
+      actionContainer.innerHTML = '<div class="w-full text-center py-4 text-sky-400 font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>更新中...</div>';
+      document.getElementById('btnSaveTaskMemo').classList.add('hidden');
+
+      try {
+          const { error } = await db.from('tasks').update(upd).eq('id', taskId);
+          if (error) throw error;
+          
+          closeTaskDetailModal();
+          loadTasks(true); 
+      } catch(err) {
+          alert("通信エラー: " + err.message); 
+          closeTaskDetailModal();
+          loadTasks(true);
+      }
+    }
+
+    // 既存の旧式の単発関数(changeStatus)は使われなくなりましたが、後方互換性とエラー防止のためガワだけ残します
+    async function changeStatus(taskId, newStatus, btnEl) { openTaskDetailModal(taskId); }
+
+    async function saveNewTask() {
+      if (!requireStaffAuth()) return;
+      const type = document.getElementById('newTaskType').value; 
+      const name = document.getElementById('newTaskName').value.trim(); 
+      const tDate = document.getElementById('targetDate').value;
+      
+      let assigneeData = selectedAssignees.length > 0 ? selectedAssignees.join(', ') : "未定";
+
+      if (!name) { alert("タスク名を入力してください。"); return; }
+      
+      let routineDays = [];
+      if (type === 'routine') {
+          document.querySelectorAll('.day-chk:checked').forEach(cb => routineDays.push(parseInt(cb.value)));
+          if (routineDays.length === 0) { alert("実行する曜日を1つ以上選択してください。"); return; }
+      }
+      
+      lastActionTime = new Date().getTime(); 
+      const btn = document.getElementById('btnSaveTask'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      
+      try {
+          if (type === 'routine') {
+              const newRmId = "RM" + new Date().getTime() + Math.floor(Math.random()*1000);
+              const { error } = await db.from('routine_master').insert([{ 
+                  id: newRmId, branch: targetBranch, name: name, assignee: assigneeData, 
+                  routine_days: routineDays.join(','), status: 'active' 
+              }]);
+              if (error) throw error;
+          } else {
+              const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000);
+              const { error } = await db.from('tasks').insert([{ 
+                  id: newId, branch: targetBranch, target_date: tDate, type: type, name: name, 
+                  assignee: assigneeData, status: 'todo' 
+              }]);
+              if (error) throw error;
+          }
+          
+          btn.disabled = false; btn.innerHTML = '追加する'; 
+          document.getElementById('newTaskName').value = ""; closeAddTaskModal(); 
+          loadTasks(true); 
+      } catch(err) {
+          btn.disabled = false; btn.innerHTML = '追加する'; alert("保存エラー: " + err.message); 
+      }
+    }
+
+    async function deleteTask(taskId) {
+      if (!requireStaffAuth()) return;
+      if(!confirm("このタスクを削除しますか？\n（ルーティンの場合、本日の実行分のみスキップします）")) return;
+      
+      lastActionTime = new Date().getTime(); 
+      try {
+          const { error } = await db.from('tasks').update({ status: 'deleted' }).eq('id', taskId);
+          if (error) throw error;
+          loadTasks(true); 
+      } catch(err) {
+          alert("通信エラー: " + err.message); loadTasks(true);
+      }
+    }
+
+    function renderProjects() {
+      const container = document.getElementById('projectListContainer');
+      const emptyMsg = document.getElementById('projectEmptyMsg');
+      container.innerHTML = "";
+      
+      const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
+
+      let displayedCount = 0;
+
+      projectsData.forEach((p, pIdx) => {
+        const mySubs = subtasksData.filter(sub => sub.parentId === p.id && sub.status !== 'deleted');
+        let totalProgress = 0;
+        mySubs.forEach(s => totalProgress += (s.progress || 0));
+        const avgProgress = mySubs.length > 0 ? Math.floor(totalProgress / mySubs.length) : p.progress; 
+        
+        let pAlert = checkDeadlineAlert(p.dueDate, avgProgress);
+        
+        let subHtml = "";
+        mySubs.forEach(s => {
+          if (taskFilterMode === 'mine' && currentTaskStaff) {
+              const isAssignedToMe = String(s.assignee || "").includes(currentTaskStaff.name);
+              const isUnassigned = s.assignee === '未定' || s.assignee === '';
+              if (!isAssignedToMe && !isUnassigned && s.realAssignee !== currentTaskStaff.name) {
+                  return; 
+              }
+          }
+
+          let sAlert = checkDeadlineAlert(s.dueDate, s.progress);
+          let badgeHtml = sAlert.alert ? `<span class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded ml-2">${sAlert.text}</span>` : "";
+          
+          let displayAssigneeHtml = `<span class="text-[10px] font-bold bg-slate-900 border border-slate-700 text-slate-400 px-2 py-1 rounded"><i class="fa-solid fa-users mr-1"></i>${s.assignee || '未定'}</span>`;
+          if (s.progress > 0 && s.progress < 100 && s.realAssignee) {
+             displayAssigneeHtml = `<span class="text-[10px] font-bold bg-indigo-900/50 border border-indigo-500 text-indigo-300 px-2 py-1 rounded"><i class="fa-solid fa-user-check mr-1"></i>${s.realAssignee} が対応中</span>`;
+          } else if (s.progress >= 100 && s.realAssignee) {
+             displayAssigneeHtml = `<span class="text-[10px] font-bold bg-emerald-900/50 border border-emerald-500 text-emerald-300 px-2 py-1 rounded"><i class="fa-solid fa-check-double mr-1"></i>${s.realAssignee} が完了</span>`;
+          }
+
+          let updateActionHtml = "";
+          if (!isReadOnly) {
+            updateActionHtml = `
+              <div class="flex items-center gap-3 mt-3 w-full">
+                <input type="range" id="slider_${s.id}" min="0" max="100" step="5" value="${s.progress}" class="range-slider flex-grow" oninput="document.getElementById('val_${s.id}').innerText = this.value + '%'"><span id="val_${s.id}" class="text-sm font-black font-mono w-10 text-right ${s.progress >= 100 ? 'text-emerald-400' : 'text-sky-400'}">${s.progress}%</span>
+              </div>
+              <div class="flex gap-2 mt-2 w-full">
+                <input type="text" id="memo_${s.id}" value="${s.memo || ''}" placeholder="進捗メモ（任意）" class="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs px-3 py-2 rounded-lg outline-none focus:border-sky-500">
+                <button onclick="updateSubTask('${s.id}', this)" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-[10px] px-3 py-2 rounded-lg shrink-0 border border-slate-600 shadow-sm transition-all">更新</button>
+              </div>
+            `;
+          }
+
+          let deleteBtn = !isReadOnly ? `<button onclick="deleteProjectTask('${s.id}')" class="absolute top-3 right-3 text-slate-600 hover:text-rose-400"><i class="fa-solid fa-trash text-xs"></i></button>` : '';
+
+          subHtml += `
+            <div class="bg-slate-950 p-4 rounded-xl border ${sAlert.class} relative mb-3">
+              ${deleteBtn}
+              <div class="flex justify-between items-start mb-1">
+                 <h4 class="font-bold text-white text-sm pr-6 leading-snug">${s.name}</h4>
+              </div>
+              <div class="flex items-center gap-2 mb-2">
+                 <p class="text-[10px] text-slate-500 font-mono"><i class="fa-regular fa-calendar-check mr-1"></i>期限: ${s.dueDate || '--'}</p>
+                 ${badgeHtml}
+              </div>
+              <div class="flex justify-between items-end">
+                ${displayAssigneeHtml}
+              </div>
+              ${updateActionHtml}
+            </div>
+          `;
+        });
+
+        if (taskFilterMode === 'mine' && subHtml === "") return;
+        
+        displayedCount++;
+
+        let pDeleteBtn = !isReadOnly ? `<button onclick="deleteProjectTask('${p.id}')" class="text-slate-600 hover:text-rose-400"><i class="fa-solid fa-trash text-sm"></i></button>` : '';
+        let addSubBtn = (!isReadOnly && currentTaskStaff) ? `<button onclick="openAddSubTaskModal('${p.id}', '${p.name}')" class="w-full border border-dashed border-slate-700 hover:bg-slate-800 text-slate-400 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 mt-2"><i class="fa-solid fa-plus"></i> 子タスクを追加</button>` : '';
+
+        let badgeP = pAlert.alert ? `<span class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[10px] font-bold px-2 py-0.5 rounded ml-2 whitespace-nowrap"><i class="fa-solid fa-clock"></i> ${pAlert.text}</span>` : "";
+
+        container.innerHTML += `
+          <div class="bg-slate-900 border ${pAlert.class} rounded-2xl p-5 shadow-xl">
+            <div class="flex justify-between items-start mb-2">
+              <h3 class="text-lg font-black text-fuchsia-400 flex items-center gap-2 leading-tight">${p.name} ${badgeP}</h3>
+              ${pDeleteBtn}
+            </div>
+            <p class="text-xs text-slate-400 mb-4 whitespace-pre-wrap">${p.memo || '概要メモなし'}</p>
+            
+            <div class="flex justify-between items-end mb-1">
+              <span class="text-[10px] text-slate-500 font-bold">プロジェクト全体進捗 (期限: ${p.dueDate || '未定'})</span>
+              <span class="font-mono font-black ${avgProgress >= 100 ? 'text-emerald-400' : 'text-fuchsia-400'}">${avgProgress}%</span>
+            </div>
+            <div class="w-full bg-slate-950 rounded-full h-3 mb-5 border border-slate-800 overflow-hidden">
+              <div class="${avgProgress >= 100 ? 'bg-emerald-500' : 'bg-gradient-to-r from-fuchsia-600 to-fuchsia-400'} h-3 rounded-full transition-all duration-500" style="width: ${avgProgress}%"></div>
+            </div>
+            
+            <div class="border-t border-slate-800 pt-4">
+               ${subHtml}
+               ${addSubBtn}
+            </div>
+          </div>
+        `;
+      });
+
+      if (displayedCount === 0) {
+        emptyMsg.classList.remove('hidden');
+      } else {
+        emptyMsg.classList.add('hidden');
+      }
+    }
+
+    function openAddProjectModal() {
+      if (!requireStaffAuth()) return;
+      document.getElementById('addProjectModal').classList.replace('hidden', 'flex');
+    }
+    function closeAddProjectModal() { document.getElementById('addProjectModal').classList.replace('hidden', 'flex'); }
+
+    async function saveProject() {
+      if (!requireStaffAuth()) return;
+      const name = document.getElementById('newProjName').value.trim();
+      const start = document.getElementById('newProjStart').value;
+      const due = document.getElementById('newProjDue').value;
+      const memo = document.getElementById('newProjMemo').value;
+      
+      if (!name) { alert("プロジェクト名を入力してください。"); return; }
+      
+      lastActionTime = new Date().getTime(); 
+      const btn = document.getElementById('btnSaveProj'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      
+      try {
+          const newId = "P" + new Date().getTime() + Math.floor(Math.random()*1000);
+          const { error } = await db.from('projects').insert([{ 
+              id: newId, branch: targetBranch, type: 'project', name: name, 
+              start_date: start || null, due_date: due || null, 
+              real_assignee: currentUser.name, memo: memo 
+          }]);
+          if (error) throw error;
+          
+          btn.disabled = false; btn.innerHTML = 'プロジェクト作成'; 
+          document.getElementById('newProjName').value = ""; document.getElementById('newProjMemo').value = "";
+          closeAddProjectModal(); loadTasks(true); 
+      } catch(err) {
+          btn.disabled = false; btn.innerHTML = 'プロジェクト作成'; alert("エラー: " + err.message); 
+      }
+    }
+
+    function openAddSubTaskModal(parentId, parentName) {
+      if (!requireStaffAuth()) return;
+      document.getElementById('subParentId').value = parentId;
+      document.getElementById('subParentName').innerText = parentName;
+      selectedSubAssignees = [];
+      renderSubAssigneeButtons();
+      document.getElementById('addSubTaskModal').classList.replace('hidden', 'flex');
+    }
+    function closeAddSubTaskModal() { document.getElementById('addSubTaskModal').classList.replace('flex', 'hidden'); }
+
+    function renderSubAssigneeButtons() {
+      const container = document.getElementById('subAssigneeContainer');
+      container.innerHTML = "";
+      
+      if (currentTaskStaff.level === "一般スタッフ") {
+          selectedSubAssignees = [currentTaskStaff.name];
+          container.innerHTML = `<button class="bg-sky-600 text-white border-sky-500 font-bold px-4 py-2 rounded-xl text-xs shadow-sm opacity-50 cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>${currentTaskStaff.name}</button>`;
+      } else {
+          const isUndeclared = selectedSubAssignees.length === 0;
+          container.innerHTML += `<button onclick="toggleSubAssignee('未定')" class="${isUndeclared ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">未定 (全員)</button>`;
+          storeStaffs.forEach(s => {
+              const isSelected = selectedSubAssignees.includes(s.name);
+              const colorClass = isSelected ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
+              const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : '';
+              container.innerHTML += `<button onclick="toggleSubAssignee('${s.name}')" class="${colorClass} transition-all font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">${iconHtml}${s.name}</button>`;
+          });
+      }
+    }
+
+    function toggleSubAssignee(name) {
+      if (name === '未定') selectedSubAssignees = [];
+      else {
+          if (selectedSubAssignees.includes(name)) selectedSubAssignees = selectedSubAssignees.filter(n => n !== name);
+          else selectedSubAssignees.push(name);
+      }
+      renderSubAssigneeButtons();
+    }
+
+    async function saveSubTask() {
+      if (!requireStaffAuth()) return;
+      const parentId = document.getElementById('subParentId').value;
+      const name = document.getElementById('newSubName').value.trim();
+      const due = document.getElementById('newSubDue').value;
+      let assigneeData = selectedSubAssignees.length > 0 ? selectedSubAssignees.join(', ') : "未定";
+
+      if (!name) { alert("子タスク名を入力してください。"); return; }
+      
+      lastActionTime = new Date().getTime(); 
+      const btn = document.getElementById('btnSaveSub'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      
+      try {
+          const newId = "S" + new Date().getTime() + Math.floor(Math.random()*1000);
+          const { error } = await db.from('projects').insert([{ 
+              id: newId, parent_id: parentId, branch: targetBranch, type: 'subtask', 
+              name: name, due_date: due || null, assignee: assigneeData 
+          }]);
+          if (error) throw error;
+          
+          btn.disabled = false; btn.innerHTML = 'タスクを追加'; 
+          document.getElementById('newSubName').value = ""; closeAddSubTaskModal(); loadTasks(true); 
+      } catch(err) {
+          btn.disabled = false; btn.innerHTML = 'タスクを追加'; alert("エラー: " + err.message); 
+      }
+    }
+
+    async function updateSubTask(subtaskId, btnEl) {
+      if (!requireStaffAuth()) return;
+      const progress = parseInt(document.getElementById('slider_' + subtaskId).value, 10);
+      const memo = document.getElementById('memo_' + subtaskId).value;
+      
+      if (btnEl) {
+          btnEl.dataset.original = btnEl.innerHTML;
+          btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+          btnEl.disabled = true;
+      }
+      
+      lastActionTime = new Date().getTime(); 
+      
+      try {
+          const { error } = await db.from('projects').update({ 
+              progress: progress, memo: memo, real_assignee: currentTaskStaff.name, updated_at: new Date().toISOString() 
+          }).eq('id', subtaskId);
+          if (error) throw error;
+          loadTasks(true); 
+      } catch(err) {
+          alert("エラー: " + err.message); 
+          if(btnEl){btnEl.innerHTML=btnEl.dataset.original; btnEl.disabled=false;} 
+      }
+    }
+
+    async function deleteProjectTask(id) {
+      if (!requireStaffAuth()) return;
+      if (!confirm("この項目を削除しますか？\n(親プロジェクトを削除すると子タスクも消えます)")) return;
+      
+      lastActionTime = new Date().getTime(); 
+      try {
+          const { error } = await db.from('projects').update({ status: 'deleted' }).eq('id', id);
+          if (error) throw error;
+          loadTasks(true);
+      } catch(err) {
+          alert("エラー: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

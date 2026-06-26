@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>在庫分析管理システム (Supabase Pro 完全移行版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Roboto+Mono:wght@700&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; overflow-y: scroll; }
+    .font-mono { font-family: 'Roboto Mono', monospace; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .table-container { max-height: calc(100vh - 350px); overflow-y: auto; }
+    
+    .btn-pc { background-color: #1e293b; color: #cbd5e1; border: 1px solid #475569; }
+    .btn-pc:hover { background-color: #334155; color: #ffffff; }
+    .btn-cloud-main { background-color: #0c4a6e; color: #38bdf8; border: 1px solid #0284c7; }
+    .btn-cloud-main:hover { background-color: #0284c7; color: #ffffff; }
+    .btn-cloud-prev { background-color: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .btn-cloud-prev:hover { background-color: #059669; color: #ffffff; }
+
+    table th { position: sticky; top: 0; background-color: #020617; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.5); border-bottom: 1px solid #1e293b; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-50 shadow-md">
+    <div class="flex items-center gap-4">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white transition-colors" title="ポータルへ戻る"><i class="fa-solid fa-arrow-left text-xl"></i></button>
+      <h1 class="text-lg font-black"><i class="fa-solid fa-boxes-stacked text-fuchsia-400 mr-2"></i>在庫分析管理システム</h1>
+    </div>
+    <div id="legendContainer" class="hidden md:flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-mono">
+      <span class="font-bold text-slate-400 mr-2"><i class="fa-solid fa-circle-info mr-1"></i>在庫ランク定義:</span>
+      <span class="text-white"><b>A:</b> 10万~</span> <span class="text-slate-600">|</span>
+      <span class="text-white"><b>B:</b> 5~10万</span> <span class="text-slate-600">|</span>
+      <span class="text-white"><b>C:</b> 1~5万</span> <span class="text-slate-600">|</span>
+      <span class="text-white"><b>D:</b> 1千~1万</span> <span class="text-slate-600">|</span>
+      <span class="text-white"><b>E:</b> ~1千</span>
+    </div>
+  </nav>
+
+  <main class="flex-grow w-full max-w-7xl mx-auto p-4 md:p-6">
+    
+    <div id="errorAlert" class="hidden bg-rose-950/50 border border-rose-900 text-rose-400 px-4 py-3 rounded-xl relative mb-6 shadow-lg" role="alert">
+      <strong class="font-bold"><i class="fa-solid fa-circle-exclamation mr-1"></i>エラー: </strong>
+      <span class="block sm:inline" id="errorMsg"></span>
+      <button class="absolute top-0 bottom-0 right-0 px-4 py-3 hover:text-rose-300" onclick="document.getElementById('errorAlert').classList.add('hidden')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div id="view-mode-select" class="flex flex-col items-center justify-center py-20">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-10 shadow-2xl w-full max-w-md text-center">
+        <div class="bg-fuchsia-500/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-fuchsia-500/50">
+          <i class="fa-solid fa-boxes-stacked text-3xl text-fuchsia-400"></i>
+        </div>
+        <h2 class="text-2xl font-black text-white mb-2">起動モード選択</h2>
+        <p class="text-sm font-bold text-slate-400 mb-8">どちらのモードで分析を開始しますか？</p>
+        
+        <div class="space-y-4">
+          <button onclick="checkPass()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-black py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2">
+            <i class="fa-solid fa-building"></i> 本部モード (全店統括)
+          </button>
+          <button onclick="setShopMode()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2">
+            <i class="fa-solid fa-store"></i> 店舗モード (個別分析)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-list" class="hidden flex-col gap-6">
+      <div class="flex justify-between items-end border-b border-slate-800 pb-2">
+        <h2 id="listTitle" class="text-xl font-bold text-fuchsia-400">分析一覧</h2>
+        <button onclick="showFrame('ModeSelectView')" class="text-sm font-bold text-slate-500 hover:text-white transition-colors"><i class="fa-solid fa-caret-left"></i> モード選択に戻る</button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
+        <div class="p-4 border border-slate-700 rounded-xl bg-slate-950 flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-3">
+            <p class="text-sky-400 font-bold text-sm"><i class="fa-solid fa-calendar-day mr-1"></i>【1】当月データ (分析基準)</p>
+            <span id="mainStatusBadge" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-bold">未設定</span>
+          </div>
+          <div class="flex flex-col gap-3">
+            <input type="file" id="fileMain" multiple accept=".csv" class="hidden" onchange="loadCSV('main', event)">
+            <button onclick="document.getElementById('fileMain').click()" class="btn-pc w-full py-2 rounded-lg font-bold text-xs shadow flex items-center justify-center gap-2 transition-colors">
+              <i class="fa-solid fa-desktop"></i> PCから最新CSVを読込
+            </button>
+            <div class="flex items-center gap-2 w-full border-t border-slate-800 pt-3">
+              <input type="month" id="mainMonthSelector" class="bg-slate-900 text-xs font-bold text-slate-200 border border-slate-700 rounded-lg px-2 py-2 flex-grow outline-none [color-scheme:dark]">
+              <button onclick="loadFromCloud('main')" class="btn-cloud-main py-2 px-3 rounded-lg font-bold text-xs shadow whitespace-nowrap transition-colors">
+                <i class="fa-solid fa-database mr-1"></i> クラウドDBから読込
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 border border-slate-700 rounded-xl bg-slate-950 flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-3">
+            <p class="text-emerald-400 font-bold text-sm"><i class="fa-solid fa-clock-rotate-left mr-1"></i>【2】比較用前月データ</p>
+            <span id="prevStatusBadge" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-bold">未設定</span>
+          </div>
+          <div class="flex flex-col gap-3">
+            <input type="file" id="filePrev" multiple accept=".csv" class="hidden" onchange="loadCSV('prev', event)">
+            <button onclick="document.getElementById('filePrev').click()" class="btn-pc w-full py-2 rounded-lg font-bold text-xs shadow flex items-center justify-center gap-2 transition-colors">
+              <i class="fa-solid fa-desktop"></i> PCから過去CSVを読込
+            </button>
+            <div class="flex items-center gap-2 w-full border-t border-slate-800 pt-3">
+              <input type="month" id="prevMonthSelector" class="bg-slate-900 text-xs font-bold text-slate-200 border border-slate-700 rounded-lg px-2 py-2 flex-grow outline-none [color-scheme:dark]">
+              <button onclick="loadFromCloud('prev')" class="btn-cloud-prev py-2 px-3 rounded-lg font-bold text-xs shadow whitespace-nowrap transition-colors">
+                <i class="fa-solid fa-database mr-1"></i> クラウドDBから読込
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="loadSpinner" class="hidden text-amber-400 font-bold text-sm text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>データベースと通信中...</div>
+
+      <div id="adminSavePanel" class="hidden flex-col md:flex-row items-center justify-between gap-4 bg-fuchsia-950/20 p-4 rounded-2xl border border-fuchsia-900/50 shadow-lg mt-2">
+        <div>
+          <p class="text-fuchsia-400 font-bold text-sm mb-1"><i class="fa-solid fa-cloud-arrow-up mr-2"></i>クラウドDBへ確定保存 (管理者専用)</p>
+          <p class="text-slate-400 text-[10px]">画面に展開されている【当月データ】を正データとしてSupabaseに保存し、明細データと店舗サマリーを同期します。</p>
+        </div>
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <span class="text-xs font-bold text-slate-300 whitespace-nowrap">保存対象月:</span>
+          <input type="month" id="saveMonthSelector" class="bg-slate-900 text-xs font-bold text-slate-200 border border-fuchsia-900/50 rounded-lg px-3 py-2 outline-none [color-scheme:dark]">
+          <button onclick="saveToCloud()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black py-2 px-6 rounded-xl text-xs shadow-lg transition-all whitespace-nowrap">
+            保存を実行
+          </button>
+        </div>
+      </div>
+
+      <div id="displayArea" class="bg-slate-900 rounded-3xl border border-slate-800 shadow-xl min-h-[400px] p-6 overflow-x-auto">
+        <div class="flex flex-col justify-center items-center h-full py-20 text-slate-500">
+          <i class="fa-solid fa-chart-pie text-6xl mb-4 opacity-50"></i>
+          <p class="font-bold">コントロールパネルからデータを読み込んでダッシュボードを生成してください</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-detail" class="hidden flex-col gap-6">
+      <div class="flex justify-between items-end border-b border-slate-800 pb-2">
+        <h2 id="detailTitle" class="text-xl font-bold text-fuchsia-400">詳細表示</h2>
+        <button onclick="showFrame('ListView')" class="text-sm font-bold text-slate-500 hover:text-white transition-colors"><i class="fa-solid fa-caret-left"></i> ダッシュボードに戻る</button>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2" id="detailSummaryGrid"></div>
+      </div>
+
+      <div class="flex flex-col gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
+        <div class="flex flex-wrap justify-between items-center gap-4">
+          <div class="flex items-center gap-4">
+            <label class="flex items-center gap-2 text-sm font-bold text-slate-300 cursor-pointer hover:text-white transition-colors">
+              <input type="checkbox" id="chkUseColor" checked class="w-4 h-4 accent-fuchsia-500 rounded" onchange="applyFilters()"> 
+              滞留・価格変動アラートの強調表示
+            </label>
+            <span id="renderStatus" class="text-[10px] font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-900 px-2 py-1 rounded hidden shadow-sm"><i class="fa-solid fa-check mr-1"></i>描画完了</span>
+          </div>
+          <div class="flex flex-wrap gap-2 w-full md:w-auto">
+            <button onclick="exportCSV(true)" class="flex-1 md:flex-none bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs shadow-lg transition-all flex items-center justify-center gap-1"><i class="fa-solid fa-download"></i> 要注意CSV出力</button>
+            <button onclick="exportCSV(false)" class="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-xl text-xs shadow-lg transition-all flex items-center justify-center gap-1"><i class="fa-solid fa-download"></i> 全件CSV出力</button>
+          </div>
+        </div>
+
+        <div id="alertDescription" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs transition-all">
+          <div class="flex items-start gap-2">
+            <span class="bg-rose-950 border border-rose-900 text-rose-400 text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0">滞留</span>
+            <span class="text-slate-400 leading-tight">前月から<strong class="text-rose-400">在庫数が減っていない</strong>商品です。不良在庫化のリスクがあります。</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="bg-amber-950 border border-amber-900 text-amber-500 text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0">増加</span>
+            <span class="text-slate-400 leading-tight">前月から<strong class="text-amber-500">在庫数が増加した</strong>商品です。買取過多になっていないか確認してください。</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-[10px] text-sky-400 font-bold border border-sky-900 bg-sky-950/30 px-2 py-0.5 rounded shrink-0">値下</span>
+            <span class="text-slate-400 leading-tight">前月より<strong class="text-sky-400">単価が下落</strong>した商品です。市場相場の下落、または状態が悪い可能性があります。</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-[10px] text-rose-400 font-bold border border-rose-900 bg-rose-950/30 px-2 py-0.5 rounded shrink-0">値上</span>
+            <span class="text-slate-400 leading-tight">前月より<strong class="text-rose-400">単価が上昇</strong>した商品です。市場相場の高騰などの可能性があります。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+        <p class="text-xs font-bold text-slate-500 mb-3"><i class="fa-solid fa-filter mr-1"></i>絞り込みオプション</p>
+        <div class="flex flex-col md:flex-row gap-6">
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-bold text-slate-400 shrink-0">在庫ランク:</span>
+            <div id="filterRankContainer" class="flex flex-wrap gap-2 text-slate-300"></div>
+          </div>
+          <div class="flex items-center gap-3 flex-grow overflow-x-auto">
+            <span class="text-xs font-bold text-slate-400 shrink-0">商品状態:</span>
+            <div id="filterCondContainer" class="flex flex-wrap gap-2 text-slate-300"></div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0 mt-4 md:mt-0 pt-4 md:pt-0 border-t md:border-t-0 border-slate-800">
+            <span class="text-xs font-bold text-slate-400">並び替え:</span>
+            <select id="selSort" class="bg-slate-950 border border-slate-700 text-slate-200 font-bold rounded-lg px-3 py-2 text-xs outline-none cursor-pointer focus:border-fuchsia-500 transition-colors" onchange="applyFilters()">
+              <option value="在庫金額（高い順）">在庫金額（高い順）</option>
+              <option value="在庫金額（低い順）">在庫金額（低い順）</option>
+              <option value="要注意在庫（優先表示）">要注意在庫（優先表示）</option>
+              <option value="在庫数（多い順）">在庫数（多い順）</option>
+              <option value="在庫数（少ない順）">在庫数（少ない順）</option>
+              <option value="単価（高い順）">単価（高い順）</option>
+              <option value="単価（低い順）">単価（低い順）</option>
+              <option value="商品名順">商品名順</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative">
+        <div id="tableLoading" class="absolute inset-0 bg-slate-950/80 z-20 hidden flex-col justify-center items-center backdrop-blur-sm">
+          <i class="fa-solid fa-spinner fa-spin text-4xl text-fuchsia-500"></i>
+          <p class="font-bold text-fuchsia-400 mt-4 text-sm tracking-widest animate-pulse">リストを高速描画中...</p>
+        </div>
+        <div class="table-container">
+          <table class="w-full text-left whitespace-nowrap text-sm">
+            <thead>
+              <tr class="bg-slate-950 border-b border-slate-800 text-slate-400 text-xs tracking-wider">
+                <th class="py-3 px-4 font-bold">商品名称</th>
+                <th class="py-3 px-2 text-center w-24 border-l border-slate-800 font-bold">商品状態</th>
+                <th class="py-3 px-2 text-right w-24 border-l border-slate-800 font-bold">単価(円)</th>
+                <th class="py-3 px-2 text-center w-32 border-l border-slate-800 font-bold">数(前月比)</th>
+                <th class="py-3 px-4 text-right w-32 border-l border-slate-800 font-bold">合計金額(円)</th>
+                <th class="py-3 px-2 text-center w-24 border-l border-slate-800 font-bold">在庫ランク</th>
+              </tr>
+            </thead>
+            <tbody id="detailTbody" class="divide-y divide-slate-800/50">
+              </tbody>
+          </table>
+        </div>
+        <div class="bg-slate-950 p-3 text-center text-[10px] font-bold text-slate-500 border-t border-slate-800" id="tableCountFooter">表示件数: 0 件</div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ★Supabase接続設定
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const MASTER_PASS = "0000";
+    // バルクインサート用のチャンクサイズ（制限回避のため1000件ずつ送信）
+    const INSERT_CHUNK_SIZE = 1000;
+
+    let AppState = {
+      mode: 'HQ', 
+      fullDf: null, 
+      prevDf: null, 
+      currentShopName: "",
+      currentShopDf: [], 
+      filteredDf: [],
+      definedShops: [] // ★修正: 直書きを撤廃して空にする
+    };
+
+    let renderTimer = null;
+    let renderIndex = 0;
+    const CHUNK_SIZE = 500; 
+    let currentUser = null;
+
+    window.onload = async () => {
+      google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      const userStr = sessionStorage.getItem('finUser');
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインしてください。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+      if(!currentUser.permissions.canInventory) {
+        document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
+      }
+      
+      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      try {
+          const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+          if (bErr) throw bErr;
+          if (bData && bData.length > 0) {
+              // 取得した店舗リストをHQモードの取得対象(definedShops)にセット
+              AppState.definedShops = bData.map(b => b.name);
+          } else {
+              AppState.definedShops = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+          }
+      } catch (err) {
+          console.error("店舗マスタ取得エラー:", err);
+          AppState.definedShops = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+      }
+
+      const now = new Date(), tzOffset = now.getTimezoneOffset() * 60000;
+      const currentMonthStr = (new Date(now - tzOffset)).toISOString().substring(0, 7);
+      document.getElementById('mainMonthSelector').value = currentMonthStr;
+      document.getElementById('saveMonthSelector').value = currentMonthStr; 
+      
+      let prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      let prevMonthStr = (new Date(prevDate - tzOffset)).toISOString().substring(0, 7);
+      document.getElementById('prevMonthSelector').value = prevMonthStr;
+
+      showFrame('ModeSelectView');
+    };
+
+    function checkAdminPrivilege() {
+      if (currentUser && (currentUser.permissions.editAll || currentUser.roleId === "role_admin")) {
+        document.getElementById('adminSavePanel').classList.remove('hidden');
+        document.getElementById('adminSavePanel').classList.add('flex');
+      } else {
+        document.getElementById('adminSavePanel').classList.add('hidden');
+        document.getElementById('adminSavePanel').classList.remove('flex');
+      }
+    }
+
+    function goHome() {
+      try { google.script.run.withSuccessHandler(url => { if(url) window.open(url + "?p=portal", "_top"); }).getAppUrl(); } 
+      catch(e) { window.history.back(); }
+    }
+
+    function showError(msg) {
+      document.getElementById('errorMsg').innerText = msg;
+      document.getElementById('errorAlert').classList.remove('hidden');
+      window.scrollTo(0, 0);
+    }
+
+    function showFrame(frameName) {
+      if (renderTimer) clearTimeout(renderTimer);
+      
+      ['view-mode-select', 'view-list', 'view-detail'].forEach(id => {
+        document.getElementById(id).classList.remove('flex');
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById('legendContainer').classList.remove('md:flex');
+      document.getElementById('legendContainer').classList.add('hidden');
+
+      if (frameName === 'ModeSelectView') {
+        AppState.fullDf = null; AppState.prevDf = null;
+        updateBadge('main', '未設定', 'bg-slate-800 text-slate-400');
+        updateBadge('prev', '未設定', 'bg-slate-800 text-slate-400');
+        document.getElementById('displayArea').innerHTML = '<div class="flex flex-col justify-center items-center h-full py-20 text-slate-500"><i class="fa-solid fa-chart-pie text-6xl mb-4 opacity-50"></i><p class="font-bold">コントロールパネルからデータを読み込んでダッシュボードを生成してください</p></div>';
+        document.getElementById('view-mode-select').classList.remove('hidden');
+        document.getElementById('view-mode-select').classList.add('flex');
+      } else if (frameName === 'ListView') {
+        document.getElementById('legendContainer').classList.remove('hidden');
+        document.getElementById('legendContainer').classList.add('md:flex');
+        document.getElementById('view-list').classList.remove('hidden');
+        document.getElementById('view-list').classList.add('flex');
+        checkAdminPrivilege(); 
+      } else if (frameName === 'DetailView') {
+        document.getElementById('legendContainer').classList.remove('hidden');
+        document.getElementById('legendContainer').classList.add('md:flex');
+        document.getElementById('view-detail').classList.remove('hidden');
+        document.getElementById('view-detail').classList.add('flex');
+      }
+    }
+
+    function checkPass() {
+      const pwd = prompt("本部パスワードを入力してください:", "");
+      if (pwd === MASTER_PASS) {
+        AppState.mode = "HQ"; showFrame('ListView');
+        document.getElementById('listTitle').innerText = "全店分析一覧 (本部モード)";
+      } else if (pwd !== null) {
+        showError("パスワードが正しくありません。");
+      }
+    }
+
+    function setShopMode() {
+      AppState.mode = "SHOP"; showFrame('ListView');
+      document.getElementById('listTitle').innerText = `自店ダッシュボード: ${currentUser.branch}`;
+    }
+
+    function updateBadge(target, text, classes) {
+      const el = document.getElementById(target + 'StatusBadge');
+      el.innerText = text;
+      el.className = `text-[10px] px-2 py-0.5 rounded font-bold ${classes}`;
+    }
+
+    async function loadCSV(target, event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+      
+      document.getElementById('loadSpinner').classList.remove('hidden');
+      document.getElementById('errorAlert').classList.add('hidden');
+      
+      let combinedRows = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const text = await readAsTextAuto(file);
+          let lines = text.split(/\r?\n/);
+          
+          let headerIdx = 0;
+          for (let h = 0; h < Math.min(10, lines.length); h++) {
+            if (lines[h].includes("商品名") || lines[h].includes("商品名称") || lines[h].includes("商品コード")) {
+              headerIdx = h; break;
+            }
+          }
+          const csvStr = lines.slice(headerIdx).join('\n');
+          
+          const parsed = await new Promise(resolve => {
+              Papa.parse(csvStr, { header: true, skipEmptyLines: true, complete: res => resolve(res) });
+          });
+          
+          if (parsed.data.length === 0) continue;
+          combinedRows = combinedRows.concat(parseCsvRowsToObjects(parsed.data, currentUser.branch));
+        }
+
+        if (target === 'main') {
+          AppState.fullDf = combinedRows;
+          updateBadge('main', 'PCから展開中', 'bg-sky-950 text-sky-400 border border-sky-900');
+        } else {
+          AppState.prevDf = combinedRows;
+          updateBadge('prev', 'PCから展開中', 'bg-emerald-950 text-emerald-400 border border-emerald-900');
+        }
+
+        if (AppState.fullDf && AppState.fullDf.length > 0) {
+          if (AppState.mode === "HQ") refreshHQ();
+          else refreshShopDashboard();
+        }
+
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        document.getElementById('loadSpinner').classList.add('hidden');
+        event.target.value = ""; 
+      }
+    }
+
+    async function readAsTextAuto(file) {
+      const buffer = await file.arrayBuffer();
+      const textUtf8 = new TextDecoder('utf-8').decode(buffer);
+      if (textUtf8.includes("商品") || textUtf8.includes("ランク")) return textUtf8;
+      return new TextDecoder('shift-jis').decode(buffer);
+    }
+
+    // ★修正部分：1000件の制限を突破するループ処理を実装
+    async function loadFromCloud(target) {
+      document.getElementById('errorAlert').classList.add('hidden');
+      const monthStr = document.getElementById(target + 'MonthSelector').value;
+      if (!monthStr) { alert("読込対象の月を選択してください。"); return; }
+      
+      document.getElementById('loadSpinner').classList.remove('hidden');
+      
+      let shopTargets = [];
+      if (AppState.mode === "HQ") {
+        shopTargets = AppState.definedShops;
+      } else {
+        let activeShop = currentUser.branch;
+        if (activeShop === "全店舗") {
+          if (AppState.fullDf && AppState.fullDf.length > 0) {
+            activeShop = AppState.fullDf[0].shop;
+          } else if (AppState.prevDf && AppState.prevDf.length > 0) {
+            activeShop = AppState.prevDf[0].shop;
+          } else {
+            alert("管理者が店舗モードでクラウド読込を行う場合、先にPCから当月または前月のCSVを読み込んで対象店舗を確定させてください。");
+            document.getElementById('loadSpinner').classList.add('hidden');
+            return;
+          }
+        }
+        shopTargets = [activeShop];
+      }
+
+      try {
+        let allData = [];
+        let startIndex = 0;
+        const PAGE_SIZE = 1000;
+        let isFetching = true;
+
+        while (isFetching) {
+          const { data, error } = await db.from('inventory_details')
+            .select('*')
+            .eq('target_month', monthStr)
+            .in('branch', shopTargets)
+            .range(startIndex, startIndex + PAGE_SIZE - 1);
+
+          if (error) throw new Error("データの読込に失敗しました: " + error.message);
+
+          if (data && data.length > 0) {
+            allData = allData.concat(data);
+            startIndex += PAGE_SIZE;
+            
+            // 取得件数がPAGE_SIZE未満なら最後と判断
+            if (data.length < PAGE_SIZE) {
+              isFetching = false;
+            }
+          } else {
+            isFetching = false;
+          }
+        }
+
+        if (allData.length === 0) {
+          showError(`クラウドDB（${monthStr}）に該当するデータが見つかりませんでした。`);
+          document.getElementById('loadSpinner').classList.add('hidden');
+          return;
+        }
+
+        const combined = allData.map(r => ({
+          name: r.product_name,
+          condition: r.condition,
+          qty: r.qty,
+          totalVal: Number(r.total_amount),
+          unitPrice: Number(r.unit_price),
+          rank: r.rank,
+          shop: r.branch,
+          shopNorm: r.branch
+        }));
+
+        if (target === 'main') {
+          AppState.fullDf = combined;
+          updateBadge('main', `クラウドDB(${monthStr})`, 'bg-sky-950 text-sky-400 border border-sky-900');
+        } else {
+          AppState.prevDf = combined;
+          updateBadge('prev', `クラウドDB(${monthStr})`, 'bg-emerald-950 text-emerald-400 border border-emerald-900');
+        }
+
+        if (AppState.fullDf && AppState.fullDf.length > 0) {
+          if (AppState.mode === "HQ") refreshHQ();
+          else refreshShopDashboard();
+        }
+
+      } catch (err) {
+        showError("クラウドからの読込中に例外が発生: " + err.message);
+      } finally {
+        document.getElementById('loadSpinner').classList.add('hidden');
+      }
+    }
+
+    async function saveToCloud() {
+      if (!AppState.fullDf || AppState.fullDf.length === 0) {
+        alert("保存する【当月データ】が画面に展開されていません。先にPCまたはクラウドDBからデータを読み込んでください。");
+        return;
+      }
+      
+      const targetMonth = document.getElementById('saveMonthSelector').value;
+      if (!targetMonth) { alert("保存対象月を選択してください。"); return; }
+
+      let shopSet = new Set();
+      AppState.fullDf.forEach(r => shopSet.add(r.shop));
+      let shops = Array.from(shopSet);
+
+      if (!confirm(`展開されている ${shops.length} 店舗のデータを、クラウドDB（${targetMonth}）の正データとして確定保存します。よろしいですか？`)) {
+        return;
+      }
+
+      document.getElementById('loadSpinner').classList.remove('hidden');
+
+      try {
+        const { data: existing, error: existErr } = await db.from('inventory_summaries')
+            .select('branch')
+            .eq('target_month', targetMonth)
+            .in('branch', shops);
+            
+        if (existErr) throw new Error("既存データ確認エラー: " + existErr.message);
+
+        if (existing && existing.length > 0) {
+          if (!confirm(`【警告】\n既にクラウドDB内に ${targetMonth} のデータ（${existing[0].branch}など）が存在します。\n過去のデータを削除して、完全に上書き保存してもよろしいですか？`)) {
+            document.getElementById('loadSpinner').classList.add('hidden');
+            return;
+          }
+        }
+        
+        await executeRealSaveToSupabase(shops, targetMonth);
+
+      } catch (err) {
+        document.getElementById('loadSpinner').classList.add('hidden');
+        alert("保存処理に失敗しました: " + err.message);
+      }
+    }
+
+    async function executeRealSaveToSupabase(shops, targetMonth) {
+      try {
+        for (let i = 0; i < shops.length; i++) {
+          let shop = shops[i];
+          let shopData = AppState.fullDf.filter(r => r.shop === shop);
+          
+          let ranksSummary = { A: 0, B: 0, C: 0, D: 0, E: 0, total: 0 };
+          shopData.forEach(r => {
+            if (ranksSummary[r.rank] !== undefined) {
+              ranksSummary[r.rank] += r.totalVal;
+            }
+            ranksSummary.total += r.totalVal;
+          });
+
+          // 1. 在庫サマリー（inventory_summaries）の更新
+          const { error: summaryErr } = await db.from('inventory_summaries').upsert({
+            target_month: targetMonth,
+            branch: shop,
+            rank_a: ranksSummary.A,
+            rank_b: ranksSummary.B,
+            rank_c: ranksSummary.C,
+            rank_d: ranksSummary.D,
+            rank_e: ranksSummary.E,
+            total_amount: ranksSummary.total
+          }, { onConflict: 'target_month, branch' });
+          if (summaryErr) throw new Error("サマリーの保存に失敗: " + summaryErr.message);
+
+          // ★追加: 2. 月次確定データ（fin_monthly_stats）の current_inv も連動して自動更新する
+          // これにより、HQ入力ツールで手入力しなくても在庫額が自動反映されます
+          const { error: statsUpdErr } = await db.from('fin_monthly_stats')
+            .update({ current_inv: ranksSummary.total, updated_at: new Date().toISOString() })
+            .eq('target_month', targetMonth)
+            .eq('branch', shop);
+          if (statsUpdErr) console.warn("月次確定データの在庫更新をスキップしました (レコード未作成の可能性):", statsUpdErr);
+
+          // 3. 既存の在庫明細（inventory_details）を削除してから一括登録
+          const { error: deleteErr } = await db.from('inventory_details')
+            .delete()
+            .eq('target_month', targetMonth)
+            .eq('branch', shop);
+          if (deleteErr) throw new Error("既存明細の削除に失敗: " + deleteErr.message);
+
+          let insertData = shopData.map(r => ({
+            target_month: targetMonth,
+            branch: r.shop,
+            product_name: r.name,
+            condition: r.condition,
+            unit_price: r.unitPrice,
+            qty: r.qty,
+            total_amount: r.totalVal,
+            rank: r.rank
+          }));
+
+          for (let j = 0; j < insertData.length; j += INSERT_CHUNK_SIZE) {
+            let chunk = insertData.slice(j, j + INSERT_CHUNK_SIZE);
+            const { error: insertErr } = await db.from('inventory_details').insert(chunk);
+            if (insertErr) throw new Error(`明細データ(${j}〜件目)の保存に失敗: ` + insertErr.message);
+          }
+        }
+        
+        document.getElementById('loadSpinner').classList.add('hidden');
+        alert(`正常にクラウドDBへの確定保存、およびサマリーの同期が完了しました。(${targetMonth})`);
+        
+      } catch (err) {
+        document.getElementById('loadSpinner').classList.add('hidden');
+        showError("処理中にエラーが発生しました: " + err.message);
+      }
+    }
+
+    function parseCsvRowsToObjects(rows, fallbackShop) {
+      if (!rows || rows.length === 0) return [];
+      const sample = rows[0], headers = Object.keys(sample);
+      const isMyca = headers.includes("商品名") && headers.includes("在庫数");
+      const isFinStratFormat = headers.includes("unitPrice") || headers.includes("totalVal");
+
+      function cleanVal(x) {
+        if (!x) return 0.0;
+        let num = parseFloat(String(x).replace(/,/g, '').replace(/￥/g, '').replace(/円/g, '').trim());
+        return isNaN(num) ? 0.0 : num;
+      }
+
+      function cleanShopName(x) {
+        let name = String(x || "").replace(/Bee本舗/gi, '').trim();
+        if (name.includes('秋葉原')) return '秋葉原店';
+        if (name.includes('福岡') || name.includes('天神')) return '福岡天神店';
+        if (name.includes('名古屋') || name.includes('大須')) return '名古屋大須店';
+        if (name.includes('バトルタワー') || name.includes('BT')) return 'バトルタワー店'; 
+        if (name.includes('大阪') || name.includes('本店')) return '大阪本店'; 
+        if (name.includes('池袋')) return '池袋店';
+        if (!name.endsWith('店') && name !== "") return name + '店'; 
+        return name || fallbackShop;
+      }
+
+      return rows.map(r => {
+        let name = r.name || r["商品名称"] || r["商品名"];
+        let cond = r.condition || r["商品状態"] || r["状態"] || r["ランク"] || r["商品ランク"] || "-";
+        let qty = cleanVal(r.qty || r["期末在庫数"] || r["在庫数"]);
+        let totalVal = 0;
+        let unitPrice = 0;
+        
+        if (isFinStratFormat) {
+          unitPrice = cleanVal(r.unitPrice || r["単価"]);
+          totalVal = cleanVal(r.totalVal || r["期末在庫金額"] || r["合計金額(円)"]);
+        } else if (isMyca) {
+          let avgCost = r["平均仕入れ価格"] !== undefined ? cleanVal(r["平均仕入れ価格"]) : cleanVal(r["仕入れ価格"]);
+          totalVal = avgCost * qty;
+          unitPrice = avgCost;
+        } else {
+          totalVal = cleanVal(r.totalVal || r["期末在庫金額"] || r["合計金額(円)"]);
+          unitPrice = qty > 0 ? totalVal / qty : 0.0;
+        }
+
+        let shopName = "";
+        if (isMyca) {
+          shopName = "秋葉原店";
+        } else {
+          shopName = cleanShopName(r.shop || r["店舗名称"] || fallbackShop);
+        }
+
+        return {
+          name: name, condition: cond, qty: qty, totalVal: totalVal, unitPrice: unitPrice,
+          rank: unitPrice >= 100000 ? 'A' : unitPrice >= 50000 ? 'B' : unitPrice >= 10000 ? 'C' : unitPrice >= 1000 ? 'D' : 'E',
+          shop: shopName, shopNorm: shopName
+        };
+      }).filter(obj => obj.name && obj.name !== "display_name" && !obj.name.includes("行からデータ開始"));
+    }
+
+    function refreshHQ() {
+      document.getElementById('listTitle').innerText = "全店分析一覧 (本部モード)";
+      const area = document.getElementById('displayArea'), df = AppState.fullDf, prevDf = AppState.prevDf;
+      let shopSet = new Set(); df.forEach(r => shopSet.add(r.shop));
+      let shops = Array.from(shopSet).sort(); shops.push("【全店合計】");
+      const ranks = ['A', 'B', 'C', 'D', 'E'];
+
+      let html = `<table class="w-full text-left whitespace-nowrap text-sm border-collapse"><thead><tr class="bg-slate-950 border-b border-slate-800 text-slate-400"><th class="py-3 px-3 border-r border-slate-800 font-bold">店舗名称</th><th class="py-3 px-3 text-right border-r border-slate-800 font-bold">当月総在庫</th><th class="py-3 px-3 text-right border-r border-slate-800 font-bold">総額増減</th>${ranks.map(r=>`<th class="py-3 px-3 text-center border-r border-slate-800 font-bold text-fuchsia-400">${r}比率 [増減]</th>`).join('')}</tr></thead><tbody>`;
+
+      for (let shop of shops) {
+        const isTotal = shop === "【全店合計】";
+        const sDf = isTotal ? df : df.filter(r => r.shop === shop);
+        let total = 0, sm = {A:0, B:0, C:0, D:0, E:0};
+        sDf.forEach(r => { total += r.totalVal; sm[r.rank] += r.totalVal; });
+
+        let pTotal = 0, pSm = {A:0, B:0, C:0, D:0, E:0};
+        if (prevDf) {
+          const psDf = isTotal ? prevDf : prevDf.filter(r => r.shopNorm === shop.trim());
+          psDf.forEach(r => { pTotal += r.totalVal; pSm[r.rank] += r.totalVal; });
+        }
+        const diffTotalStr = (prevDf && pTotal > 0) ? (total - pTotal).toLocaleString() + "円" : "-";
+
+        html += `<tr class="${isTotal?'bg-slate-800/50 font-bold':''} border-b border-slate-800 hover:bg-slate-800/30 transition-colors"><td class="py-1 px-1 border-r border-slate-800"><button onclick="openDetail('${shop}')" class="w-full text-left px-3 py-2 hover:bg-slate-700 rounded-lg text-sm font-bold text-white">${shop}</button></td><td class="py-2 px-3 text-right font-mono text-sm border-r border-slate-800 text-sky-400">${Math.round(total).toLocaleString()}円</td><td class="py-2 px-3 text-right font-mono text-sm border-r border-slate-800">${diffTotalStr}</td>`;
+        ranks.forEach(r => {
+          let ratio = total > 0 ? (sm[r] / total * 100) : 0;
+          let pRatio = pTotal > 0 ? (pSm[r] / pTotal * 100) : null;
+          let diffStr = "";
+          if (pRatio !== null) {
+            let diff = ratio - pRatio;
+            diffStr = ` [${diff > 0 ? '+' : ''}${diff.toFixed(1)}%]`;
+          }
+          html += `<td class="py-2 px-3 text-center font-mono text-sm border-r border-slate-800">${ratio.toFixed(1)}%<span class="text-[10px] font-bold ${diffStr.includes('-')?'text-rose-400':'text-emerald-400'}">${diffStr}</span></td>`;
+        });
+        html += `</tr>`;
+      }
+      area.innerHTML = html + "</tbody></table>";
+    }
+
+    function refreshShopDashboard() {
+      const df = AppState.fullDf, prevDf = AppState.prevDf, shopName = df[0].shop, shopNorm = df[0].shopNorm;
+      document.getElementById('listTitle').innerText = `自店ダッシュボード: ${shopName}`;
+      let totalAmount = 0, sm = {A:0, B:0, C:0, D:0, E:0};
+      df.forEach(r => { totalAmount += r.totalVal; sm[r.rank] += r.totalVal; });
+
+      let pTotal = 0, pSm = {A:0, B:0, C:0, D:0, E:0};
+      if (prevDf) {
+        prevDf.filter(r => r.shopNorm === shopNorm).forEach(r => { pTotal += r.totalVal; pSm[r.rank] += r.totalVal; });
+      }
+      let diffStr = (pTotal > 0) ? `<span class="${(totalAmount-pTotal)>0?'text-emerald-400':'text-rose-400'} text-lg font-bold ml-2">(${(totalAmount-pTotal)>0?'+':''}${Math.round(totalAmount-pTotal).toLocaleString()}円)</span>` : "";
+
+      let html = `<div class="flex flex-col items-center py-6"><p class="text-sm font-bold text-slate-400 mb-2">現在の総在庫額</p><div class="flex items-end mb-10 border-b border-slate-800 pb-4"><span class="text-5xl font-black text-white font-mono">${Math.round(totalAmount).toLocaleString()} <span class="text-lg text-slate-500">円</span></span>${diffStr}</div><div class="w-full max-w-2xl space-y-3">`;
+      ['A','B','C','D','E'].forEach(r => {
+        let ratio = totalAmount > 0 ? (sm[r] / totalAmount * 100) : 0;
+        let pRatio = pTotal > 0 ? (pSm[r] / pTotal * 100) : null;
+        let dStr = pRatio !== null ? ` [${(ratio-pRatio)>0?'+':''}${(ratio-pRatio).toFixed(1)}%]` : " [--]";
+        html += `<div class="flex items-center gap-4 py-3 border-b border-slate-800/50"><div class="w-20 font-black text-sm text-fuchsia-400 bg-fuchsia-950/30 text-center py-1 rounded border border-fuchsia-900/50">${r} ランク</div><div class="w-20 text-right font-mono text-xl font-bold text-white">${ratio.toFixed(1)}%</div><div class="w-24 text-left font-mono font-bold text-xs ${dStr.includes('-')?'text-rose-400':'text-emerald-400'}">${dStr}</div><div class="flex-grow bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800"><div class="bg-gradient-to-r from-fuchsia-600 to-fuchsia-400 h-full rounded-full" style="width: ${ratio}%"></div></div><div class="w-28 text-right text-sm text-slate-400 font-mono">(${Math.round(sm[r]).toLocaleString()}円)</div></div>`;
+      });
+      document.getElementById('displayArea').innerHTML = html + `</div><button onclick="openDetail('${shopName}')" class="mt-10 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black py-4 px-10 rounded-2xl shadow-lg text-sm flex items-center gap-2"><i class="fa-solid fa-magnifying-glass"></i> 在庫詳細を確認する</button></div>`;
+    }
+
+    function openDetail(shopName) {
+      AppState.currentShopName = shopName;
+      document.getElementById('detailTitle').innerText = `店舗詳細: ${shopName}`;
+      const df = AppState.fullDf;
+      AppState.currentShopDf = shopName === "【全店合計】" ? df.slice() : df.filter(r => r.shop === shopName);
+      
+      let prevMap = new Map();
+      if (AppState.prevDf) {
+        for (let pr of AppState.prevDf) {
+          if (pr.shopNorm === shopName || shopName === "【全店合計】") {
+            let key = `${pr.name}|${pr.condition}|${pr.shopNorm}`;
+            prevMap.set(key, { qty: (prevMap.get(key)?.qty || 0) + pr.qty, unitPrice: pr.unitPrice });
+          }
+        }
+      }
+      
+      for (let r of AppState.currentShopDf) {
+        r.diffQty = 0; r.diffPrice = 0; r.statusFlag = 0;
+        let key = `${r.name}|${r.condition}|${r.shopNorm}`;
+        if (prevMap.has(key)) {
+          let pData = prevMap.get(key); r.diffQty = r.qty - pData.qty; r.diffPrice = r.unitPrice - pData.unitPrice;
+          if (r.diffQty === 0) r.statusFlag = 1; else if (r.diffQty > 0) r.statusFlag = 2;
+        }
+      }
+
+      document.getElementById('filterRankContainer').innerHTML = ['A','B','C','D','E'].map(r => `<label class="flex items-center gap-1 cursor-pointer text-xs font-bold hover:text-fuchsia-400"><input type="checkbox" id="filter-rank-${r}" value="${r}" checked onchange="applyFilters()" class="accent-fuchsia-500"> ${r}</label>`).join('');
+      let condSet = new Set(); AppState.currentShopDf.forEach(r => condSet.add(r.condition));
+      document.getElementById('filterCondContainer').innerHTML = Array.from(condSet).sort().map(c => `<label class="flex items-center gap-1 cursor-pointer text-xs font-bold hover:text-fuchsia-400"><input type="checkbox" id="filter-cond-${c}" value="${c}" checked onchange="applyFilters()" class="accent-fuchsia-500"> ${c}</label>`).join('');
+
+      showFrame('DetailView'); applyFilters();
+    }
+
+    function applyFilters() {
+      if (renderTimer) clearTimeout(renderTimer);
+      document.getElementById('tableLoading').classList.remove('hidden');
+      document.getElementById('renderStatus').classList.add('hidden');
+      
+      const useColor = document.getElementById('chkUseColor').checked;
+      document.getElementById('alertDescription').className = useColor ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs" : "hidden";
+
+      let df = AppState.currentShopDf; if (!df || df.length === 0) { document.getElementById('tableLoading').classList.add('hidden'); return; }
+      const activeRanks = ['A','B','C','D','E'].filter(r => document.getElementById(`filter-rank-${r}`).checked);
+      let activeConds = Array.from(document.querySelectorAll('#filterCondContainer input:checked')).map(cb => cb.value);
+
+      let filtered = df.filter(r => activeRanks.includes(r.rank) && activeConds.includes(r.condition));
+
+      let sm = {A:{val:0,qty:0,conds:{}},B:{val:0,qty:0,conds:{}},C:{val:0,qty:0,conds:{}},D:{val:0,qty:0,conds:{}},E:{val:0,qty:0,conds:{}}};
+      filtered.forEach(r => { sm[r.rank].val += r.totalVal; sm[r.rank].qty += r.qty; sm[r.rank].conds[r.condition] = (sm[r.rank].conds[r.condition] || 0) + r.totalVal; });
+
+      document.getElementById('detailSummaryGrid').innerHTML = ['A','B','C','D','E'].map(r => {
+        let condHtml = sm[r].val > 0 ? Object.keys(sm[r].conds).sort((a,b)=>sm[r].conds[b]-sm[r].conds[a]).map(c => `<div><span class="text-slate-400">${c}:</span> ${(sm[r].conds[c]/sm[r].val*100).toFixed(1)}%</div>`).join('') : "";
+        return `<div class="p-3 flex flex-col items-center bg-slate-950 rounded-xl border border-slate-800 m-1 shadow-inner"><p class="text-xs font-bold text-fuchsia-400 mb-1 bg-fuchsia-950/30 px-2 py-0.5 rounded">【${r}ランク】</p><p class="text-sm font-mono text-white font-bold">${Math.round(sm[r].val).toLocaleString()}円</p><p class="text-[10px] font-mono mb-2 text-slate-500">${Math.round(sm[r].qty).toLocaleString()}個</p><div class="text-[10px] font-bold text-slate-300 font-mono text-left w-full space-y-0.5">${condHtml}</div></div>`;
+      }).join('');
+
+      const sortOpt = document.getElementById('selSort').value;
+      if (sortOpt === "要注意在庫（優先表示）") filtered.sort((a,b) => (b.statusFlag - a.statusFlag) || (b.totalVal - a.totalVal));
+      else if (sortOpt.includes("金額（高い")) filtered.sort((a,b) => b.totalVal - a.totalVal);
+      else if (sortOpt.includes("金額（低い")) filtered.sort((a,b) => a.totalVal - b.totalVal);
+      else if (sortOpt.includes("数（多い")) filtered.sort((a,b) => b.qty - a.qty);
+      else if (sortOpt.includes("数（少ない")) filtered.sort((a,b) => a.qty - b.qty);
+      else if (sortOpt.includes("単価（高い")) filtered.sort((a,b) => b.unitPrice - a.unitPrice);
+      else if (sortOpt.includes("単価（低い")) filtered.sort((a,b) => a.unitPrice - b.unitPrice);
+      else filtered.sort((a,b) => a.name.localeCompare(b.name));
+
+      AppState.filteredDf = filtered;
+      const tbody = document.getElementById('detailTbody'); tbody.innerHTML = "";
+      document.getElementById('tableCountFooter').innerText = `表示件数: ${filtered.length.toLocaleString()} 件`;
+      
+      renderIndex = 0;
+      if (filtered.length > 0) renderChunk(); else document.getElementById('tableLoading').classList.add('hidden');
+    }
+
+    function renderChunk() {
+      let chunkHtml = "", endIdx = Math.min(renderIndex + CHUNK_SIZE, AppState.filteredDf.length);
+      const useColor = document.getElementById('chkUseColor').checked;
+      
+      for (let i = renderIndex; i < endIdx; i++) {
+        let r = AppState.filteredDf[i], trClass = "hover:bg-slate-800/50 transition-colors", qtyClass = "text-slate-300", badge = "", pDiff = "";
+        if (useColor) {
+          if (r.statusFlag === 1) { trClass = "bg-rose-950/20 border-l-4 border-l-rose-500 hover:bg-rose-900/30"; badge = `<span class="ml-2 bg-rose-950 border border-rose-900 text-rose-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">滞留</span>`; }
+          else if (r.statusFlag === 2) { trClass = "border-l-4 border-l-amber-500"; qtyClass = "text-amber-400 font-black"; badge = `<span class="ml-2 bg-amber-950 border border-amber-900 text-amber-500 text-[10px] px-1.5 py-0.5 rounded-full font-bold">増加</span>`; }
+          if (AppState.prevDf && r.diffPrice !== 0) pDiff = `<br><span class="text-[10px] ${r.diffPrice>0?'text-rose-400':'text-sky-400'} font-bold">${r.diffPrice>0?'+':''}${Math.round(r.diffPrice).toLocaleString()}円</span>`;
+        }
+        let dStr = AppState.prevDf ? ` <span class="text-[10px] ${r.diffQty>0?'text-amber-500':'text-slate-500'}">(${r.diffQty===0?'±0':(r.diffQty>0?'+'+r.diffQty:r.diffQty)})</span>` : "";
+
+        chunkHtml += `<tr class="${trClass} border-b border-slate-800/40"><td class="py-2 px-4 max-w-[300px] text-slate-200" style="word-break:break-all;"><div class="flex items-center"><span class="truncate">${r.name}</span>${badge}</div></td><td class="py-2 px-2 text-center text-xs border-l border-slate-800 text-slate-400">${r.condition}</td><td class="py-2 px-2 text-right font-mono border-l border-slate-800 text-sky-400 leading-tight">${Math.round(r.unitPrice).toLocaleString()}${pDiff}</td><td class="py-2 px-2 text-center font-mono border-l border-slate-800 ${qtyClass}">${Math.round(r.qty).toLocaleString()}${dStr}</td><td class="py-2 px-4 text-right font-mono font-bold border-l border-slate-800 text-white">${Math.round(r.totalVal).toLocaleString()}</td><td class="py-2 px-2 text-center font-mono font-bold text-fuchsia-400 border-l border-slate-800">${r.rank}</td></tr>`;
+      }
+      document.getElementById('detailTbody').insertAdjacentHTML('beforeend', chunkHtml);
+      renderIndex = endIdx;
+      if (renderIndex < AppState.filteredDf.length) renderTimer = setTimeout(renderChunk, 5);
+      else { document.getElementById('tableLoading').classList.add('hidden'); document.getElementById('renderStatus').classList.remove('hidden'); }
+    }
+
+    function exportCSV(stagnantOnly) {
+      if (!AppState.filteredDf || AppState.filteredDf.length === 0) return;
+      let target = stagnantOnly ? AppState.filteredDf.filter(r => r.statusFlag === 1 || r.statusFlag === 2) : AppState.filteredDf;
+      if (target.length === 0) { alert("該当データがありません。"); return; }
+
+      let csvStr = Papa.unparse(target.map(r => ({ "商品名称": r.name, "商品状態": r.condition, "単価": Math.round(r.unitPrice), "期末在庫数": Math.round(r.qty), "期末在庫金額": Math.round(r.totalVal), "店舗名称": r.shop, "在庫ランク": r.rank })));
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvStr], {type: 'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = `${stagnantOnly?'要注意商品':'全件'}_${AppState.currentShopName}.csv`; a.click(); URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

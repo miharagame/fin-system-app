@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>予実管理＆店舗分析トラッカー (Supabase連携版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Roboto+Mono:wght@700&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; }
+    .font-mono { font-family: 'Roboto Mono', monospace; }
+    .input-box { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; text-align: right; width: 100%; font-weight: bold; outline: none; transition: all 0.2s; color: #f8fafc; }
+    .input-box:focus { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; }
+    .input-box:disabled { opacity: 0.5; cursor: not-allowed; }
+    .text-area-box { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; width: 100%; color: #f8fafc; outline: none; transition: all 0.2s; font-size: 0.75rem; resize: vertical; min-height: 60px;}
+    .text-area-box:focus { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .tab-btn.active { border-bottom: 2px solid #f59e0b; color: #f59e0b; }
+    .tab-main-btn { padding-bottom: 0.5rem; padding-left: 1rem; padding-right: 1rem; color: #94a3b8; border-bottom: 2px transparent; transition: all 0.2s; font-weight: bold; }
+    .tab-main-btn.active { color: #f59e0b; border-bottom-color: #f59e0b; }
+    select option { background-color: #0f172a; color: #ffffff; font-weight: bold; }
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white mr-4 transition-colors"><i class="fa-solid fa-arrow-left"></i> ポータルへ</button>
+      <h1 class="text-lg font-black"><i class="fa-solid fa-bullseye text-amber-400 mr-2"></i>予実管理＆分析</h1>
+      <div class="ml-4 flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2 py-1">
+        <i class="fa-solid fa-store text-slate-500 text-xs mr-2"></i>
+        <select id="branchSelector" onchange="switchBranch()" class="bg-slate-900 text-sm font-bold text-white outline-none cursor-pointer"></select>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="userNameHeader" class="text-xs font-bold text-amber-400"></span>
+      <input type="month" id="monthSelector" onchange="changeTrackingMonth()" class="text-sm font-bold text-slate-300 bg-slate-900 px-2 py-1 rounded border border-slate-700 outline-none cursor-pointer [color-scheme:dark]">
+      <button onclick="logout()" class="text-xs font-bold text-slate-500 hover:text-rose-400 transition-colors"><i class="fa-solid fa-right-from-bracket"></i> ログアウト</button>
+    </div>
+  </nav>
+
+  <div id="loading" class="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex flex-col justify-center items-center z-50">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-amber-500 mb-4"></i>
+    <p class="text-amber-400 text-sm font-black tracking-widest animate-pulse">データを読み込み中...</p>
+  </div>
+
+  <main id="content" class="hidden max-w-7xl mx-auto p-6 flex flex-col w-full">
+    
+    <div class="flex gap-4 sm:gap-6 mb-6 border-b border-slate-800 overflow-x-auto whitespace-nowrap">
+      <button onclick="switchMainTab('dashboard')" id="tab_main_dashboard" class="tab-main-btn active text-sm">ダッシュボード＆入力</button>
+      <button onclick="switchMainTab('timeline')" id="tab_main_timeline" class="tab-main-btn text-sm"><i class="fa-solid fa-comments text-sky-400 mr-2"></i>日報タイムライン</button>
+      <button onclick="switchMainTab('monthly')" id="tab_main_monthly" class="tab-main-btn text-sm"><i class="fa-solid fa-file-signature text-fuchsia-400 mr-2"></i>月次振り返り</button>
+    </div>
+
+    <div id="view_dashboard" class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+      <div class="lg:col-span-5 flex flex-col gap-6">
+        
+        <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl relative">
+          <div id="readOnlyBadgeObj" class="hidden absolute top-4 right-4 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-1 rounded border border-rose-500/50">
+            <i class="fa-solid fa-lock mr-1"></i><span id="readOnlyTextObj">閲覧専用</span>
+          </div>
+          
+          <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-4">
+            <div class="flex items-center">
+              <h2 class="font-bold text-sky-400">当月目標ステータス <span id="lblTargetMonth" class="text-xs text-slate-400 ml-2"></span></h2>
+              <span id="badgeConfirmed" class="hidden ml-3 bg-rose-900/80 border border-rose-500 text-rose-400 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm"><i class="fa-solid fa-lock text-[8px] mr-1"></i>本部確定済</span>
+            </div>
+            <span class="text-[10px] text-fuchsia-400 border border-fuchsia-900 bg-fuchsia-950/30 px-2 py-1 rounded"><i class="fa-solid fa-link mr-1"></i>Supabaseマスタ連動中</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">目標粗利率</p>
+              <p class="text-sm font-mono font-bold text-emerald-400" id="dispObjMargin">-- %</p>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">現金化目標</p>
+              <p class="text-sm font-mono font-bold text-amber-500" id="dispObjCash">-- 円</p>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">在庫増加上限額</p>
+              <p class="text-sm font-mono font-bold text-fuchsia-400" id="dispObjInvLimit">-- 円</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl relative">
+          <div id="readOnlyBadge" class="hidden absolute top-4 right-4 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-1 rounded border border-rose-500/50">
+            <i class="fa-solid fa-lock mr-1"></i><span id="readOnlyText">閲覧専用</span>
+          </div>
+          <h2 class="font-bold text-amber-400 border-b border-slate-800 pb-2 mb-4">日次実績・業務報告の入力</h2>
+          
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="text-[10px] font-bold text-slate-400 block mb-1">対象日</label>
+              <input type="date" id="inpDate" onchange="loadDataForSelectedDate()" class="input-box text-left text-xs [color-scheme:dark]">
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-slate-400 block mb-1">総労働時間 (h)</label>
+              <input type="text" id="inpWorkHours" oninput="formatFloat(this)" class="input-box text-indigo-400 text-xs">
+            </div>
+          </div>
+
+          <div class="space-y-3 mb-6">
+            <div class="flex flex-col sm:flex-row gap-2">
+              <div class="w-full sm:w-1/2">
+                <label class="text-[10px] font-bold text-slate-400 block mb-1">総売上高 (円)</label>
+                <input type="text" id="inpSales" oninput="formatNumber(this)" class="input-box text-sky-400 text-sm">
+              </div>
+              <div class="w-full sm:w-1/4">
+                <label class="text-[10px] font-bold text-slate-400 block mb-1">ｷｬｯｼｭﾚｽ</label>
+                <input type="text" id="inpCashless" oninput="formatNumber(this)" class="input-box text-slate-300 text-sm">
+              </div>
+              <div class="w-full sm:w-1/4">
+                <label class="text-[9px] font-bold text-slate-400 block mb-1">値引き(金券等)(円)</label>
+                <input type="text" id="inpDiscount" oninput="formatNumber(this)" class="input-box text-slate-300 text-sm">
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <div class="w-1/2">
+                <label class="text-[10px] font-bold text-slate-400 block mb-1">買取高 (円)</label>
+                <input type="text" id="inpPurchase" oninput="formatNumber(this)" class="input-box text-rose-400 text-sm">
+              </div>
+              <div class="w-1/2">
+                <label class="text-[10px] font-bold text-slate-400 block mb-1">全体粗利率 (%)</label>
+                <input type="text" id="inpMarginRate" oninput="formatFloat(this)" class="input-box text-emerald-400 text-sm">
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-3 border-t border-slate-800 pt-4">
+            <p class="text-xs font-bold text-slate-300"><i class="fa-regular fa-comment-dots mr-1"></i>定性報告</p>
+            <div><input type="text" id="inpCount" placeholder="万札数、ツイート数 など" class="text-area-box text-left"></div>
+            <div><textarea id="inpMemoSales" placeholder="高額販売の明細（商品名・金額）" class="text-area-box text-left"></textarea></div>
+            <div><textarea id="inpMemoPurchase" placeholder="高額買取の明細（商品名・金額）" class="text-area-box text-left"></textarea></div>
+            <div><textarea id="inpMemoDaily" placeholder="各階からの業務報告、反省点・改善案など" class="text-area-box text-left min-h-[100px]"></textarea></div>
+          </div>
+          
+          <div class="mt-6">
+            <button id="saveBtn" onclick="saveRecord()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-black py-4 rounded-xl shadow-lg transition-all"><i class="fa-solid fa-check mr-2"></i>保存する</button>
+          </div>
+          <div id="saveMsg" class="text-center text-sm font-bold hidden mt-2"></div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-7 flex flex-col gap-6">
+        
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col gap-4">
+          <h2 class="font-bold text-sky-400 border-b border-slate-800 pb-2 mb-2"><i class="fa-solid fa-calculator mr-2"></i>入力結果＆月間累計 プレビュー</h2>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="bg-slate-950 p-5 rounded-2xl border border-sky-900/30 relative overflow-hidden flex flex-col justify-between">
+              <div class="absolute right-0 top-0 h-full w-16 bg-sky-500/10 blur-xl"></div>
+              <div>
+                <p class="text-xs text-sky-300 font-bold mb-4"><i class="fa-solid fa-money-bill-wave mr-1"></i>現金化額 (キャッシュフロー)</p>
+                <div class="flex justify-between items-end mb-4 border-b border-slate-800/50 pb-2">
+                  <span class="text-[10px] text-slate-400 font-bold">対象日の結果</span>
+                  <p class="text-2xl lg:text-3xl font-mono font-black z-10 text-white"><span id="previewCash">--</span><span class="text-[10px] font-normal text-slate-500 ml-1">円</span></p>
+                </div>
+                <div class="flex justify-between items-end">
+                  <span class="text-[10px] text-emerald-400 font-bold">当月累計予測</span>
+                  <p class="text-xl lg:text-2xl font-mono font-black z-10 text-white"><span id="cumPreviewCash">--</span><span class="text-[10px] font-normal text-slate-500 ml-1">円</span></p>
+                </div>
+              </div>
+              <div class="mt-3 text-right">
+                <p class="text-[9px] text-slate-500 font-mono tracking-widest">(純売上 － 買取 － 決済手数料)</p>
+              </div>
+            </div>
+            
+            <div class="bg-slate-950 p-5 rounded-2xl border border-fuchsia-900/30 relative overflow-hidden flex flex-col justify-between">
+              <div class="absolute right-0 top-0 h-full w-16 bg-fuchsia-500/10 blur-xl"></div>
+              <div>
+                <p class="text-xs text-fuchsia-400 font-bold mb-4"><i class="fa-solid fa-boxes-stacked mr-1"></i>在庫増加額</p>
+                <div class="flex justify-between items-end mb-4 border-b border-slate-800/50 pb-2">
+                  <span class="text-[10px] text-slate-400 font-bold">対象日の結果</span>
+                  <p class="text-2xl lg:text-3xl font-mono font-black z-10 text-white"><span id="previewInv">--</span><span class="text-[10px] font-normal text-slate-500 ml-1">円</span></p>
+                </div>
+                <div class="flex justify-between items-end">
+                  <span class="text-[10px] text-emerald-400 font-bold">当月累計予測</span>
+                  <p class="text-xl lg:text-2xl font-mono font-black z-10 text-white"><span id="cumPreviewInv">--</span><span class="text-[10px] font-normal text-slate-500 ml-1">円</span></p>
+                </div>
+              </div>
+              <div class="mt-3 text-right">
+                <p class="text-[9px] text-slate-500 font-mono tracking-widest">(買取 － 売上原価)</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-slate-950 p-5 rounded-2xl border border-indigo-900/30 relative overflow-hidden">
+             <div class="absolute right-0 top-0 h-full w-32 bg-indigo-500/10 blur-xl"></div>
+             <p class="text-xs text-indigo-300 font-bold mb-4"><i class="fa-solid fa-user-clock mr-1"></i>1時間あたりの生産性</p>
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+               <div class="flex flex-col justify-between h-full">
+                 <div>
+                   <div class="flex justify-between items-end mb-2 border-b border-slate-800/50 pb-1">
+                     <span class="text-[10px] text-slate-400">対象日 粗利/h</span>
+                     <p class="text-xl font-mono font-black text-white z-10"><span id="previewLabor">--</span><span class="text-[9px] font-normal text-slate-500 ml-1">円</span></p>
+                   </div>
+                   <div class="flex justify-between items-end">
+                     <span class="text-[10px] text-slate-500">累計平均 粗利/h</span>
+                     <p class="text-lg font-mono font-bold text-white z-10"><span id="cumPreviewLabor">--</span><span class="text-[9px] font-normal text-slate-500 ml-1">円</span></p>
+                   </div>
+                 </div>
+                 <div class="mt-2 text-right">
+                   <p class="text-[9px] text-slate-500 font-mono tracking-widest">(粗利額 ÷ 総労働時間)</p>
+                 </div>
+               </div>
+               <div class="flex flex-col justify-between h-full">
+                 <div>
+                   <div class="flex justify-between items-end mb-2 border-b border-slate-800/50 pb-1">
+                     <span class="text-[10px] text-slate-400">対象日 現金/h</span>
+                     <p class="text-xl font-mono font-black text-white z-10"><span id="previewCashProd">--</span><span class="text-[9px] font-normal text-slate-500 ml-1">円</span></p>
+                   </div>
+                   <div class="flex justify-between items-end">
+                     <span class="text-[10px] text-slate-500">累計平均 現金/h</span>
+                     <p class="text-lg font-mono font-bold text-white z-10"><span id="cumPreviewCashProd">--</span><span class="text-[9px] font-normal text-slate-500 ml-1">円</span></p>
+                   </div>
+                 </div>
+                 <div class="mt-2 text-right">
+                   <p class="text-[9px] text-slate-500 font-mono tracking-widest">(現金化額 ÷ 総労働時間)</p>
+                 </div>
+               </div>
+             </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+          <h2 class="font-bold text-emerald-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-flag-checkered mr-2"></i>【当月の着地予測】目標達成状況</h2>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-6">
+              <div>
+                <div class="flex justify-between items-end mb-1">
+                  <p class="text-xs text-slate-400 font-bold"><i class="fa-solid fa-percent text-emerald-400 mr-1"></i>粗利率目標 進捗</p>
+                  <p class="text-lg font-mono font-black text-white"><span id="newMarginProgRate">0.0</span><span class="text-[10px] text-slate-500 ml-1">%</span></p>
+                </div>
+                <div class="w-full bg-slate-950 rounded-full h-3 border border-slate-800 overflow-hidden relative">
+                  <div id="newMarginBar" class="bg-emerald-500 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between mt-1 text-[10px] font-mono text-slate-400">
+                  <span>現在の粗利率: <span id="newMarginActual" class="text-emerald-400 font-bold">0</span>%</span>
+                  <span>目標: <span id="newMarginTarget">0</span>%</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between items-end mb-1">
+                  <p class="text-xs text-slate-400 font-bold"><i class="fa-solid fa-money-bill-wave text-amber-400 mr-1"></i>現金化目標 進捗</p>
+                  <p class="text-lg font-mono font-black text-white"><span id="newCashRate">0.0</span><span class="text-[10px] text-slate-500 ml-1">%</span></p>
+                </div>
+                <div class="w-full bg-slate-950 rounded-full h-3 border border-slate-800 overflow-hidden relative">
+                  <div id="newCashBar" class="bg-amber-500 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between mt-1 text-[10px] font-mono text-slate-400">
+                  <span>実績: <span id="newCashActual" class="text-amber-400 font-bold">0</span>円</span>
+                  <span>目標: <span id="newCashTarget">0</span>円</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-center h-full">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <p class="text-xs text-fuchsia-400 font-bold"><i class="fa-solid fa-boxes-stacked mr-1"></i>今月の適正買取枠（在庫増加上限）</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5" id="newInvStatusMsg">適正ゾーン（Aランク）を目指して仕入れてください</p>
+                </div>
+                <div id="newInvZoneBadge" class="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">判定中</div>
+              </div>
+              <div class="w-full bg-slate-900 rounded-full h-5 border border-slate-700 overflow-hidden relative flex mt-2 mb-2">
+                <div class="w-1/2 h-full bg-rose-950/30 border-r border-slate-600"></div>
+                <div class="w-1/2 h-full bg-emerald-950/30"></div>
+                <div id="newInvMarker" class="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all duration-1000 z-10" style="left: 0%;"></div>
+              </div>
+              <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                <span>買わなすぎ</span>
+                <span class="text-emerald-400 font-bold" id="newInvTargetLabel">上限: 0円</span>
+                <span>買いすぎ</span>
+              </div>
+              <div class="mt-4 text-right border-t border-slate-800 pt-3">
+                <p class="text-xs text-slate-400">現在の在庫増加額: <span id="newInvActual" class="text-xl font-mono font-black text-fuchsia-400">0</span> <span class="text-[10px]">円</span></p>
+                <p class="text-xs font-bold text-slate-400 mt-1">残りの買取可能枠: <span id="newInvRemain" class="text-white">0</span> 円</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col">
+          <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h2 class="font-bold text-amber-400"><i class="fa-solid fa-chart-line mr-2"></i>【期間分析】実績の推移と傾向</h2>
+              <p class="text-[10px] text-slate-400 mt-1">指定した期間のデータをグラフ化します</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button onclick="changeChartPeriod('daily')" id="btn_daily" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">本日</button>
+                <button onclick="changeChartPeriod('weekly')" id="btn_weekly" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">直近7日</button>
+                <button onclick="changeChartPeriod('last_month')" id="btn_last_month" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">先月</button>
+                <button onclick="changeChartPeriod('monthly')" id="btn_monthly" class="period-btn active bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-md transition-all shadow">当月</button>
+                <button onclick="changeChartPeriod('all')" id="btn_all" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">全期間</button>
+                <button onclick="changeChartPeriod('custom')" id="btn_custom" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">期間指定</button>
+              </div>
+              <div id="customDateRange" class="hidden items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <input type="date" id="chartDateFrom" onchange="updateCustomPeriod()" class="bg-slate-900 text-[10px] font-bold text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none [color-scheme:dark]">
+                <span class="text-slate-500 text-[10px] font-bold">～</span>
+                <input type="date" id="chartDateTo" onchange="updateCustomPeriod()" class="bg-slate-900 text-[10px] font-bold text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none [color-scheme:dark]">
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex gap-2 sm:gap-4 overflow-x-auto whitespace-nowrap mb-4 mt-4">
+            <button onclick="changeAnalysisMode('progress')" id="tab_progress" class="tab-btn active text-xs font-bold text-slate-400 pb-1">現金化の推移</button>
+            <button onclick="changeAnalysisMode('inventory')" id="tab_inventory" class="tab-btn text-xs font-bold text-slate-400 pb-1">在庫状況の推移</button>
+            <button onclick="changeAnalysisMode('margin')" id="tab_margin" class="tab-btn text-xs font-bold text-slate-400 pb-1">粗利率の推移</button>
+          </div>
+          <div class="relative w-full h-[300px]"><canvas id="analysisChart"></canvas></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="view_timeline" class="hidden flex-col gap-6 w-full max-w-4xl mx-auto pb-20">
+      <div class="flex flex-col justify-between items-start bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl gap-4">
+        <div>
+          <h2 class="text-white font-bold text-lg"><i class="fa-solid fa-magnifying-glass text-sky-400 mr-2"></i>日報タイムライン・検索</h2>
+          <p class="text-xs text-slate-500 mt-1">条件を指定して日報を検索します。タップで詳細が開きます。</p>
+        </div>
+        
+        <div class="flex flex-col gap-2 w-full mt-2">
+          <div class="flex items-center gap-2 w-full">
+            <input type="date" id="tlDateFrom" class="bg-slate-950 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-3 py-2 outline-none focus:border-amber-500 cursor-pointer flex-1 [color-scheme:dark]">
+            <span class="text-slate-500 text-xs font-bold">～</span>
+            <input type="date" id="tlDateTo" class="bg-slate-950 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-3 py-2 outline-none focus:border-amber-500 cursor-pointer flex-1 [color-scheme:dark]">
+          </div>
+          <div class="flex gap-2 w-full mt-2">
+            <select id="tlSortOrder" onchange="loadTimeline()" class="bg-slate-950 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-2 py-2 outline-none focus:border-amber-500 cursor-pointer w-28 shrink-0">
+              <option value="desc">日付(降順)</option>
+              <option value="asc">日付(昇順)</option>
+            </select>
+            <select id="tlBranch" onchange="loadTimeline()" class="bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-lg px-3 py-2 outline-none focus:border-amber-500 flex-grow cursor-pointer"></select>
+            <button onclick="loadTimeline()" class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold px-6 py-2 rounded-lg transition-all shadow-md shrink-0"><i class="fa-solid fa-search mr-1"></i>検索</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="timelineContainer"></div>
+    </div>
+
+    <div id="view_monthly" class="hidden flex-col gap-6 w-full max-w-4xl mx-auto pb-20">
+      
+      <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl">
+         <h2 class="font-bold text-sky-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-chart-pie mr-2"></i>当月累計サマリー（確認用）</h2>
+         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">純売上高</p>
+                <p class="text-lg font-mono font-black text-sky-400"><span id="monSumSales">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">粗利額 / 粗利率</p>
+                <div class="flex items-end gap-2">
+                    <p class="text-lg font-mono font-black text-emerald-400"><span id="monSumGross">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+                    <p class="text-sm font-mono font-bold text-emerald-500/70 mb-0.5"><span id="monMarginRate">0.0</span>%</p>
+                </div>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">現金化額</p>
+                <p class="text-lg font-mono font-black text-amber-500"><span id="monSumCash">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">在庫増減</p>
+                <p class="text-lg font-mono font-black text-fuchsia-400"><span id="monSumInv">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">総労働時間</p>
+                <p class="text-lg font-mono font-black text-indigo-400"><span id="monSumWork">0</span><span class="text-[10px] ml-1 text-slate-500">h</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">生産性 (粗利/h)</p>
+                <p class="text-lg font-mono font-black text-indigo-300"><span id="monLaborProd">0</span><span class="text-[10px] ml-1 text-slate-500">円/h</span></p>
+             </div>
+         </div>
+      </div>
+
+      <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl">
+         <h2 class="font-bold text-amber-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-check-double mr-2"></i>本部提出前 最終確認</h2>
+         <div class="space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-950 p-4 rounded-xl border border-slate-800 gap-4">
+               <div>
+                  <p class="font-bold text-slate-200 text-sm">勤怠入力の修正</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">シフトと実際の打刻ズレをすべて修正し、確定させます</p>
+               </div>
+               <button id="btn_attendance_check" onclick="completeAppCheck('attendance_checked')" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-6 rounded-lg text-xs transition-all shadow shrink-0"><i class="fa-solid fa-check mr-1"></i>完了にする</button>
+            </div>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-950 p-4 rounded-xl border border-slate-800 gap-4">
+               <div>
+                  <p class="font-bold text-slate-200 text-sm">日報の記入漏れ</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">当月の全日程の日報入力が完了していることを確定させます</p>
+               </div>
+               <button id="btn_report_check" onclick="completeAppCheck('report_checked')" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-6 rounded-lg text-xs transition-all shadow shrink-0"><i class="fa-solid fa-check mr-1"></i>完了にする</button>
+            </div>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-950 p-4 rounded-xl border border-slate-800 gap-4">
+               <div>
+                  <p class="font-bold text-slate-200 text-sm">在庫処理</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">不良在庫の廃棄や棚卸しの調整が完了していることを確定させます</p>
+               </div>
+               <button id="btn_inventory_check" onclick="completeAppCheck('inventory_checked')" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-6 rounded-lg text-xs transition-all shadow shrink-0"><i class="fa-solid fa-check mr-1"></i>完了にする</button>
+            </div>
+         </div>
+      </div>
+
+      <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl">
+         <h2 class="font-bold text-fuchsia-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-pen-nib mr-2"></i>月報・所感の提出</h2>
+         <textarea id="inpMonthlyComment" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-200 outline-none focus:border-fuchsia-500 h-40 mb-4" placeholder="当月の振り返り、来月への課題などを記入してください..."></textarea>
+         <div class="flex justify-between items-center">
+            <p class="text-[10px] text-slate-500">最終提出: <span id="lblMonthlySubmitter" class="font-bold text-slate-300">未提出</span></p>
+            <button id="btnSubmitMonthly" onclick="submitMonthlyComment()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all text-sm"><i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する</button>
+         </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. Supabaseの初期設定
+    // ==========================================
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let appUrl = "?p=portal", allTrackingData = [], trackingData = [], chartObj = null, currentUser = null;
+    let storeTarget = { margin: 0, cash: 0, invLimit: 0 };
+    let todayStr = "", currentMonthStr = "", targetBranch = ""; 
+    let analysisMode = "progress"; 
+    
+    let chartStartDate = "";
+    let chartEndDate = "";
+    let currentChartPeriodMode = 'monthly';
+    
+    let calcSumSales = 0, calcSumCash = 0, calcSumPurchase = 0, calcSumDiscount = 0, calcSumCashless = 0, calcSumCashlessFee = 0;
+    let confirmedStats = null;
+    let globalBranches = []; // ★修正: 直書きを撤廃して空にする 
+    let userRoleConfig = null; // ログインユーザーの権限マスタデータ保持用
+
+    function getRoleId() { return currentUser ? (currentUser.roleId || currentUser.role_id) : null; }
+
+    function cleanShopName(x) {
+        let name = String(x || "").replace(/Bee本舗/gi, '').trim();
+        if (name.includes('秋葉原')) return '秋葉原店';
+        if (name.includes('福岡') || name.includes('天神')) return '福岡天神店';
+        if (name.includes('名古屋') || name.includes('大須')) return '名古屋大須店';
+        if (name.includes('バトルタワー') || name.includes('BT')) return 'バトルタワー店'; 
+        if (name.includes('大阪') || name.includes('本店')) return '大阪本店'; 
+        if (name.includes('池袋')) return '池袋店';
+        if (!name.endsWith('店') && name !== "" && name !== "全店舗") return name + '店'; 
+        return name;
+    }
+
+    window.toggleTimelineDetail = function(id) {
+      const el = document.getElementById(id);
+      const icon = document.getElementById('icon_' + id);
+      if (el && el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if (icon) icon.classList.add('rotate-180');
+      } else if (el) {
+        el.classList.add('hidden');
+        if (icon) icon.classList.remove('rotate-180');
+      }
+    };
+
+    window.onload = async () => {
+      try {
+        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      } catch(e) { console.warn("GAS外"); }
+
+      const userStr = sessionStorage.getItem('finUser');
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+      currentUser.branch = cleanShopName(currentUser.branch);
+
+      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      try {
+          const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+          if (bErr) throw bErr;
+          if (bData && bData.length > 0) {
+              globalBranches = bData.map(b => b.name);
+          }
+      } catch (err) {
+          console.error("店舗マスタ取得エラー:", err);
+          globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+      }
+
+      const savedBranch = sessionStorage.getItem('finTrackingBranch');
+      // ★修正: フォールバック店舗を秋葉原店固定から、動的取得した先頭の店舗にする
+      targetBranch = savedBranch ? cleanShopName(savedBranch) : (currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch);
+      document.getElementById('userNameHeader').innerText = currentUser.name + " (" + currentUser.branch + ")";
+      
+      const now = new Date(); const tzOffset = now.getTimezoneOffset() * 60000;
+      todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
+      currentMonthStr = todayStr.substring(0, 7);
+      
+      document.getElementById('inpDate').value = todayStr;
+      document.getElementById('lblTargetMonth').innerText = "[" + currentMonthStr.replace("-", "/") + "]";
+
+      document.getElementById('tlDateFrom').value = currentMonthStr + "-01";
+      document.getElementById('tlDateTo').value = todayStr;
+      document.getElementById('monthSelector').value = currentMonthStr;
+
+      // 店舗セレクタの初期化（動的取得したglobalBranchesを使う）
+      const sel = document.getElementById('branchSelector');
+      sel.innerHTML = ""; // 一旦クリア
+      globalBranches.forEach(b => {
+        const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-900 text-white";
+        if(b === targetBranch) opt.selected = true; sel.appendChild(opt);
+      });
+
+      // 同期読み込みを開始
+      await loadData();
+      loadTimeline(); 
+      
+      ['inpSales', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCashless', 'inpDiscount'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePreview);
+      });
+    };
+
+    async function changeTrackingMonth() {
+      const selectedMonth = document.getElementById('monthSelector').value;
+      if (!selectedMonth) return;
+      
+      currentMonthStr = selectedMonth;
+      document.getElementById('lblTargetMonth').innerText = "[" + currentMonthStr.replace("-", "/") + "]";
+      
+      const year = parseInt(selectedMonth.substring(0, 4));
+      const month = parseInt(selectedMonth.substring(5, 7));
+      const lastDay = new Date(year, month, 0).getDate();
+      document.getElementById('tlDateFrom').value = `${selectedMonth}-01`;
+      document.getElementById('tlDateTo').value = `${selectedMonth}-${lastDay.toString().padStart(2, '0')}`;
+      
+      const currentInpDate = document.getElementById('inpDate').value;
+      if (currentInpDate && !currentInpDate.startsWith(selectedMonth)) {
+         document.getElementById('inpDate').value = `${selectedMonth}-01`;
+      }
+      
+      // ★修正: await を追加してデータの取得完了を完全に待つ
+      await loadData();
+      loadTimeline(); 
+      
+      // 月次振り返りタブが開かれている場合はデータを再読込
+      if(document.getElementById('tab_main_monthly').classList.contains('active')) {
+          loadMonthlyApplicationData();
+      }
+    }
+
+    async function switchBranch() { 
+      targetBranch = document.getElementById('branchSelector').value; 
+      sessionStorage.setItem('finTrackingBranch', targetBranch);
+      
+      const tlSel = document.getElementById('tlBranch');
+      if(tlSel) tlSel.value = targetBranch;
+
+      // ★修正: await を追加してデータの取得完了を完全に待つ
+      await loadData(); 
+      loadTimeline();
+      
+      // 月次振り返りタブが開かれている場合はデータを再読込
+      if(document.getElementById('tab_main_monthly').classList.contains('active')) {
+          loadMonthlyApplicationData();
+      }
+    }
+
+    function switchMainTab(tab) {
+      // すべてのタブボタンから active クラス（オレンジの下線）を一旦消す
+      document.getElementById('tab_main_dashboard').classList.remove('active');
+      document.getElementById('tab_main_timeline').classList.remove('active');
+      document.getElementById('tab_main_monthly').classList.remove('active'); // ★追加
+
+      // すべての画面ブロックを一旦非表示（hidden）にする
+      document.getElementById('view_dashboard').classList.add('hidden');
+      document.getElementById('view_timeline').classList.add('hidden');
+      document.getElementById('view_monthly').classList.add('hidden'); // ★追加
+
+      // 現在選択されたタブボタンと画面ブロックだけを活性化・表示する
+      document.getElementById('tab_main_' + tab).classList.add('active');
+      document.getElementById('view_' + tab).classList.remove('hidden');
+      document.getElementById('view_' + tab).classList.add(tab === 'dashboard' ? 'grid' : 'flex');
+      
+      // 画面のスクロール位置を最上部にリセット
+      window.scrollTo(0, 0);
+
+      // ★追加: 「月次振り返り」タブが開かれたときだけ、自動で当月のサマリーと提出データをSupabaseから読み込む
+      if (tab === 'monthly') {
+          loadMonthlyApplicationData();
+      }
+    }
+
+    function loadDataForSelectedDate() {
+      const dateVal = document.getElementById('inpDate').value;
+      if (!dateVal) return;
+      
+      // 日付の「月」が右上のカレンダーとズレている場合は自動同期して再判定
+      const selectedMonth = dateVal.substring(0, 7);
+      if (selectedMonth !== currentMonthStr) {
+        document.getElementById('monthSelector').value = selectedMonth;
+        changeTrackingMonth(); 
+        return; 
+      }
+      
+      // ★修正: trackingRecords ではなく、定義済みの正確な変数 trackingData から検索
+      const record = trackingData.find(r => r.date === dateVal && r.branch === targetBranch);
+      
+      if (record) {
+        document.getElementById('inpSales').value = (record.sales !== "") ? Number(record.sales).toLocaleString() : "";
+        document.getElementById('inpCashless').value = (record.cashless !== "") ? Number(record.cashless).toLocaleString() : "";
+        document.getElementById('inpDiscount').value = (record.discount !== "") ? Number(record.discount).toLocaleString() : "";
+        document.getElementById('inpMarginRate').value = (record.grossProfitRate !== "") ? record.grossProfitRate : "";
+        document.getElementById('inpPurchase').value = (record.purchase !== "") ? Number(record.purchase).toLocaleString() : "";
+        document.getElementById('inpWorkHours').value = (record.workHours !== "") ? record.workHours : "";
+        
+        document.getElementById('inpCount').value = record.memoCount || "";
+        document.getElementById('inpMemoSales').value = record.memoSales || "";
+        document.getElementById('inpMemoPurchase').value = record.memoPurchase || "";
+        document.getElementById('inpMemoDaily').value = record.memoDaily || "";
+      } else {
+        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+      }
+      updatePreview();
+    }
+
+    async function loadData() {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('content').classList.add('hidden');
+      
+      try {
+        const { data: rData, error: rErr } = await db
+          .from('roles')
+          .select('*')
+          .eq('id', getRoleId())
+          .single();
+          
+        if (!rErr && rData) {
+            userRoleConfig = rData;
+        }
+
+        // 1. 日報データの取得
+        const { data: sbData, error: recordErr } = await db
+          .from('daily_records')
+          .select('*')
+          .order('target_date', { ascending: true });
+
+        if (recordErr) throw recordErr;
+
+        allTrackingData = sbData.map(r => ({
+          date: r.target_date ? String(r.target_date).substring(0, 10) : "",
+          branch: r.branch,
+          author: r.author,
+          sales: r.sales || "",
+          cashless: r.cashless || "",
+          discount: r.discount || "",
+          grossProfitRate: r.margin_rate || "",
+          purchase: r.purchase || "",
+          workHours: r.work_hours || "",
+          memoSales: r.memo_sales || "",
+          memoPurchase: r.memo_purchase || "",
+          memoDaily: r.memo_daily || "",
+          memoCount: r.memo_count || "",
+          cogs: r.cogs || 0,
+          cashFlow: r.cash_flow || 0,
+          invChange: r.inv_change || 0,
+          laborProd: r.labor_prod || 0,
+          cashlessFee: r.cashless_fee || 0,
+          timestamp: r.created_at
+        }));
+
+        trackingData = allTrackingData.filter(r => r.date && r.date.startsWith(currentMonthStr) && r.branch === targetBranch);
+
+        // ★大改修: 2. Supabaseの新・月次予算マスタからの目標値取得
+        const { data: budgetData, error: budgetErr } = await db
+          .from('fin_monthly_targets')
+          .select('*')
+          .eq('target_month', currentMonthStr) // <- ここで月を直接指定
+          .eq('branch', targetBranch);
+          
+        if (budgetErr) throw budgetErr;
+
+        if (budgetData && budgetData.length > 0) {
+            const master = budgetData[0];
+            storeTarget = {
+                margin: Number(master.margin_rate) || 0,
+                cash: Number(master.target_cash) || 0,
+                invLimit: Number(master.target_inv_limit) || 0
+            };
+        } else {
+            storeTarget = { margin: 0, cash: 0, invLimit: 0 };
+        }
+
+        document.getElementById('dispObjMargin').innerText = storeTarget.margin ? storeTarget.margin + " %" : "-- %";
+        document.getElementById('dispObjCash').innerText = storeTarget.cash ? storeTarget.cash.toLocaleString() + " 円" : "-- 円";
+        document.getElementById('dispObjInvLimit').innerText = storeTarget.invLimit ? storeTarget.invLimit.toLocaleString() + " 円" : "-- 円";
+
+        // 3. Supabaseから直接、確定データを取得する
+        const { data: statsData, error: statsErr } = await db
+            .from('fin_monthly_stats')
+            .select('*')
+            .eq('target_month', currentMonthStr)
+            .eq('branch', targetBranch)
+            .maybeSingle();
+
+        if (statsErr) throw statsErr;
+
+        if (statsData) {
+            confirmedStats = {
+                totalPurchase: Number(statsData.total_purchase) || 0,
+                cogs: Number(statsData.cogs) || 0,
+                grossProfit: Number(statsData.gross_profit) || 0,
+                totalWorkHours: Number(statsData.total_work_hours) || 0 // ★追加
+            };
+        } else {
+            confirmedStats = null;
+        }
+        
+        const sel = document.getElementById('branchSelector');
+        if (userRoleConfig && userRoleConfig.view_scope === '所属店舗のみ') {
+            sel.value = currentUser.branch;
+            sel.disabled = true;
+            targetBranch = currentUser.branch;
+        } else {
+            sel.disabled = false;
+        }
+
+        applyPermissions();
+        buildView(); 
+        loadDataForSelectedDate(); 
+
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+          
+      } catch (err) {
+        document.getElementById('loading').classList.add('hidden');
+        alert("データベース通信エラー:\n" + err.message);
+      }
+    }
+
+    async function loadTimeline() {
+      const container = document.getElementById('timelineContainer');
+      container.innerHTML = '<div class="text-center py-20"><i class="fa-solid fa-spinner fa-spin text-4xl text-amber-500"></i><p class="text-amber-400 mt-4 font-bold">タイムラインを爆速取得中...</p></div>';
+      
+      const dFrom = document.getElementById('tlDateFrom').value;
+      const dTo = document.getElementById('tlDateTo').value;
+      const bStr = document.getElementById('tlBranch').value || "全店舗";
+      const sortOrder = document.getElementById('tlSortOrder') ? document.getElementById('tlSortOrder').value : 'desc';
+
+      try {
+        const sel = document.getElementById('tlBranch');
+        const mainSel = document.getElementById('branchSelector');
+        if (sel && sel.options.length === 0 && mainSel.options.length > 0) {
+          const allOpt = document.createElement('option'); allOpt.value = "全店舗"; allOpt.text = "全店舗"; sel.appendChild(allOpt);
+          Array.from(mainSel.options).forEach(opt => {
+            const newOpt = document.createElement('option'); newOpt.value = opt.value; newOpt.text = opt.text; sel.appendChild(newOpt);
+          });
+          sel.value = bStr;
+        }
+
+        let query = db.from('daily_records').select('*');
+        if (dFrom) query = query.gte('target_date', String(dFrom).replace(/\//g, "-"));
+        if (dTo) query = query.lte('target_date', String(dTo).replace(/\//g, "-"));
+        if (bStr !== "全店舗") query = query.eq('branch', bStr);
+        
+        query = query.order('target_date', { ascending: sortOrder === 'asc' });
+        
+        const { data: reports, error } = await query;
+        if (error) throw error;
+
+        if(!reports || reports.length === 0) {
+          container.innerHTML = '<div class="bg-slate-900 p-10 text-center rounded-2xl border border-slate-800"><p class="text-slate-500 font-bold">指定した条件に該当する日報が見つかりません。</p></div>';
+          return;
+        }
+
+        let html = "";
+        reports.forEach((r, i) => {
+          const cashColor = r.cash_flow >= 0 ? "text-emerald-400" : "text-rose-400";
+          const cashSign = r.cash_flow >= 0 ? "+" : "";
+          const feeLabel = r.cashless_fee > 0 ? `<div class="text-[9px] text-slate-500 mt-1 mb-2">内 決済手数料: -${Math.round(r.cashless_fee).toLocaleString()}円</div>` : "";
+
+          const block = (title, text) => {
+            if (!text || String(text).trim() === "") return "";
+            return `
+              <div>
+                <p class="text-xs text-sky-400 font-bold mb-1">■ ${title}</p>
+                <p class="bg-slate-950 p-4 rounded-xl border border-slate-800 whitespace-pre-wrap text-slate-300 text-sm leading-relaxed">${text}</p>
+              </div>
+            `;
+          };
+
+          const dObj = new Date(r.created_at);
+          const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+          const dd = String(dObj.getDate()).padStart(2, '0');
+          const hh = String(dObj.getHours()).padStart(2, '0');
+          const min = String(dObj.getMinutes()).padStart(2, '0');
+          const tsStr = `${mm}/${dd} ${hh}:${min}`;
+
+          const cleanDateStr = r.target_date ? String(r.target_date).substring(0, 10).replace(/-/g, '/') : "";
+
+          const statsBlock = `
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 mb-4 shadow-inner">
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">純売上高</p><p class="text-sm font-mono text-sky-400 font-bold">${r.sales != null && r.sales !== "" ? Math.round(r.sales).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div>
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">ｷｬｯｼｭﾚｽ</p><p class="text-sm font-mono text-slate-300 font-bold">${r.cashless != null && r.cashless !== "" ? Math.round(r.cashless).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div>
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">値引き額</p><p class="text-sm font-mono text-slate-300 font-bold">${r.discount != null && r.discount !== "" ? Math.round(r.discount).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div>
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">買取高</p><p class="text-sm font-mono text-rose-400 font-bold">${r.purchase != null && r.purchase !== "" ? Math.round(r.purchase).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div>
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">粗利率</p><p class="text-sm font-mono text-emerald-400 font-bold">${r.margin_rate != null && r.margin_rate !== "" ? r.margin_rate : "-"}<span class="text-[10px] ml-0.5">%</span></p></div>
+              <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">総労働時間</p><p class="text-sm font-mono text-indigo-400 font-bold">${r.work_hours != null && r.work_hours !== "" ? r.work_hours : "-"}<span class="text-[10px] ml-0.5">h</span></p></div>
+            </div>
+          `;
+
+          const reportId = 'report_' + i;
+
+          html += `
+           <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden mb-4 transition-all">
+             <div class="p-4 md:p-6 cursor-pointer hover:bg-slate-800/80 transition-colors flex flex-col md:flex-row justify-between items-center gap-4" onclick="toggleTimelineDetail('${reportId}')">
+               <div class="flex items-center gap-4">
+                 <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex justify-center items-center shadow-lg shrink-0">
+                   <i class="fa-solid fa-store text-white"></i>
+                 </div>
+                 <div>
+                   <p class="font-bold text-white text-lg">${r.branch} <span class="text-xs text-slate-400 font-normal ml-1">/ ${r.author}</span></p>
+                   <p class="text-[10px] text-slate-500 font-mono mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>対象日: <span class="text-slate-300 font-bold">${cleanDateStr}</span> <span class="ml-2 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">入力: ${tsStr}</span></p>
+                 </div>
+               </div>
+               
+               <div class="flex items-center gap-4 w-full md:w-auto justify-between mt-2 md:mt-0">
+                 <div class="flex gap-4 md:gap-6 text-center">
+                    <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">総売上</p><p class="text-sky-400 font-mono font-bold text-sm">${r.sales != null && r.sales !== "" ? Math.round(r.sales).toLocaleString() : "-"}<span class="text-[9px]">円</span></p></div>
+                    <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">買取</p><p class="text-rose-400 font-mono font-bold text-sm">${r.purchase != null && r.purchase !== "" ? Math.round(r.purchase).toLocaleString() : "-"}<span class="text-[9px]">円</span></p></div>
+                    <div><p class="text-[9px] text-slate-500 font-bold mb-0.5">現金増減</p><p class="${cashColor} font-mono font-bold text-sm">${cashSign}${Math.round(r.cash_flow).toLocaleString()}<span class="text-[9px]">円</span></p></div>
+                 </div>
+                 <div class="text-slate-500 ml-2">
+                   <i class="fa-solid fa-chevron-down transition-transform duration-300" id="icon_${reportId}"></i>
+                 </div>
+               </div>
+             </div>
+
+             <div id="${reportId}" class="hidden border-t border-slate-800 p-4 md:p-6 bg-slate-900/40 space-y-4">
+               ${statsBlock}
+               ${feeLabel}
+               ${block("定量・各種件数", r.memo_count)}
+               ${block("高額販売", r.memo_sales)}
+               ${block("高額買取", r.memo_purchase)}
+               ${block("本日の業務報告・反省点", r.memo_daily)}
+               
+               <button onclick="document.getElementById('inpDate').value='${r.target_date.substring(0, 10)}'; document.getElementById('branchSelector').value='${r.branch}'; switchBranch(); switchMainTab('dashboard');" class="mt-4 w-full bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold py-3 rounded-xl border border-slate-700 text-sm shadow transition-all">
+                 <i class="fa-solid fa-pen-to-square mr-1"></i>この日の日報を修正する
+               </button>
+             </div>
+           </div>
+          `;
+        });
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<p class="text-rose-400 text-center font-bold">通信エラー: ${err.message}</p>`;
+      }
+    }
+
+    // ★大改修：アカウント権限マスタ（roles）の edit_scope に完全準拠する判定
+    function applyPermissions() {
+      let isEditable = false;
+      
+      if (userRoleConfig) {
+          // そもそもマスタで予実トラッカーが「不可」なら一律編集不可
+          if (userRoleConfig.can_tracking === '不可') {
+              isEditable = false;
+          } else {
+              // 編集スコープのチェック
+              if (userRoleConfig.edit_scope === '全店舗') {
+                  isEditable = true;
+              } else if (userRoleConfig.edit_scope === '所属店舗のみ') {
+                  // ログインしている人の所属店舗と、現在選択されている店舗が一致している場合のみ可能
+                  isEditable = (currentUser.branch === targetBranch);
+              } else {
+                  isEditable = false;
+              }
+          }
+      }
+      
+      if (confirmedStats) {
+          isEditable = false;
+          document.getElementById('readOnlyText').innerText = "本部確定済ロック";
+          document.getElementById('readOnlyTextObj').innerText = "本部確定済ロック";
+      } else {
+          document.getElementById('readOnlyText').innerText = "閲覧専用";
+          document.getElementById('readOnlyTextObj').innerText = "閲覧専用";
+      }
+      
+      const inputs = ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily', 'saveBtn'];
+      inputs.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = !isEditable;
+      });
+      
+      if (!isEditable) { 
+          document.getElementById('readOnlyBadge').classList.remove('hidden'); 
+          document.getElementById('readOnlyBadgeObj').classList.remove('hidden'); 
+      } 
+      else { 
+          document.getElementById('readOnlyBadge').classList.add('hidden'); 
+          document.getElementById('readOnlyBadgeObj').classList.add('hidden'); 
+      }
+    }
+
+    function formatNumber(el) { let v = el.value.replace(/,/g, '').replace(/[^\d]/g, ''); el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; updatePreview(); }
+    function formatFloat(el) { let v = el.value.replace(/[^\d.]/g, ''); if (v !== '') { el.value = v; } updatePreview(); }
+    
+    function getNum(id) { 
+       const el = document.getElementById(id);
+       if (!el || el.value.trim() === "") return "";
+       const parsed = parseFloat(el.value.replace(/,/g, ''));
+       return isNaN(parsed) ? 0 : parsed; 
+    }
+
+    function updatePreview() {
+      const grossSales = Number(getNum('inpSales')) || 0;
+      const discount = Number(getNum('inpDiscount')) || 0;
+      const p = Number(getNum('inpPurchase')) || 0;
+      const cL = Number(getNum('inpCashless')) || 0;
+      const m = Number(getNum('inpMarginRate')) || 0;
+      const w = Number(getNum('inpWorkHours')) || 0;
+      const feeRate = 3.0; 
+      
+      const s = grossSales - discount;
+      const fee = cL * (feeRate / 100);
+      const cash = s - p - fee;
+      
+      const cEl = document.getElementById('previewCash');
+      if (cEl) {
+        cEl.innerText = Math.round(cash).toLocaleString();
+        if (cash >= 0) cEl.className = "text-2xl lg:text-3xl font-mono font-black text-emerald-400 z-10";
+        else cEl.className = "text-2xl lg:text-3xl font-mono font-black text-rose-500 z-10";
+      }
+
+      const grossProfit = s * (m / 100);
+      // 対象日の生産性計算（現在入力中の値 w を使用）
+      const laborProd = w > 0 ? grossProfit / w : 0;
+      const cashProd = w > 0 ? cash / w : 0;
+
+      const prevInv = document.getElementById('previewInv');
+      const invVal = p - (s - grossProfit);
+      if (prevInv) {
+        prevInv.innerText = (invVal >= 0 ? "+" : "") + Math.round(invVal).toLocaleString();
+        prevInv.className = invVal > 0 ? "text-2xl lg:text-3xl font-mono font-black text-rose-400 z-10" : "text-2xl lg:text-3xl font-mono font-black text-emerald-400 z-10";
+      }
+      
+      const prevLabor = document.getElementById('previewLabor');
+      if (prevLabor) prevLabor.innerText = Math.round(laborProd).toLocaleString();
+      const prevCashProd = document.getElementById('previewCashProd');
+      if (prevCashProd) prevCashProd.innerText = Math.round(cashProd).toLocaleString();
+
+      const targetDate = document.getElementById('inpDate').value;
+      let sumGrossSales = 0, sumDiscount = 0, sumP = 0, sumCL = 0, sumGrossProfit = 0, sumCashFlow = 0, sumW = 0;
+      
+      trackingData.forEach(r => {
+        if (r.date !== targetDate) {
+          sumGrossSales += Number(r.sales) || 0;
+          sumDiscount += Number(r.discount) || 0;
+          sumP += Number(r.purchase) || 0;
+          sumCL += Number(r.cashless) || 0;
+          const net = (Number(r.sales) || 0) - (Number(r.discount) || 0);
+          sumGrossProfit += net * (Number(r.grossProfitRate) / 100);
+          sumCashFlow += r.cashFlow;
+          
+          // ★重要：CSV等で上書きされた正確な労働時間があればそれを使用する
+          sumW += Number(r.workHours) || 0;
+        }
+      });
+      
+      let totalS = sumGrossSales - sumDiscount + s;
+      let totalP = sumP + p;
+      let totalGrossProfit = sumGrossProfit + grossProfit;
+      let totalCashFlow = sumCashFlow + cash;
+      // ★重要：累計労働時間 ＝ 対象日以外の累計 ＋ 現在入力中の値
+      let totalW = sumW + w;
+      let totalInvVal = totalP - (totalS - totalGrossProfit);
+
+      if (confirmedStats && currentMonthStr !== todayStr.substring(0, 7)) {
+          totalGrossProfit = confirmedStats.grossProfit;
+          totalInvVal = confirmedStats.totalPurchase - confirmedStats.cogs;
+          // ★重要：月次確定データに勤怠の確定総労働時間(totalWorkHours)があれば、それを使用する
+          if (confirmedStats.totalWorkHours > 0) {
+             totalW = confirmedStats.totalWorkHours;
+          }
+      }
+      
+      // ★重要：再計算された精密な累計労働時間を使って「累計平均 生産性」を算出
+      const totalLaborProd = totalW > 0 ? totalGrossProfit / totalW : 0;
+      const totalCashProd = totalW > 0 ? totalCashFlow / totalW : 0;
+
+      const cumCashEl = document.getElementById('cumPreviewCash');
+      if (cumCashEl) {
+        cumCashEl.innerText = Math.round(totalCashFlow).toLocaleString();
+        cumCashEl.className = totalCashFlow >= 0 ? "text-xl lg:text-2xl font-mono font-black text-emerald-400 z-10" : "text-xl lg:text-2xl font-mono font-black text-rose-500 z-10";
+      }
+
+      const cumInvEl = document.getElementById('cumPreviewInv');
+      if (cumInvEl) {
+        cumInvEl.innerText = (totalInvVal >= 0 ? "+" : "") + Math.round(totalInvVal).toLocaleString();
+        cumInvEl.className = totalInvVal > 0 ? "text-xl lg:text-2xl font-mono font-black text-rose-400 z-10" : "text-xl lg:text-2xl font-mono font-black text-emerald-400 z-10";
+      }
+
+      const cumLabor = document.getElementById('cumPreviewLabor');
+      if (cumLabor) cumLabor.innerText = Math.round(totalLaborProd).toLocaleString();
+      const cumCashProdEl = document.getElementById('cumPreviewCashProd');
+      if (cumCashProdEl) cumCashProdEl.innerText = Math.round(totalCashProd).toLocaleString();
+    }
+
+    async function saveRecord() {
+      const dateVal = document.getElementById('inpDate').value;
+      if(!dateVal) { alert("日付を選択してください。"); return; }
+      if (dateVal !== todayStr) { if (!confirm("入力された対象日は本日ではありません。続行しますか？")) return; }
+      
+      const b = document.getElementById('saveBtn'), mRow = document.getElementById('saveMsg'); 
+      b.disabled = true; b.innerHTML = '保存中...';
+
+      try {
+        const grossSalesNum = Number(getNum('inpSales')) || 0;
+        const discountNum = Number(getNum('inpDiscount')) || 0;
+        const purchaseNum = Number(getNum('inpPurchase')) || 0;
+        const marginRateNum = Number(getNum('inpMarginRate')) || 0;
+        const cashlessNum = Number(getNum('inpCashless')) || 0;
+        const workHoursNum = Number(getNum('inpWorkHours')) || 0;
+
+        const netSalesNum = grossSalesNum - discountNum;
+        const feeRate = 3.0; 
+        const cashlessFee = cashlessNum * (feeRate / 100);
+        const grossProfit = netSalesNum * (marginRateNum / 100);
+        const cashFlow = netSalesNum - purchaseNum - cashlessFee;
+        const cogs = netSalesNum - grossProfit; 
+        const invChange = purchaseNum - cogs;
+        const laborProd = workHoursNum > 0 ? grossProfit / workHoursNum : 0;
+
+        const cleanDate = String(dateVal).replace(/\//g, "-").substring(0, 10);
+
+        const { error } = await db
+          .from('daily_records')
+          .upsert({
+            target_date: cleanDate,
+            branch: targetBranch,
+            author: currentUser.name,
+            sales: grossSalesNum,
+            cashless: cashlessNum,
+            discount: discountNum,
+            margin_rate: marginRateNum,
+            purchase: purchaseNum,
+            work_hours: workHoursNum,
+            memo_sales: document.getElementById('inpMemoSales').value || "",
+            memo_purchase: document.getElementById('inpMemoPurchase').value || "",
+            memo_daily: document.getElementById('inpMemoDaily').value || "",
+            memo_count: document.getElementById('inpCount').value || "",
+            gross_profit: grossProfit,
+            cogs: cogs,
+            cash_flow: cashFlow,
+            inv_change: invChange,
+            labor_prod: laborProd,
+            cashless_fee_rate: feeRate,
+            cashless_fee: cashlessFee
+          }, { onConflict: 'target_date,branch' });
+
+        if (error) throw error;
+
+        b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check mr-2"></i>保存する';
+        mRow.innerText = "実績の保存が完了しました！"; 
+        mRow.classList.remove('hidden'); 
+        mRow.className = "text-center text-sm font-bold mt-2 text-emerald-400";
+        setTimeout(() => mRow.classList.add('hidden'), 3000);
+        
+        loadData(); 
+        loadTimeline(); 
+      } catch (err) {
+        b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check mr-2"></i>保存する';
+        alert("保存エラー: " + err.message);
+      }
+    }
+
+    function downloadCSV() {
+      const btn = document.getElementById('btnDownloadCsv');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 生成中...'; }
+      
+      google.script.run
+        .withSuccessHandler(res => {
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-csv mr-1"></i> CSV出力'; }
+          if (res.error) { alert(res.error); return; }
+          
+          const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+          const blob = new Blob([bom, res.csvData], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = res.fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .withFailureHandler(err => {
+           if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-csv mr-1"></i> CSV出力'; }
+           alert("ダウンロードエラー: " + err.message);
+        })
+        .getTrackingDataForCSV(currentUser, targetBranch, currentMonthStr);
+    }
+
+    function buildView() {
+      calcSumSales = 0; calcSumCash = 0; calcSumPurchase = 0; calcSumDiscount = 0; calcSumCashless = 0; calcSumCashlessFee = 0;
+      let calcSumGross = 0;
+      let calcSumInvChange = 0;
+
+      trackingData.forEach(r => {
+        calcSumCash += r.cashFlow; 
+        calcSumSales += Number(r.sales) || 0; 
+        calcSumPurchase += Number(r.purchase) || 0;
+        calcSumCashless += Number(r.cashless) || 0; 
+        calcSumDiscount += Number(r.discount) || 0;
+        calcSumCashlessFee += r.cashlessFee || 0;
+        
+        const netS = (Number(r.sales) || 0) - (Number(r.discount) || 0);
+        const grossP = netS * (Number(r.grossProfitRate) / 100);
+        calcSumGross += grossP;
+        
+        const invChange = (Number(r.purchase) || 0) - (netS - grossP);
+        calcSumInvChange += invChange;
+      });
+
+      if (confirmedStats) {
+          calcSumGross = confirmedStats.grossProfit;
+          calcSumInvChange = confirmedStats.totalPurchase - confirmedStats.cogs;
+          document.getElementById('badgeConfirmed').classList.remove('hidden');
+      } else {
+          document.getElementById('badgeConfirmed').classList.add('hidden');
+      }
+
+      const mMargin = storeTarget.margin || 0;
+      const actualMargin = (calcSumSales - calcSumDiscount) > 0 ? (calcSumGross / (calcSumSales - calcSumDiscount)) * 100 : 0;
+      const marginProgRate = mMargin > 0 ? (actualMargin / mMargin) * 100 : (actualMargin > 0 ? 100 : 0);
+      
+      document.getElementById('newMarginProgRate').innerText = marginProgRate.toFixed(1);
+      document.getElementById('newMarginActual').innerText = actualMargin.toFixed(1);
+      document.getElementById('newMarginTarget').innerText = mMargin;
+      const mBar = document.getElementById('newMarginBar');
+      if(mBar) {
+         mBar.style.width = Math.min(Math.max(marginProgRate, 0), 100) + "%";
+         mBar.className = marginProgRate >= 100 ? "bg-emerald-500 h-3 rounded-full transition-all duration-1000" : "bg-emerald-400 h-3 rounded-full transition-all duration-1000";
+      }
+
+      const mCash = storeTarget.cash || 0;
+      const cashRate = mCash > 0 ? (calcSumCash / mCash) * 100 : 0;
+      document.getElementById('newCashRate').innerText = cashRate.toFixed(1);
+      document.getElementById('newCashActual').innerText = Math.round(calcSumCash).toLocaleString();
+      document.getElementById('newCashTarget').innerText = Math.round(mCash).toLocaleString();
+      const cBar = document.getElementById('newCashBar');
+      if(cBar) {
+         cBar.style.width = Math.min(Math.max(cashRate, 0), 100) + "%";
+         cBar.className = cashRate >= 100 ? "bg-amber-500 h-3 rounded-full transition-all duration-1000" : "bg-amber-400 h-3 rounded-full transition-all duration-1000";
+      }
+
+      const invLimit = storeTarget.invLimit || 0;
+      const invLower = invLimit * 0.5; 
+      document.getElementById('newInvActual').innerText = Math.round(calcSumInvChange).toLocaleString();
+      document.getElementById('newInvTargetLabel').innerText = `上限: ${Math.round(invLimit).toLocaleString()}円`;
+      const remainInv = invLimit - calcSumInvChange;
+      document.getElementById('newInvRemain').innerText = Math.round(remainInv).toLocaleString();
+
+      let invZone = "";
+      let invMsg = "";
+      let badgeClass = "";
+      let markerPos = 0; 
+
+      if (invLimit > 0) {
+          if (calcSumInvChange <= 0) {
+              markerPos = 0;
+          } else if (calcSumInvChange < invLower) {
+              markerPos = (calcSumInvChange / invLower) * 50;
+          } else {
+              markerPos = 50 + ((calcSumInvChange - invLower) / (invLimit - invLower)) * 50;
+          }
+          markerPos = Math.min(Math.max(markerPos, 0), 100);
+
+          if (calcSumInvChange < invLower) {
+              invZone = "C 買わなすぎ";
+              invMsg = "在庫投資が不足しています。未来の売上のために買取を強化してください。";
+              badgeClass = "bg-rose-900/50 text-rose-400 border-rose-500";
+          } else if (calcSumInvChange <= invLimit) {
+              invZone = "A 適正ゾーン";
+              invMsg = "適正な在庫増加量です！このペースを維持してください。";
+              badgeClass = "bg-emerald-900/50 text-emerald-400 border-emerald-500";
+          } else {
+              invZone = "B 買いすぎ";
+              invMsg = "上限を超過しています。キャッシュ圧迫を防ぐため買取を厳格化してください。";
+              badgeClass = "bg-rose-900/50 text-rose-400 border-rose-500 animate-pulse";
+              markerPos = 100;
+          }
+      } else {
+          invMsg = "目標が設定されていません";
+          badgeClass = "bg-slate-800 text-slate-400 border-slate-700";
+          markerPos = 0;
+      }
+
+      const marker = document.getElementById('newInvMarker');
+      if(marker) marker.style.left = markerPos + "%";
+      document.getElementById('newInvZoneBadge').innerText = invZone;
+      document.getElementById('newInvZoneBadge').className = `text-[10px] font-black px-2 py-1 rounded border ${badgeClass}`;
+      document.getElementById('newInvStatusMsg').innerText = invMsg;
+
+      updatePreview(); 
+    }
+
+    function changeAnalysisMode(mode) { 
+      analysisMode = mode; 
+      ['progress', 'inventory', 'margin'].forEach(m => { 
+        const el = document.getElementById('tab_' + m); 
+        if(el) el.classList.remove('active', 'text-sky-400', 'border-b-2', 'border-sky-400'); 
+      }); 
+      const activeEl = document.getElementById('tab_' + mode);
+      if(activeEl) activeEl.classList.add('active', 'text-sky-400', 'border-b-2', 'border-sky-400'); 
+      drawAnalysisChart(); 
+    }
+
+    function drawAnalysisChart() {
+      if(chartObj) chartObj.destroy();
+      const ctx = document.getElementById('analysisChart').getContext('2d');
+      const filteredData = getFilteredChartData();
+
+      if (analysisMode === "progress") {
+        let labels = [], actualCum = [], targetCum = [], sum = 0; 
+        const dailyT = storeTarget.cash ? storeTarget.cash / new Date(todayStr.substring(0,4), todayStr.substring(5,7), 0).getDate() : 0;
+        filteredData.forEach((r, i) => { 
+          labels.push(r.date.substring(5)); 
+          sum += r.cashFlow; actualCum.push(sum); 
+          targetCum.push(dailyT * (i+1)); 
+        });
+        chartObj = new Chart(ctx, { 
+          type: 'line', 
+          data: { 
+            labels: labels, 
+            datasets: [ 
+              { label: '現金増減 実績', data: actualCum, borderColor: '#fbbf24', backgroundColor: 'rgba(251, 191, 36, 0.2)', fill: true, tension: 0.1 }, 
+              { label: '現金化目標ペース', data: targetCum, borderColor: '#38bdf8', borderDash: [5, 5], tension: 0, fill: false } 
+            ]
+          }, 
+          options: { 
+            responsive: true, maintainAspectRatio: false, 
+            plugins: { legend: { labels: { color: '#cbd5e1'} } }, 
+            scales: { x: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'} }, y: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'} } } 
+          } 
+        });
+      } else if (analysisMode === "inventory") {
+        let labels = [], actualCum = [], targetCum = [], sum = 0; 
+        const dailyT = storeTarget.invLimit ? storeTarget.invLimit / new Date(todayStr.substring(0,4), todayStr.substring(5,7), 0).getDate() : 0;
+        filteredData.forEach((r, i) => { 
+          labels.push(r.date.substring(5)); 
+          
+          const netS = (Number(r.sales) || 0) - (Number(r.discount) || 0); 
+          const grossP = netS * (Number(r.grossProfitRate) / 100); 
+          const invChange = (Number(r.purchase) || 0) - (netS - grossP);
+          
+          sum += invChange; actualCum.push(sum); 
+          targetCum.push(dailyT * (i+1)); 
+        });
+        chartObj = new Chart(ctx, { 
+          type: 'line', 
+          data: { 
+            labels: labels, 
+            datasets: [ 
+              { label: '在庫増加 実績', data: actualCum, borderColor: '#e879f9', backgroundColor: 'rgba(232, 121, 249, 0.2)', fill: true, tension: 0.1 }, 
+              { label: '在庫増加上限ペース', data: targetCum, borderColor: '#f43f5e', borderDash: [5, 5], tension: 0, fill: false } 
+            ]
+          }, 
+          options: { 
+            responsive: true, maintainAspectRatio: false, 
+            plugins: { legend: { labels: { color: '#cbd5e1'} } }, 
+            scales: { x: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'} }, y: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'} } } 
+          } 
+        });
+      } else if (analysisMode === "margin") {
+        let labels = [], margins = [], targetMargins = []; 
+        filteredData.forEach(r => { 
+          labels.push(r.date.substring(5)); 
+          margins.push(Number(r.grossProfitRate) || 0); 
+          targetMargins.push(storeTarget.margin || 0);
+        });
+        chartObj = new Chart(ctx, { 
+          type: 'line', 
+          data: { 
+            labels: labels, 
+            datasets: [ 
+              { label: '実績 粗利率(%)', data: margins, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.2)', fill: true, tension: 0.3 },
+              { label: '目標 粗利率(%)', data: targetMargins, borderColor: '#38bdf8', borderDash: [5, 5], tension: 0, pointRadius: 0, fill: false }
+            ]
+          }, 
+          options: { 
+            responsive: true, maintainAspectRatio: false, 
+            plugins: { legend: { labels: { color: '#cbd5e1'} } }, 
+            scales: { x: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'} }, y: { ticks:{color:'#94a3b8'}, grid:{color:'#334155'}, min: 0 } } 
+          } 
+        });
+      }
+    }
+
+    function changeChartPeriod(period) {
+      currentChartPeriodMode = period;
+      
+      ['daily', 'weekly', 'last_month', 'monthly', 'all', 'custom'].forEach(p => {
+          const btn = document.getElementById('btn_' + p);
+          if(btn) {
+            if(p === period) {
+                btn.classList.add('bg-slate-800', 'text-white', 'shadow');
+                btn.classList.remove('text-slate-500');
+            } else {
+                btn.classList.remove('bg-slate-800', 'text-white', 'shadow');
+                btn.classList.add('text-slate-500');
+            }
+          }
+      });
+
+      const customUI = document.getElementById('customDateRange');
+      if (period === 'custom') {
+          if (customUI) { customUI.classList.remove('hidden'); customUI.classList.add('flex'); }
+          const now = new Date();
+          const todayStrLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          const currentMonthStrLocal = currentMonthStr || todayStrLocal.substring(0, 7);
+          
+          if (!document.getElementById('chartDateFrom').value) {
+              document.getElementById('chartDateFrom').value = currentMonthStrLocal + "-01";
+          }
+          if (!document.getElementById('chartDateTo').value) {
+              document.getElementById('chartDateTo').value = todayStrLocal;
+          }
+          updateCustomPeriod(); 
+          return;
+      } else if (customUI) {
+          customUI.classList.add('hidden'); customUI.classList.remove('flex');
+      }
+      drawAnalysisChart();
+    }
+
+    function updateCustomPeriod() {
+      chartStartDate = document.getElementById('chartDateFrom').value;
+      chartEndDate = document.getElementById('chartDateTo').value;
+      drawAnalysisChart();
+    }
+
+    function getFilteredChartData() {
+      const now = new Date();
+      const todayStrLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const currentMonthStrLocal = currentMonthStr || todayStrLocal.substring(0, 7);
+      const sevenDaysAgo = new Date(now.getTime() - (6 * 24 * 60 * 60 * 1000));
+      const sevenDaysAgoStr = new Date(sevenDaysAgo.getTime() - (sevenDaysAgo.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthStr = new Date(lastMonthDate.getTime() - (lastMonthDate.getTimezoneOffset() * 60000)).toISOString().substring(0, 7);
+      const lastDayOfLM = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+
+      let startDate = "";
+      let endDate = todayStrLocal;
+
+      if (currentChartPeriodMode === 'daily') {
+          startDate = todayStrLocal;
+      } else if (currentChartPeriodMode === 'weekly') {
+          startDate = sevenDaysAgoStr;
+      } else if (currentChartPeriodMode === 'last_month') {
+          startDate = lastMonthStr + "-01";
+          endDate = lastMonthStr + "-" + lastDayOfLM.toString().padStart(2, '0');
+      } else if (currentChartPeriodMode === 'monthly') {
+          startDate = currentMonthStrLocal + "-01";
+      } else if (currentChartPeriodMode === 'all') { 
+          startDate = "2000-01-01"; endDate = "2099-12-31"; 
+      } else if (currentChartPeriodMode === 'custom') { 
+          startDate = chartStartDate; endDate = chartEndDate; 
+      }
+      
+      if (!startDate || !endDate) return allTrackingData;
+      return allTrackingData.filter(r => r.date >= startDate && r.date <= endDate && r.branch === targetBranch);
+    }
+
+    // ==========================================
+    // ★追加: 月次振り返り（チェック・月報提出）の処理
+    // ==========================================
+    function updateCheckButtonUI(field, isChecked) {
+       const prefix = field.split('_')[0]; // attendance, report, inventory
+       const btn = document.getElementById('btn_' + prefix + '_check');
+       if(!btn) return;
+       
+       if(isChecked) {
+           btn.disabled = true;
+           btn.className = "bg-slate-800 text-emerald-500 font-bold py-2 px-6 rounded-lg text-xs border border-emerald-900 cursor-not-allowed shrink-0";
+           btn.innerHTML = '<i class="fa-solid fa-lock mr-1"></i>完了済';
+       } else {
+           btn.disabled = false;
+           btn.className = "bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-6 rounded-lg text-xs transition-all shadow shrink-0";
+           btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>完了にする';
+       }
+    }
+
+    async function loadMonthlyApplicationData() {
+        let sumSales=0, sumGross=0, sumCash=0, sumInv=0, sumW=0;
+        
+        allTrackingData.forEach(r => {
+            if(r.branch === targetBranch && r.date.startsWith(currentMonthStr)) {
+                let netS = (Number(r.sales)||0) - (Number(r.discount)||0);
+                let grossP = netS * (Number(r.grossProfitRate)/100);
+                sumSales += netS;
+                sumGross += grossP;
+                sumCash += Number(r.cashFlow) || 0;
+                sumInv += (Number(r.purchase)||0) - (netS - grossP);
+                sumW += Number(r.workHours) || 0;
+            }
+        });
+
+        if (confirmedStats) {
+            sumGross = confirmedStats.grossProfit;
+            sumInv = confirmedStats.totalPurchase - confirmedStats.cogs;
+        }
+
+        let marginRate = sumSales > 0 ? (sumGross / sumSales) * 100 : 0;
+        let laborProd = sumW > 0 ? sumGross / sumW : 0;
+
+        document.getElementById('monSumSales').innerText = Math.round(sumSales).toLocaleString();
+        document.getElementById('monSumGross').innerText = Math.round(sumGross).toLocaleString();
+        document.getElementById('monMarginRate').innerText = marginRate.toFixed(1);
+        document.getElementById('monSumCash').innerText = Math.round(sumCash).toLocaleString();
+        document.getElementById('monSumInv').innerText = (sumInv >= 0 ? "+" : "") + Math.round(sumInv).toLocaleString();
+        document.getElementById('monSumWork').innerText = sumW.toFixed(1);
+        document.getElementById('monLaborProd').innerText = Math.round(laborProd).toLocaleString();
+
+        document.getElementById('inpMonthlyComment').value = "読み込み中...";
+        
+        try {
+            const { data, error } = await db.from('fin_monthly_applications')
+              .select('*')
+              .eq('target_month', currentMonthStr)
+              .eq('branch', targetBranch)
+              .maybeSingle();
+
+            if (error) throw error;
+
+            if (data) {
+                updateCheckButtonUI('attendance_checked', data.attendance_checked);
+                updateCheckButtonUI('report_checked', data.report_checked);
+                updateCheckButtonUI('inventory_checked', data.inventory_checked);
+                document.getElementById('inpMonthlyComment').value = data.monthly_comment || "";
+                document.getElementById('lblMonthlySubmitter').innerText = data.submitted_by ? data.submitted_by : "未提出";
+            } else {
+                updateCheckButtonUI('attendance_checked', false);
+                updateCheckButtonUI('report_checked', false);
+                updateCheckButtonUI('inventory_checked', false);
+                document.getElementById('inpMonthlyComment').value = "";
+                document.getElementById('lblMonthlySubmitter').innerText = "未提出";
+            }
+        } catch (err) {
+            console.error(err);
+            document.getElementById('inpMonthlyComment').value = "";
+            document.getElementById('lblMonthlySubmitter').innerText = "取得失敗";
+        }
+    }
+
+    async function completeAppCheck(field) {
+        if (confirmedStats) {
+            alert("本部にてデータが既に確定されているため、ステータスは変更できません。");
+            return;
+        }
+        
+        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.permissions.editAll;
+        if (!isMgr) {
+            alert("この操作は店長・副店長のみ可能です。");
+            return;
+        }
+
+        // ★不可逆の念押し警告ダイアログ
+        let confirmMsg = "この項目を「完了」にすると、以降修正できなくなります。\n（どうしても修正が必要な場合は本部に連絡が必要です）\n\n本当に完了してよろしいですか？";
+        if(!confirm(confirmMsg)) return;
+
+        const prefix = field.split('_')[0];
+        const btn = document.getElementById('btn_' + prefix + '_check');
+        
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>処理中...';
+        btn.disabled = true;
+
+        try {
+            const { data: existing } = await db.from('fin_monthly_applications')
+              .select('*')
+              .eq('target_month', currentMonthStr)
+              .eq('branch', targetBranch)
+              .maybeSingle();
+
+            let payload = {
+                target_month: currentMonthStr,
+                branch: targetBranch,
+                updated_at: new Date().toISOString()
+            };
+            
+            if (existing) {
+                payload.attendance_checked = existing.attendance_checked;
+                payload.report_checked = existing.report_checked;
+                payload.inventory_checked = existing.inventory_checked;
+                payload.monthly_comment = existing.monthly_comment;
+                payload.submitted_by = existing.submitted_by;
+            }
+
+            payload[field] = true; // 完了(true)で強制上書き
+
+            const { error } = await db.from('fin_monthly_applications').upsert(payload, { onConflict: 'target_month,branch' });
+            if (error) throw error;
+            
+            updateCheckButtonUI(field, true);
+        } catch (err) {
+            alert("保存エラー: " + err.message);
+            updateCheckButtonUI(field, false);
+        }
+    }
+
+    async function submitMonthlyComment() {
+        if (confirmedStats) {
+            alert("本部にてデータが既に確定されているため、月報の編集はできません。");
+            return;
+        }
+        
+        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.permissions.editAll;
+        if (!isMgr) {
+            alert("月報の提出は店長・副店長のみ可能です。");
+            return;
+        }
+
+        const btn = document.getElementById('btnSubmitMonthly');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>送信中...';
+        
+        const text = document.getElementById('inpMonthlyComment').value;
+        
+        try {
+            const { data: existing } = await db.from('fin_monthly_applications')
+              .select('*')
+              .eq('target_month', currentMonthStr)
+              .eq('branch', targetBranch)
+              .maybeSingle();
+
+            let payload = {
+                target_month: currentMonthStr,
+                branch: targetBranch,
+                monthly_comment: text,
+                submitted_by: currentUser.name,
+                updated_at: new Date().toISOString()
+            };
+            
+            if (existing) {
+                payload.attendance_checked = existing.attendance_checked;
+                payload.report_checked = existing.report_checked;
+                payload.inventory_checked = existing.inventory_checked;
+            }
+
+            const { error } = await db.from('fin_monthly_applications').upsert(payload, { onConflict: 'target_month,branch' });
+            if (error) throw error;
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
+            alert("月報を送信しました。");
+            loadMonthlyApplicationData(); 
+        } catch (err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
+            alert("送信エラー: " + err.message);
+        }
+    }
+
+    function goHome() { if (appUrl && appUrl !== "?p=portal") { window.open(appUrl + "?p=portal", "_top"); } else { window.history.back(); } }
+    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
+  </script>
+</body>
+</html>

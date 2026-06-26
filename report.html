@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>業務レポート管理 (Supabase連携版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; }
+    .input-box { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; width: 100%; color: #f8fafc; outline: none; transition: all 0.2s; }
+    .input-box:focus { border-color: #f43f5e; box-shadow: 0 0 0 1px #f43f5e; }
+    .input-box:disabled { opacity: 0.5; cursor: not-allowed; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    select option { background-color: #0f172a; color: #ffffff; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-4">
+
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-40 rounded-2xl mb-6 shadow-lg">
+    <div class="flex items-center gap-3">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white mr-4 transition-colors"><i class="fa-solid fa-arrow-left"></i> ポータルへ</button>
+      <h1 class="text-lg font-black"><i class="fa-solid fa-file-contract text-rose-400 mr-2"></i>業務レポート管理</h1>
+      <span id="roleNotice" class="hidden text-xs text-slate-400 font-bold ml-4"><i class="fa-solid fa-circle-info text-amber-500 mr-1"></i>自身のレポート提出は個人評価用アカウントで行ってください</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="userNameHeader" class="text-xs font-bold text-rose-400"></span>
+      <button onclick="logout()" class="text-xs font-bold text-slate-500 hover:text-rose-400 transition-colors"><i class="fa-solid fa-right-from-bracket"></i></button>
+    </div>
+  </nav>
+
+  <div id="loading" class="flex flex-col justify-center items-center py-20">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-rose-500 mb-4"></i>
+    <p class="text-rose-400 text-sm font-black animate-pulse">データを読み込み中...</p>
+  </div>
+
+  <main id="content" class="hidden max-w-7xl mx-auto w-full flex-col gap-6">
+    
+    <div id="submitSection" class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl hidden">
+      <h2 class="font-bold text-white text-lg mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-pen-to-square text-sky-400 mr-2"></i>新規レポート提出</h2>
+      <div class="space-y-4 max-w-3xl">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">レポート種別</label>
+          <select id="rptType" class="input-box text-sm py-2 cursor-pointer font-bold">
+            <option value="業務改善提案">業務改善提案 (アイデア・施策)</option>
+            <option value="始末書(インシデント)">始末書・インシデント (ミス・トラブル)</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">タイトル</label>
+          <input type="text" id="rptTitle" class="input-box text-sm py-2" placeholder="例: レジ締め時の過不足について / スリーブ陳列の効率化案">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block font-bold">詳細内容 (事象と原因・対策、または改善アイデア)</label>
+          <textarea id="rptContent" class="input-box text-sm min-h-[150px] resize-y py-2" placeholder="できるだけ詳細に記述してください..."></textarea>
+        </div>
+        <button id="btnSubmit" onclick="submitReport()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-2">
+          <i class="fa-solid fa-paper-plane"></i> 本部・店長へ送信する
+        </button>
+      </div>
+    </div>
+
+    <div id="dashboardSection" class="hidden bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+      <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+        <h2 class="font-bold text-white text-lg"><i class="fa-solid fa-list-check text-emerald-400 mr-2"></i>提出済みレポート一覧・査定</h2>
+        <div class="flex gap-2 items-center">
+          <select id="branchFilter" onchange="loadReports()" class="input-box text-sm py-2 px-3 cursor-pointer w-auto font-bold"></select>
+          <button onclick="loadReports()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg text-xs border border-slate-600 transition-all shadow-md shrink-0">
+            <i class="fa-solid fa-rotate-right mr-1"></i>更新
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700 text-xs text-slate-400">
+              <th class="pb-3 px-2">ステータス</th>
+              <th class="pb-3 px-2">提出日時</th>
+              <th class="pb-3 px-2">店舗 / 提出者</th>
+              <th class="pb-3 px-2">種別</th>
+              <th class="pb-3 px-2">タイトル</th>
+              <th class="pb-3 px-2 text-center">査定PT</th>
+              <th class="pb-3 px-2 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody id="reportTbody" class="divide-y divide-slate-800/50">
+            <tr><td colspan="7" class="text-center py-10 text-slate-500 font-bold">データがありません。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="detailModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[60] p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950 shrink-0">
+        <h3 class="text-white font-black text-lg"><i class="fa-solid fa-magnifying-glass text-emerald-400 mr-2"></i>レポート詳細・査定</h3>
+        <button onclick="closeModal()" class="text-slate-500 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-6 overflow-y-auto flex-grow space-y-6">
+        
+        <div class="flex justify-between items-start gap-4">
+          <div class="flex-grow">
+            <div class="flex items-center gap-2 mb-2">
+              <span id="dtlStatus" class="text-[10px] font-bold px-2 py-0.5 rounded border"></span>
+              <span id="dtlType" class="text-[10px] font-bold px-2 py-0.5 rounded"></span>
+            </div>
+            <h2 id="dtlTitle" class="text-xl font-black text-white leading-tight break-all whitespace-normal"></h2>
+            <p class="text-[10px] text-slate-500 mt-2 font-mono">ID: <span id="dtlId"></span></p>
+          </div>
+          <div class="text-right shrink-0 bg-slate-950 border border-slate-800 p-3 rounded-xl">
+            <p class="text-[10px] text-slate-400 font-bold mb-1">店舗 / 提出者</p>
+            <p class="text-sm font-bold text-white"><span id="dtlBranch" class="mr-2"></span><span id="dtlAuthor" class="text-sky-400"></span></p>
+            <p class="text-[10px] text-slate-500 mt-2"><i class="fa-regular fa-clock mr-1"></i><span id="dtlDate"></span></p>
+          </div>
+        </div>
+        
+        <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 shadow-inner">
+          <p class="text-xs text-sky-400 font-bold mb-3 border-b border-slate-800 pb-1"><i class="fa-solid fa-pen-nib mr-1"></i>報告内容の詳細</p>
+          <p id="dtlContent" class="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed font-medium"></p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-slate-800/30 p-5 rounded-xl border border-slate-700 relative">
+            <div id="mgrLockMask" class="hidden absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] rounded-xl flex items-center justify-center z-10">
+              <span class="bg-slate-950 border border-slate-800 text-slate-400 text-xs px-3 py-1 rounded font-bold"><i class="fa-solid fa-lock mr-1"></i>店長権限が必要です</span>
+            </div>
+            <p class="text-xs text-amber-400 font-bold mb-2 flex items-center gap-1"><i class="fa-solid fa-user-tie"></i> 店長所見・コメント</p>
+            <textarea id="dtlMgrComment" class="input-box text-sm min-h-[100px] resize-y" placeholder="（店長用）事実確認や所見を入力してください"></textarea>
+          </div>
+
+          <div class="bg-fuchsia-950/10 p-5 rounded-xl border border-fuchsia-900/30 relative">
+            <div id="adminLockMask" class="hidden absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] rounded-xl flex items-center justify-center z-10">
+              <span class="bg-slate-950 border border-slate-800 text-slate-400 text-xs px-3 py-1 rounded font-bold"><i class="fa-solid fa-lock mr-1"></i>本部権限が必要です</span>
+            </div>
+            <div class="flex justify-between items-center mb-3">
+              <p class="text-xs text-fuchsia-400 font-bold flex items-center gap-1"><i class="fa-solid fa-crown"></i> 本部査定ポイント</p>
+              <div class="flex items-center gap-2 bg-slate-950 border border-slate-800 p-1.5 rounded-lg shadow-inner">
+                <input type="number" id="dtlPoints" class="bg-transparent text-right text-fuchsia-400 font-black text-xl w-24 outline-none placeholder-slate-600" placeholder="0">
+                <span class="text-xs text-slate-500 font-bold pr-1">pt</span>
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-500 leading-tight">※プラスは賞与加点、マイナスは減点として記録されます。<br>※確定すると変更できなくなります。</p>
+          </div>
+        </div>
+
+        <div id="actionArea" class="pt-5 border-t border-slate-800 flex flex-wrap gap-3 justify-end shrink-0"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let appUrl = "", currentUser = null, reportsData = [];
+    let currentReport = null;
+    
+    function cleanShopName(x) {
+        let name = String(x || "").replace(/Bee本舗/gi, '').trim();
+        if (name.includes('秋葉原')) return '秋葉原店';
+        if (name.includes('福岡') || name.includes('天神')) return '福岡天神店';
+        if (name.includes('名古屋') || name.includes('大須')) return '名古屋大須店';
+        if (name.includes('バトルタワー') || name.includes('BT')) return 'バトルタワー店'; 
+        if (name.includes('大阪') || name.includes('本店')) return '大阪本店'; 
+        if (name.includes('池袋')) return '池袋店';
+        if (!name.endsWith('店') && name !== "" && name !== "全店舗") return name + '店'; 
+        return name;
+    }
+
+    window.onload = async () => {
+      try {
+        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      } catch (e) { console.warn("GAS外"); }
+
+      const userStr = sessionStorage.getItem('finUser');
+      if (!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+      currentUser.branch = cleanShopName(currentUser.branch);
+      
+      if (!currentUser.permissions.canReport) { 
+        document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return; 
+      }
+      
+      document.getElementById('userNameHeader').innerText = currentUser.name + " (" + currentUser.branch + ")";
+
+      try {
+        await db.auth.signInWithPassword({
+            email: 'mihara.game@gmail.com',
+            password: '1234567'
+        });
+      } catch (e) {
+        console.error("Supabase Auth Error", e);
+      }
+
+      const isHQ = ["role_admin", "role_honbu"].includes(currentUser.roleId);
+      const isManager = ["role_general"].includes(currentUser.roleId);
+      
+      // ★大改修: ログインアカウントの権限に応じたUI要素の出し分け制御
+      if (isHQ || isManager) {
+        // 店長・管理者の場合は「一覧・査定機能」のみを表示（提出フォームは非表示）
+        document.getElementById('submitSection').classList.add('hidden');
+        document.getElementById('dashboardSection').classList.remove('hidden');
+        document.getElementById('roleNotice').classList.remove('hidden'); // 注意書きを表示
+        
+        const bFilter = document.getElementById('branchFilter');
+        bFilter.innerHTML = "";
+        if (isHQ) {
+           bFilter.innerHTML += '<option value="all">全店舗</option>';
+           ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'].forEach(b => {
+             bFilter.innerHTML += `<option value="${b}">${b}</option>`;
+           });
+        } else {
+           bFilter.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+           bFilter.disabled = true;
+           bFilter.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+        loadReports();
+      } else {
+        // 一般スタッフ（個人評価用）の場合は「新規提出フォーム」のみを表示（一覧は非表示）
+        document.getElementById('submitSection').classList.remove('hidden');
+        document.getElementById('dashboardSection').classList.add('hidden');
+        document.getElementById('roleNotice').classList.add('hidden');
+        
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+        document.getElementById('content').classList.add('flex');
+      }
+    };
+
+    async function submitReport() {
+      const type = document.getElementById('rptType').value;
+      const title = document.getElementById('rptTitle').value.trim();
+      const content = document.getElementById('rptContent').value.trim();
+      
+      if (!title || !content) { alert("タイトルと詳細内容を入力してください。"); return; }
+      if (!confirm("レポートを提出しますか？")) return;
+      
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 送信中...';
+      
+      try {
+        const { error } = await db.from('business_reports').insert({
+          branch: currentUser.branch,
+          author: currentUser.name,
+          type: type,
+          title: title,
+          content: content,
+          status: '店長確認待ち',
+          mgr_comment: '',
+          points: 0
+        });
+
+        if (error) throw error;
+
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 本部・店長へ送信する';
+        alert("レポートの提出が完了しました。");
+        document.getElementById('rptTitle').value = "";
+        document.getElementById('rptContent').value = "";
+        
+        if (!document.getElementById('dashboardSection').classList.contains('hidden')) {
+          loadReports();
+        }
+      } catch (err) {
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 本部・店長へ送信する';
+        alert("通信エラー: " + err.message);
+      }
+    }
+
+    async function loadReports() {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('content').classList.add('hidden');
+      
+      const bFilter = document.getElementById('branchFilter').value;
+      
+      try {
+        let query = db.from('business_reports').select('*').order('created_at', { ascending: false });
+        if (bFilter !== 'all') {
+           query = query.eq('branch', bFilter);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        reportsData = data.map(r => ({
+          id: r.id,
+          branch: r.branch,
+          author: r.author,
+          type: r.type,
+          title: r.title,
+          content: r.content,
+          status: r.status,
+          mgrComment: r.mgr_comment || "",
+          points: r.points || 0,
+          createdAt: new Date(r.created_at).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-')
+        }));
+        
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+        document.getElementById('content').classList.add('flex');
+        
+        renderTable();
+      } catch (err) {
+        document.getElementById('loading').classList.add('hidden');
+        alert("通信エラー: " + err.message);
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('reportTbody');
+      if (reportsData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-slate-500 font-bold">データがありません。</td></tr>';
+        return;
+      }
+
+      let html = "";
+      reportsData.forEach(r => {
+        let stClass = "bg-slate-800 text-slate-400 border-slate-700";
+        if (r.status === "店長確認待ち") stClass = "bg-amber-950 border-amber-900 text-amber-500";
+        else if (r.status === "本部承認待ち") stClass = "bg-blue-950 border-blue-900 text-blue-400";
+        else if (r.status === "確定") stClass = "bg-emerald-950 border-emerald-900 text-emerald-400";
+        else if (r.status === "差し戻し") stClass = "bg-rose-950 border-rose-900 text-rose-400";
+
+        let typeClass = "bg-slate-700 text-white";
+        if (r.type === "始末書(インシデント)") typeClass = "bg-rose-600 text-white";
+        else if (r.type === "業務改善提案") typeClass = "bg-sky-600 text-white";
+
+        let ptsStr = r.points === 0 ? "-" : (r.points > 0 ? `<span class="text-emerald-400">+${r.points}</span>` : `<span class="text-rose-400">${r.points}</span>`);
+
+        html += `
+          <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800/50">
+            <td class="py-3 px-2"><span class="text-[10px] font-bold px-2 py-1 rounded border ${stClass}">${r.status}</span></td>
+            <td class="py-3 px-2 font-mono text-slate-400 text-xs">${r.createdAt.substring(0, 16)}</td>
+            <td class="py-3 px-2 text-white font-bold text-xs">${r.branch} <span class="text-slate-500 font-normal">/ ${r.author}</span></td>
+            <td class="py-3 px-2"><span class="text-[10px] font-bold px-2 py-0.5 rounded ${typeClass}">${r.type}</span></td>
+            <td class="py-3 px-2 text-slate-200 font-bold truncate max-w-[200px]" title="${r.title}">${r.title}</td>
+            <td class="py-3 px-2 text-center font-mono font-black text-sm">${ptsStr}</td>
+            <td class="py-3 px-2 text-center">
+              <button onclick="openModal('${r.id}')" class="bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 text-[10px] font-bold px-3 py-1.5 rounded transition-all shadow-sm">詳細・査定</button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function openModal(id) {
+      currentReport = reportsData.find(r => r.id === id);
+      if (!currentReport) return;
+
+      document.getElementById('dtlId').innerText = currentReport.id;
+      document.getElementById('dtlDate').innerText = currentReport.createdAt;
+      document.getElementById('dtlTitle').innerText = currentReport.title;
+      document.getElementById('dtlBranch').innerText = currentReport.branch;
+      document.getElementById('dtlAuthor').innerText = currentReport.author;
+      document.getElementById('dtlContent').innerText = currentReport.content;
+
+      const stEl = document.getElementById('dtlStatus');
+      stEl.innerText = currentReport.status;
+      if (currentReport.status === "店長確認待ち") stEl.className = "text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-950 border-amber-900 text-amber-500";
+      else if (currentReport.status === "本部承認待ち") stEl.className = "text-[10px] font-bold px-2 py-0.5 rounded border bg-blue-950 border-blue-900 text-blue-400";
+      else if (currentReport.status === "確定") stEl.className = "text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-950 border-emerald-900 text-emerald-400";
+      else if (currentReport.status === "差し戻し") stEl.className = "text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-950 border-rose-900 text-rose-400";
+
+      const typeEl = document.getElementById('dtlType');
+      typeEl.innerText = currentReport.type;
+      if (currentReport.type === "始末書(インシデント)") typeEl.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-rose-600 text-white";
+      else if (currentReport.type === "業務改善提案") typeEl.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600 text-white";
+
+      const mgrEl = document.getElementById('dtlMgrComment');
+      const ptsEl = document.getElementById('dtlPoints');
+      mgrEl.value = currentReport.mgrComment || "";
+      ptsEl.value = currentReport.points || "";
+
+      const isHQ = ["role_admin", "role_honbu"].includes(currentUser.roleId);
+      const isManager = ["role_general"].includes(currentUser.roleId);
+      const isBranchMgr = (isManager && currentReport.branch === currentUser.branch) || isHQ;
+      
+      const isLocked = currentReport.status === "確定";
+
+      document.getElementById('mgrLockMask').classList.toggle('hidden', isBranchMgr && !isLocked);
+      mgrEl.disabled = !(isBranchMgr && !isLocked);
+
+      document.getElementById('adminLockMask').classList.toggle('hidden', isHQ && !isLocked);
+      ptsEl.disabled = !(isHQ && !isLocked);
+
+      buildActionButtons(isHQ, isBranchMgr, isLocked);
+
+      document.getElementById('detailModal').classList.replace('hidden', 'flex');
+    }
+
+    function buildActionButtons(isHQ, isBranchMgr, isLocked) {
+      const area = document.getElementById('actionArea');
+      area.innerHTML = "";
+
+      if (isLocked) {
+        area.innerHTML = `<span class="bg-emerald-950 border border-emerald-900 text-emerald-400 font-bold px-4 py-2 rounded-xl text-xs"><i class="fa-solid fa-lock mr-1"></i>査定確定済み</span>`;
+        return;
+      }
+
+      let btns = `<button onclick="closeModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-5 py-2.5 rounded-xl transition-all text-xs border border-slate-700 shadow-sm">閉じる</button>`;
+
+      if (currentReport.status === "店長確認待ち") {
+        if (isBranchMgr) {
+          btns += `<button onclick="updateReport('差し戻し')" class="bg-rose-950 hover:bg-rose-900 text-rose-400 border border-rose-900 font-bold px-5 py-2.5 rounded-xl transition-all text-xs shadow-sm"><i class="fa-solid fa-reply mr-1"></i>却下・差し戻す</button>`;
+          btns += `<button onclick="updateReport('本部承認待ち')" class="bg-sky-600 hover:bg-sky-500 text-white font-black px-6 py-2.5 rounded-xl shadow-lg transition-all text-sm"><i class="fa-solid fa-paper-plane mr-1"></i>所見をつけて本部へ提出</button>`;
+        }
+      } else if (currentReport.status === "本部承認待ち" || currentReport.status === "差し戻し") {
+        if (isHQ) {
+          btns += `<button onclick="updateReport('差し戻し')" class="bg-rose-950 hover:bg-rose-900 text-rose-400 border border-rose-900 font-bold px-5 py-2.5 rounded-xl transition-all text-xs shadow-sm"><i class="fa-solid fa-reply mr-1"></i>差し戻す</button>`;
+          btns += `<button onclick="updateReport('確定')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-2.5 rounded-xl shadow-lg transition-all text-sm"><i class="fa-solid fa-check-double mr-1"></i>ポイントと査定を確定</button>`;
+        } else if (isBranchMgr) {
+          btns += `<button onclick="updateReport('${currentReport.status}')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-md transition-all text-xs"><i class="fa-solid fa-floppy-disk mr-1"></i>コメントのみ上書き保存</button>`;
+        }
+      }
+      area.innerHTML = btns;
+    }
+
+    async function updateReport(newStatus) {
+      if (!currentReport) return;
+      if (newStatus === "確定" && !confirm("確定するとポイントの変更ができなくなります。\nよろしいですか？")) return;
+      
+      const mgrCommentVal = document.getElementById('dtlMgrComment').value;
+      const pointsVal = Number(document.getElementById('dtlPoints').value) || 0;
+
+      const btns = document.querySelectorAll('#actionArea button');
+      btns.forEach(b => b.disabled = true);
+      
+      try {
+        const { error } = await db.from('business_reports').update({
+          status: newStatus,
+          mgr_comment: mgrCommentVal,
+          points: pointsVal,
+          updated_at: new Date().toISOString()
+        }).eq('id', currentReport.id);
+
+        if (error) throw error;
+
+        closeModal();
+        loadReports();
+      } catch (err) {
+        alert("通信エラー: " + err.message);
+        btns.forEach(b => b.disabled = false);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').classList.replace('flex', 'hidden');
+    }
+
+    function goHome() { if (appUrl && appUrl !== "?p=portal") { window.open(appUrl + "?p=portal", "_top"); } else { window.history.back(); } }
+    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
+  </script>
+</body>
+</html>

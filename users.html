@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>アカウント・権限・お知らせ設定</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; }
+    .input-box { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; width: 100%; color: #f8fafc; outline: none; transition: all 0.2s; }
+    .input-box:focus { border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1; }
+    .input-box:disabled { opacity: 0.5; cursor: not-allowed; }
+    select option { background-color: #0f172a; color: #ffffff; }
+    .tab-btn.active { border-bottom: 2px solid #6366f1; color: #818cf8; font-weight: 900; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-4">
+
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-40 rounded-2xl mb-6 shadow-lg">
+    <div class="flex items-center gap-3">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white mr-4 transition-colors"><i class="fa-solid fa-arrow-left"></i> ポータルへ</button>
+      <h1 class="text-lg font-black"><i class="fa-solid fa-users-gear text-indigo-400 mr-2"></i>システム管理ダッシュボード</h1>
+    </div>
+  </nav>
+
+  <div id="loading" class="flex flex-col justify-center items-center py-20">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-indigo-500 mb-4"></i>
+    <p class="text-indigo-400 text-sm font-black animate-pulse">データを読み込み中...</p>
+  </div>
+
+  <main id="content" class="hidden max-w-7xl mx-auto w-full">
+    
+    <div class="flex gap-4 sm:gap-6 mb-6 border-b border-slate-800 overflow-x-auto whitespace-nowrap">
+      <button onclick="switchTab('users')" id="tab_users" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all">システムID管理</button>
+      <button onclick="switchTab('roles')" id="tab_roles" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all">権限マスタ設定</button>
+      <button onclick="switchTab('branches')" id="tab_branches" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all"><i class="fa-solid fa-store mr-1 text-emerald-400"></i>店舗マスタ</button>
+      <button onclick="switchTab('staffs')" id="tab_staffs" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all"><i class="fa-solid fa-user-tag mr-1 text-indigo-400"></i>現場スタッフ(PIN)</button>
+      <button onclick="switchTab('notices')" id="tab_notices" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all"><i class="fa-solid fa-bullhorn mr-1 text-rose-400"></i>お知らせ配信</button>
+      <button onclick="switchTab('logs')" id="tab_logs" class="hidden tab-btn text-sm text-slate-400 pb-2 px-4 transition-all"><i class="fa-solid fa-shield-halved mr-1 text-sky-400"></i>操作ログ</button>
+    </div>
+
+    <div id="view_branches" class="hidden grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div class="xl:col-span-1 flex flex-col gap-6">
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+          <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2">店舗マスタの登録・編集</h2>
+          <div class="space-y-4">
+            <div><label class="text-xs text-slate-400 mb-1 block">店舗コード (半角英数・作成後変更不可)</label><input type="text" id="b_id" class="input-box text-sm" placeholder="例: shinjuku"></div>
+            <div><label class="text-xs text-slate-400 mb-1 block">店舗名</label><input type="text" id="b_name" class="input-box text-sm" placeholder="例: 新宿店"></div>
+            <div><label class="text-xs text-slate-400 mb-1 block">並び順 (数字が小さいほど上)</label><input type="number" id="b_sort" class="input-box text-sm" value="99"></div>
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">ステータス</label>
+              <select id="b_active" class="input-box text-sm cursor-pointer border-emerald-900 focus:border-emerald-500 bg-emerald-950/20 text-emerald-100">
+                <option value="true">有効 (営業中)</option>
+                <option value="false">無効 (閉鎖・準備中)</option>
+              </select>
+            </div>
+            <button onclick="saveBranchMaster()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all mt-4 flex justify-center items-center gap-2 shadow-lg"><i class="fa-solid fa-save"></i> 保存する</button>
+            <button onclick="clearBranchForm()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold py-2 rounded-xl transition-all mt-2 text-xs border border-slate-700">フォームをクリア (新規追加)</button>
+          </div>
+        </div>
+      </div>
+      <div class="xl:col-span-2 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto h-fit">
+        <h2 class="font-bold text-white mb-4 flex justify-between items-center">
+          <span>登録済み店舗一覧</span>
+          <button onclick="loadBranchesMaster()" class="text-xs text-slate-400 hover:text-white transition-colors border border-slate-700 bg-slate-800 px-3 py-1 rounded"><i class="fa-solid fa-rotate-right mr-1"></i>更新</button>
+        </h2>
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead><tr class="border-b border-slate-700 text-xs text-slate-400"><th class="pb-2">コード(ID)</th><th class="pb-2">店舗名</th><th class="pb-2 text-center">並び順</th><th class="pb-2 text-center">ステータス</th><th class="pb-2 text-center">操作</th></tr></thead>
+          <tbody id="branchTbody" class="divide-y divide-slate-800/50"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view_users" class="hidden grid grid-cols-1 xl:grid-cols-3 gap-6">
+      
+      <div class="xl:col-span-1 flex flex-col gap-6">
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+          <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2">システムIDの登録・編集</h2>
+          <div class="space-y-4">
+            <div><label class="text-xs text-slate-400 mb-1 block">ユーザーID (半角英数)</label><input type="text" id="u_id" class="input-box text-sm"></div>
+            <div><label class="text-xs text-slate-400 mb-1 block">パスワード</label><input type="text" id="u_pass" class="input-box text-sm"></div>
+            <div><label class="text-xs text-slate-400 mb-1 block">氏名</label><input type="text" id="u_name" class="input-box text-sm"></div>
+            
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-slate-400 mb-1 block">権限 (アクセス範囲)</label>
+                <select id="u_role" class="input-box text-sm cursor-pointer"></select>
+              </div>
+              <div>
+                <label class="text-[10px] text-amber-400 mb-1 block font-bold">役職 (ボーナス計算用)</label>
+                <select id="u_roleLevel" class="input-box text-sm cursor-pointer border-amber-900 focus:border-amber-500 bg-amber-950/20 text-amber-100">
+                  <option value="店長">店長</option>
+                  <option value="副店長">副店長</option>
+                  <option value="一般">一般スタッフ</option>
+                  <option value="管理者">本部/管理者</option>
+                  <option value="店舗アカウント">店舗共通/モバイル用</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs text-slate-400 mb-1 block">所属店舗</label>
+              <select id="u_branch" class="input-box text-sm cursor-pointer"></select>
+            </div>
+            <button onclick="saveUser()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all mt-4">保存する</button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-rose-900 shadow-xl relative overflow-hidden">
+          <div class="absolute -right-4 -top-4 text-rose-500/10"><i class="fa-solid fa-shield-halved text-8xl"></i></div>
+          <div class="relative z-10">
+            <h2 class="font-bold text-white mb-3 border-b border-slate-800 pb-2"><i class="fa-solid fa-lock text-rose-400 mr-2"></i>人事評価マスターPIN</h2>
+            <p class="text-[10px] text-slate-400 mb-4 leading-relaxed">人事評価システムのロック解除に使用する「全店共通の6桁マスターキー」を変更できます。</p>
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs text-slate-400 mb-1 block">新しい6桁のPINコード</label>
+                <input type="password" id="hr_master_pin" maxlength="6" pattern="\d{6}" class="input-box text-sm font-mono tracking-widest text-lg" placeholder="数字6桁">
+              </div>
+              <button onclick="updateHrPin()" id="btnUpdateHrPin" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-lg"><i class="fa-solid fa-key"></i> マスターPINを変更</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="xl:col-span-2 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto h-fit">
+        <h2 class="font-bold text-white mb-4">登録済みアカウント一覧</h2>
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead><tr class="border-b border-slate-700 text-xs text-slate-400"><th class="pb-2">ID</th><th class="pb-2">氏名</th><th class="pb-2 text-amber-400">役職</th><th class="pb-2">権限</th><th class="pb-2">所属店舗</th><th class="pb-2 text-center">操作</th></tr></thead>
+          <tbody id="userTbody" class="divide-y divide-slate-800/50"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view_roles" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div class="lg:col-span-1 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl h-fit">
+        <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2">権限の登録・編集</h2>
+        <div class="space-y-4">
+          <div><label class="text-xs text-slate-400 mb-1 block">権限ID (例: role_manager)</label><input type="text" id="r_id" class="input-box text-sm"></div>
+          <div><label class="text-xs text-slate-400 mb-1 block">権限名 (表示用)</label><input type="text" id="r_name" class="input-box text-sm"></div>
+          
+          <div class="border-t border-slate-800 pt-3">
+            <p class="text-xs text-slate-400 mb-2 font-bold"><i class="fa-solid fa-eye text-sky-400 mr-1"></i>データスコープ設定</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-[10px] text-slate-500 block">店舗閲覧範囲</label><select id="r_view" class="input-box text-sm cursor-pointer"><option value="所属店舗のみ">所属店舗のみ</option><option value="全店舗">全店舗</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">データ編集範囲</label><select id="r_edit" class="input-box text-sm cursor-pointer"><option value="閲覧のみ">閲覧のみ (編集不可)</option><option value="所属店舗のみ">所属店舗のみ</option><option value="全店舗">全店舗</option></select></div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3">
+            <p class="text-xs text-slate-400 mb-2 font-bold"><i class="fa-solid fa-layer-group text-emerald-400 mr-1"></i>ツールへのアクセス</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="text-[10px] text-slate-500 block">業績分析データ</label><select id="r_ana" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">経営計画ｼﾐｭﾚｰﾀ</label><select id="r_plan" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">予実トラッカー</label><select id="r_track" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">在庫分析 (CSV)</label><select id="r_inv" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              
+              <div class="col-span-2">
+                <label class="text-[10px] text-fuchsia-400 block font-bold"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>在庫クラウド保存権限</label>
+                <select id="r_inv_save" class="input-box text-sm cursor-pointer border-fuchsia-500/50 bg-fuchsia-950/20 text-fuchsia-200">
+                  <option value="不可">不可 (読込のみ)</option>
+                  <option value="可能">可能 (上書確定可)</option>
+                </select>
+              </div>
+
+              <div><label class="text-[10px] text-slate-500 block">タスク管理</label><select id="r_task" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div>
+                <label class="text-[10px] text-slate-500 block">人事評価アクセス</label>
+                <select id="r_hr" class="input-box text-sm cursor-pointer border-blue-500/50 bg-blue-950/20 text-blue-200">
+                  <option value="不可">不可</option>
+                  <option value="一般(自分のみ)">一般(自分のみ)</option>
+                  <option value="店長(自店舗)">店長(自店舗)</option>
+                  <option value="幹部(全店舗)">幹部(全店舗)</option>
+                </select>
+              </div>
+              
+              <div class="col-span-2">
+                <label class="text-[10px] text-amber-400 block font-bold"><i class="fa-solid fa-user-check mr-1"></i>人事評価の対象にするか</label>
+                <select id="r_eval_target" class="input-box text-sm cursor-pointer border-amber-500/50 bg-amber-950/20 text-amber-200">
+                  <option value="対象">対象 (シート作成リストに表示する)</option>
+                  <option value="対象外">対象外 (管理者などリストから弾く)</option>
+                </select>
+              </div>
+
+              <div class="col-span-2">
+                <label class="text-[10px] text-rose-400 block font-bold"><i class="fa-solid fa-file-contract mr-1"></i>業務レポート管理</label>
+                <select id="r_report" class="input-box text-sm cursor-pointer border-rose-500/50 bg-rose-950/20 text-rose-200">
+                  <option value="不可">不可</option>
+                  <option value="可能">可能</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3">
+            <p class="text-xs text-slate-400 mb-2 font-bold"><i class="fa-solid fa-gear text-fuchsia-400 mr-1"></i>管理機能アクセス</p>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="col-span-2"><label class="text-[10px] text-slate-500 block">アカウント・権限管理</label><select id="r_manage" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">お知らせ配信</label><select id="r_notice" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-slate-500 block">操作ログ閲覧</label><select id="r_log" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              
+              <div class="col-span-2 grid grid-cols-2 gap-2 mt-1">
+                <div>
+                  <label class="text-[10px] text-amber-400 block font-bold"><i class="fa-solid fa-coins mr-1"></i>全社手残り額の閲覧</label>
+                  <select id="r_true_cash" class="input-box text-sm cursor-pointer border-amber-500/50 bg-amber-950/20 text-amber-200">
+                    <option value="不可">不可</option>
+                    <option value="可能">可能</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-[10px] text-sky-400 block font-bold"><i class="fa-solid fa-calendar-days mr-1"></i>期間変更(半期等)</label>
+                  <select id="r_period" class="input-box text-sm cursor-pointer border-sky-500/50 bg-sky-950/20 text-sky-200">
+                    <option value="不可(当月固定)">不可(当月固定)</option>
+                    <option value="可能">可能</option>
+                  </select>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <button onclick="saveRole()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all mt-4">権限を保存する</button>
+        </div>
+      </div>
+
+      <div class="lg:col-span-3 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
+        <h2 class="font-bold text-white mb-4">設定済み権限一覧</h2>
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700 text-xs text-slate-400">
+              <th class="pb-2">権限名 (ID)</th><th class="pb-2">データスコープ</th><th class="pb-2">管理/設定</th><th class="pb-2">分析/計画ツール</th><th class="pb-2 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody id="roleTbody" class="divide-y divide-slate-800/50"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view_staffs" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="md:col-span-1 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl h-fit">
+        <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2">現場スタッフ(PIN)登録</h2>
+        <p class="text-[10px] text-slate-400 mb-4 leading-relaxed">
+          タスク管理ツールで本人確認に利用する「名前」と「4桁のPINコード」を登録します。<br>
+        </p>
+        <div class="space-y-4">
+          <input type="hidden" id="s_old_name">
+          <input type="hidden" id="s_old_branch">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">所属店舗</label>
+            <select id="s_branch" class="input-box text-sm cursor-pointer"></select>
+          </div>
+          <div><label class="text-xs text-slate-400 mb-1 block">スタッフ名 (タスク表示用)</label><input type="text" id="s_name" class="input-box text-sm" placeholder="例: 山田"></div>
+          
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">役職 / 権限</label>
+            <select id="s_level" class="input-box text-sm cursor-pointer">
+              <option value="一般スタッフ">一般スタッフ</option>
+              <option value="店長・副店長">店長・副店長 (タスク割当可)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">4桁のPINコード</label>
+            <input type="password" id="s_pin" maxlength="4" pattern="\d{4}" class="input-box text-sm font-mono tracking-widest text-lg" placeholder="数字4桁">
+            <p class="text-[10px] text-slate-500 mt-1">※セキュリティのため登録後は伏字になります。</p>
+          </div>
+          <button onclick="saveStaff()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all mt-4 flex justify-center items-center gap-2"><i class="fa-solid fa-key"></i> 登録・更新する</button>
+        </div>
+      </div>
+
+      <div class="md:col-span-2 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
+        <h2 class="font-bold text-white mb-4">自店舗のスタッフ一覧</h2>
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead><tr class="border-b border-slate-700 text-xs text-slate-400"><th class="pb-2">店舗</th><th class="pb-2">役職</th><th class="pb-2">スタッフ名</th><th class="pb-2">PINコード</th><th class="pb-2 text-center">操作</th></tr></thead>
+          <tbody id="staffTbody" class="divide-y divide-slate-800/50"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view_notices" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-1 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl h-fit">
+        <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-bullhorn text-rose-400 mr-2"></i>新規お知らせの作成</h2>
+        <div class="space-y-4">
+          <div><label class="text-xs text-slate-400 mb-1 block">掲載日</label><input type="date" id="n_date" class="input-box text-sm [color-scheme:dark]"></div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">対象店舗</label>
+            <select id="n_branch" class="input-box text-sm cursor-pointer"></select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">重要度</label>
+            <select id="n_level" class="input-box text-sm cursor-pointer">
+              <option value="通常">通常</option>
+              <option value="警告">警告</option>
+              <option value="重要">重要</option>
+            </select>
+          </div>
+          <div><label class="text-xs text-slate-400 mb-1 block">タイトル (簡潔に)</label><input type="text" id="n_title" class="input-box text-sm"></div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">本文</label>
+            <textarea id="n_body" class="input-box text-sm min-h-[100px] resize-y"></textarea>
+          </div>
+          <button onclick="saveNotice()" id="btnSaveNotice" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 rounded-xl transition-all mt-4 flex justify-center items-center gap-2"><i class="fa-solid fa-paper-plane"></i> 配信する</button>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
+        <h2 class="font-bold text-white mb-4 border-b border-slate-800 pb-2">配信済みお知らせ一覧</h2>
+        <table class="w-full text-sm text-left whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700 text-xs text-slate-400">
+              <th class="pb-2">掲載日</th><th class="pb-2">対象</th><th class="pb-2">重要度</th><th class="pb-2">タイトル</th><th class="pb-2 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody id="noticeTbody" class="divide-y divide-slate-800/50">
+            <tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view_logs" class="hidden grid grid-cols-1 gap-6">
+      <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+          <h2 class="font-bold text-white"><i class="fa-solid fa-list-check text-sky-400 mr-2"></i>システム操作ログ (直近100件)</h2>
+          <button onclick="loadLogs()" class="text-xs text-slate-400 hover:text-white transition-colors border border-slate-700 bg-slate-800 px-3 py-1 rounded"><i class="fa-solid fa-rotate-right mr-1"></i>更新</button>
+        </div>
+        <table class="w-full text-left whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700 text-[10px] text-slate-400 font-bold">
+              <th class="pb-2 px-2">発生日時</th>
+              <th class="pb-2 px-2">ユーザーID</th>
+              <th class="pb-2 px-2">氏名</th>
+              <th class="pb-2 px-2">店舗</th>
+              <th class="pb-2 px-2">操作カテゴリ</th>
+              <th class="pb-2 px-2">操作詳細</th>
+            </tr>
+          </thead>
+          <tbody id="logTbody" class="divide-y divide-slate-800/50">
+            <tr><td colspan="6" class="text-center py-10 text-slate-500 font-bold">ログを読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================
+    // Supabaseの初期設定
+    // ==========================================
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let appUrl = "", currentUser = null;
+    let usersList = [], rolesList = [], branchesMasterList = [], branchList = [], staffsList = [];
+
+    window.onload = async () => {
+      try {
+        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      } catch(e) { console.warn("GAS外での実行", e); }
+      
+      const userStr = sessionStorage.getItem('finUser');
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+      
+      if(!currentUser.permissions.canManageUsers && !currentUser.permissions.canNotice && !currentUser.permissions.canLog && currentUser.permissions.canTasks === false) {
+        document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
+      }
+
+      let defaultTab = "";
+      if (currentUser.permissions.canManageUsers) {
+        document.getElementById("tab_users").classList.remove("hidden");
+        if (currentUser.roleId === "role_admin") {
+            document.getElementById("tab_roles").classList.remove("hidden");
+            document.getElementById("tab_branches").classList.remove("hidden"); // ★店舗マスタのタブを表示
+        }
+        defaultTab = "users";
+      }
+      
+      if (currentUser.permissions.canTasks !== false) {
+        document.getElementById("tab_staffs").classList.remove("hidden");
+        if (!defaultTab) defaultTab = "staffs";
+      }
+      
+      if (currentUser.permissions.canNotice) {
+        document.getElementById("tab_notices").classList.remove("hidden");
+        if (!defaultTab) defaultTab = "notices";
+      }
+      
+      if (currentUser.permissions.canLog) {
+        document.getElementById("tab_logs").classList.remove("hidden");
+        if (!defaultTab) defaultTab = "logs";
+      }
+      
+      if(defaultTab) {
+        switchTab(defaultTab);
+      }
+
+      if (currentUser.permissions.canManageUsers) {
+        loadData();
+        if (currentUser.roleId === "role_admin") {
+            loadBranchesMaster(); // ★店舗マスタを読み込み
+        }
+      } else {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+      }
+      
+      if (currentUser.permissions.canTasks !== false) loadStaffs();
+      if (currentUser.permissions.canLog) loadLogs();
+      if (currentUser.permissions.canNotice) {
+        const today = new Date();
+        const tzOffset = today.getTimezoneOffset() * 60000;
+        document.getElementById('n_date').value = (new Date(today - tzOffset)).toISOString().split('T')[0];
+        loadNotices();
+      }
+    };
+
+    async function addOperationLog(category, details) {
+      if (!currentUser.permissions.canLog && !currentUser.permissions.editAll && !currentUser.permissions.manageAccess) return;
+      const now = new Date();
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      const ts = new Date(now - tzOffset).toISOString().replace("T", " ").substring(0, 19);
+      try {
+        await db.from('operation_logs').insert([{
+           timestamp: ts, user_id: currentUser.id, name: currentUser.name, branch: currentUser.branch, category: category, details: details
+        }]);
+      } catch(e) { console.warn("Log insert error", e); }
+    }
+
+    async function loadData() {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('content').classList.add('hidden');
+      
+      try {
+        const [uRes, rRes, bRes] = await Promise.all([
+          db.from('system_users').select('*').order('created_at', { ascending: true }),
+          db.from('roles').select('*').order('created_at', { ascending: true }),
+          db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true })
+        ]);
+
+        if (uRes.error) throw uRes.error;
+        if (rRes.error) throw rRes.error;
+        if (bRes.error) throw bRes.error;
+
+        usersList = uRes.data.map(u => ({ id: u.id, pass: u.password, name: u.name, roleId: u.role_id, branch: u.branch, roleLevel: u.role_level }));
+        
+        rolesList = rRes.data.map(r => ({
+            id: r.id, name: r.name, viewScope: r.view_scope, editScope: r.edit_scope, manageAccess: r.manage_access,
+            canAnalytics: r.can_analytics, canPlanning: r.can_planning, canTracking: r.can_tracking, canInventory: r.can_inventory,
+            canInventorySave: r.can_inventory_save, canTasks: r.can_tasks, canHr: r.can_hr, isEvalTarget: r.is_eval_target,
+            canNotice: r.can_notice, canLog: r.can_log, canReport: r.can_report,
+            canViewTrueCash: r.can_view_true_cash,
+            canChangePeriod: r.can_change_period
+        }));
+        
+        branchList = bRes.data.map(b => b.name);
+        
+        const rSel = document.getElementById('u_role'); rSel.innerHTML = "";
+        rolesList.forEach(r => { 
+            if (!currentUser.permissions.editAll && r.id === "role_admin") return;
+            rSel.innerHTML += `<option value="${r.id}">${r.name}</option>`; 
+        });
+        
+        const bSel = document.getElementById('u_branch'); bSel.innerHTML = "";
+        if (!currentUser.permissions.editAll) {
+            bSel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+            bSel.value = currentUser.branch;
+            bSel.disabled = true;
+            bSel.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            bSel.disabled = false;
+            bSel.classList.remove('opacity-50', 'cursor-not-allowed');
+            branchList.forEach(b => { bSel.innerHTML += `<option value="${b}">${b}</option>`; });
+        }
+
+        renderUsers(); renderRoles();
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+      } catch (err) {
+        alert("データ取得エラー: " + err.message);
+        goHome();
+      }
+    }
+
+    // ==========================================
+    // ★追加: 店舗マスタ管理ロジック
+    // ==========================================
+    async function loadBranchesMaster() {
+      document.getElementById('branchTbody').innerHTML = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>`;
+      try {
+        const { data, error } = await db.from('branches').select('*').order('sort_order', { ascending: true });
+        if (error) throw error;
+        
+        branchesMasterList = data || [];
+        renderBranchesMaster();
+      } catch (err) {
+        document.getElementById('branchTbody').innerHTML = `<tr><td colspan="5" class="text-center py-4 text-rose-400 font-bold">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderBranchesMaster() {
+      let html = "";
+      if(branchesMasterList.length > 0) {
+        branchesMasterList.forEach(b => {
+          const statusBadge = b.is_active 
+            ? `<span class="px-2 py-1 rounded border border-emerald-900 bg-emerald-950/30 text-emerald-400 font-bold text-[10px]">有効</span>` 
+            : `<span class="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-500 font-bold text-[10px]">無効</span>`;
+          
+          html += `<tr class="hover:bg-slate-800/50 transition-colors">
+            <td class="py-3 px-2 text-slate-400 font-mono text-xs">${b.id}</td>
+            <td class="py-3 px-2 text-white font-bold">${b.name}</td>
+            <td class="py-3 px-2 text-center font-mono text-sky-300">${b.sort_order}</td>
+            <td class="py-3 px-2 text-center">${statusBadge}</td>
+            <td class="py-3 px-2 text-center">
+              <button onclick="editBranchMaster('${b.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded text-white border border-slate-600 transition-colors">編集</button>
+            </td>
+          </tr>`;
+        });
+      } else {
+        html = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">店舗マスタがありません。</td></tr>`;
+      }
+      document.getElementById('branchTbody').innerHTML = html;
+    }
+
+    function editBranchMaster(id) {
+      const b = branchesMasterList.find(x => x.id === id);
+      if(!b) return;
+      document.getElementById('b_id').value = b.id; 
+      document.getElementById('b_id').disabled = true; // 作成後のID変更は不具合の元になるためロック
+      document.getElementById('b_name').value = b.name; 
+      document.getElementById('b_sort').value = b.sort_order;
+      document.getElementById('b_active').value = b.is_active ? "true" : "false";
+      
+      window.scrollTo(0, 0);
+    }
+
+    function clearBranchForm() {
+      document.getElementById('b_id').value = "";
+      document.getElementById('b_id').disabled = false;
+      document.getElementById('b_name').value = "";
+      document.getElementById('b_sort').value = "99";
+      document.getElementById('b_active').value = "true";
+    }
+
+    async function saveBranchMaster() {
+      const payload = {
+        id: document.getElementById('b_id').value.trim(),
+        name: document.getElementById('b_name').value.trim(),
+        sort_order: parseInt(document.getElementById('b_sort').value, 10) || 99,
+        is_active: document.getElementById('b_active').value === "true"
+      };
+      
+      if(!payload.id || !payload.name) { alert("店舗コードと店舗名を入力してください。"); return; }
+      if(!/^[a-zA-Z0-9_]+$/.test(payload.id)) { alert("店舗コードは半角英数とアンダースコア(_)のみ使用可能です。"); return; }
+      
+      try {
+        const { error } = await db.from('branches').upsert({
+            id: payload.id, 
+            name: payload.name, 
+            sort_order: payload.sort_order, 
+            is_active: payload.is_active
+        });
+        if (error) throw error;
+        
+        alert("店舗マスタを保存しました。\n※UIに反映させるには画面のスーパーリロードが必要です。");
+        await addOperationLog("設定変更(店舗)", `店舗マスタ[${payload.name}]の情報を更新`);
+        clearBranchForm();
+        loadBranchesMaster();
+        if(currentUser.permissions.canLog) loadLogs();
+      } catch (err) {
+        alert("保存エラー: " + err.message);
+      }
+    }
+
+
+    async function loadStaffs() {
+      document.getElementById('staffTbody').innerHTML = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>`;
+      try {
+        let query = db.from('store_staffs').select('*').order('created_at', { ascending: true });
+        if (!currentUser.permissions.editAll) {
+          query = query.eq('branch', currentUser.branch);
+        }
+        
+        const [staffRes, bRes] = await Promise.all([
+          query,
+          db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true })
+        ]);
+        
+        if (staffRes.error) throw staffRes.error;
+        if (bRes.error) throw bRes.error;
+
+        staffsList = staffRes.data.map(s => ({ branch: s.branch, name: s.name, pin: s.pin, level: s.level }));
+        
+        const bSel = document.getElementById('s_branch');
+        bSel.innerHTML = "";
+        
+        if (!currentUser.permissions.editAll) {
+            bSel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+            bSel.value = currentUser.branch;
+            bSel.disabled = true;
+            bSel.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            bSel.disabled = false;
+            bSel.classList.remove('opacity-50', 'cursor-not-allowed');
+            bRes.data.forEach(b => { 
+                bSel.innerHTML += `<option value="${b.name}">${b.name}</option>`; 
+            });
+        }
+        
+        renderStaffs();
+      } catch (err) {
+        document.getElementById('staffTbody').innerHTML = `<tr><td colspan="5" class="text-center py-4 text-rose-400 font-bold">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderStaffs() {
+      let html = "";
+      if (staffsList && staffsList.length > 0) {
+        staffsList.forEach(s => {
+          let lvlColor = "text-slate-300";
+          if (s.level === "店長・副店長") lvlColor = "text-amber-400 font-bold";
+          
+          html += `<tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800/30">
+            <td class="py-3 px-2 text-slate-300 text-xs">${s.branch}</td>
+            <td class="py-3 px-2 text-xs ${lvlColor}">${s.level}</td>
+            <td class="py-3 px-2 text-white font-bold">${s.name}</td>
+            <td class="py-3 px-2 text-indigo-300 font-mono tracking-widest">****</td>
+            <td class="py-3 px-2 text-center">
+              <button onclick="deleteStaff('${s.branch}', '${s.name}')" class="text-[10px] bg-rose-950/50 hover:bg-rose-900 text-rose-400 border border-rose-900 px-2 py-1 rounded transition-colors"><i class="fa-solid fa-trash mr-1"></i>削除</button>
+            </td>
+          </tr>`;
+        });
+      } else {
+        html = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">登録されているスタッフがいません。</td></tr>`;
+      }
+      document.getElementById('staffTbody').innerHTML = html;
+    }
+
+    async function loadLogs() {
+      document.getElementById('logTbody').innerHTML = `<tr><td colspan="6" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>`;
+      try {
+        const { data, error } = await db.from('operation_logs')
+                                        .select('*')
+                                        .order('created_at', { ascending: false })
+                                        .limit(100);
+        if (error) throw error;
+        
+        let html = "";
+        if(data && data.length > 0) {
+          data.forEach(log => {
+            let catColor = "text-slate-300 border-slate-700 bg-slate-800";
+            if(log.category.includes("保存") || log.category.includes("作成") || log.category.includes("設定") || log.category.includes("配信") || log.category.includes("登録")) catColor = "text-emerald-400 border-emerald-900 bg-emerald-950/30";
+            else if(log.category.includes("更新") || log.category.includes("上書き")) catColor = "text-amber-400 border-amber-900 bg-amber-950/30";
+            else if(log.category.includes("削除")) catColor = "text-rose-400 border-rose-900 bg-rose-950/30";
+            else if(log.category.includes("出力")) catColor = "text-sky-400 border-sky-900 bg-sky-950/30";
+            else if(log.category.includes("ログイン")) catColor = "text-indigo-400 border-indigo-900 bg-indigo-950/30";
+
+            html += `<tr class="hover:bg-slate-800/50 transition-colors">
+              <td class="py-3 px-2 text-slate-400 font-mono text-[10px]">${log.timestamp}</td>
+              <td class="py-3 px-2 text-indigo-300 font-mono text-[10px]">${log.user_id}</td>
+              <td class="py-3 px-2 text-white text-xs font-bold">${log.name}</td>
+              <td class="py-3 px-2 text-slate-300 text-[11px]">${log.branch}</td>
+              <td class="py-3 px-2 text-xs font-bold"><span class="px-2 py-1 rounded border ${catColor}">${log.category}</span></td>
+              <td class="py-3 px-2 text-slate-300 text-xs truncate max-w-md" title="${log.details}">${log.details}</td>
+            </tr>`;
+          });
+        } else {
+          html = `<tr><td colspan="6" class="text-center py-10 text-slate-500 font-bold">記録されたログがありません。</td></tr>`;
+        }
+        document.getElementById('logTbody').innerHTML = html;
+      } catch (err) {
+        document.getElementById('logTbody').innerHTML = `<tr><td colspan="6" class="text-center py-4 text-rose-400 font-bold">${err.message}</td></tr>`;
+      }
+    }
+
+    function switchTab(tab) {
+      // ★branches タブを配列に追加
+      ['users', 'roles', 'branches', 'staffs', 'logs', 'notices'].forEach(t => {
+        const elTab = document.getElementById('tab_' + t);
+        const elView = document.getElementById('view_' + t);
+        if(elTab && elView) {
+          elTab.classList.remove('active');
+          elView.classList.add('hidden');
+        }
+      });
+      const targetTab = document.getElementById('tab_' + tab);
+      const targetView = document.getElementById('view_' + tab);
+      if(targetTab && targetView) {
+        targetTab.classList.add('active');
+        targetView.classList.remove('hidden');
+      }
+    }
+
+    function renderUsers() {
+      let html = "";
+      usersList.forEach(u => {
+        const roleObj = rolesList.find(r => r.id === u.roleId) || {name: "不明"};
+        const roleLvl = u.roleLevel || "一般";
+        let lvlColor = "text-slate-300";
+        if (roleLvl === "店長" || roleLvl === "副店長") lvlColor = "text-amber-400 font-bold";
+        else if (roleLvl === "管理者") lvlColor = "text-sky-400 font-bold";
+        
+        html += `<tr>
+          <td class="py-3 font-mono text-indigo-300">${u.id}</td><td class="py-3 text-white">${u.name}</td>
+          <td class="py-3 ${lvlColor}">${roleLvl}</td>
+          <td class="py-3 text-slate-300">${roleObj.name}</td><td class="py-3 text-slate-300">${u.branch}</td>
+          <td class="py-3 text-center"><button onclick="editUser('${u.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded text-white border border-slate-600">編集</button></td>
+        </tr>`;
+      });
+      document.getElementById('userTbody').innerHTML = html;
+    }
+
+    function renderRoles() {
+      let html = "";
+      rolesList.forEach(r => {
+        const lockStr = r.id === "role_admin" ? '<span class="text-[10px] text-rose-500 font-bold ml-2">※ロック</span>' : '';
+        const badge = (val, label, color) => val === "可能" ? `<span class="bg-${color}-900/50 text-${color}-400 border border-${color}-800 px-1 rounded mr-1">${label}</span>` : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">${label}</span>`;
+        
+        let hrBadge = `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">人事</span>`;
+        if (r.canHr && r.canHr !== "不可") {
+            hrBadge = `<span class="bg-blue-900/50 text-blue-400 border border-blue-800 px-1 rounded mr-1" title="${r.canHr}">人事(${r.canHr.split('(')[0]})</span>`;
+        }
+
+        const invSaveBadge = r.canInventorySave === "可能" 
+          ? `<span class="bg-fuchsia-900/50 text-fuchsia-400 border border-fuchsia-800 px-1 rounded mr-1" title="クラウド確定保存可能">庫セーブ</span>` 
+          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1" title="保存不可">庫セーブ</span>`;
+
+        const evalTargetBadge = r.isEvalTarget === "対象外"
+          ? `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1" title="評価対象外">対象外</span>`
+          : `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1 rounded mr-1" title="評価対象">評価対象</span>`;
+
+        const reportBadge = r.canReport === "可能" 
+          ? `<span class="bg-rose-900/50 text-rose-400 border border-rose-800 px-1 rounded mr-1">レポート</span>` 
+          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">レポート</span>`;
+
+        const trueCashBadge = r.canViewTrueCash === "可能" 
+          ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1 rounded mr-1">手残り</span>` 
+          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">手残り</span>`;
+
+        const periodBadge = r.canChangePeriod === "可能"
+          ? `<span class="bg-sky-900/50 text-sky-400 border border-sky-800 px-1 rounded mr-1">期間変更</span>`
+          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">期間変更</span>`;
+
+        const mgmtHtml = badge(r.manageAccess, "ｱｶｳﾝﾄ", "indigo") + badge(r.canNotice, "お知らせ", "rose") + badge(r.canLog, "ログ", "sky") + trueCashBadge + periodBadge;
+        const toolHtml = badge(r.canAnalytics, "業績", "sky") + badge(r.canPlanning, "計画", "emerald") + badge(r.canTracking, "予実", "amber") + badge(r.canInventory, "在庫", "fuchsia") + invSaveBadge + badge(r.canTasks, "ﾀｽｸ", "indigo") + hrBadge + evalTargetBadge + reportBadge;
+
+        html += `<tr>
+          <td class="py-3 text-white font-bold">${r.name}<br><span class="text-[10px] text-slate-500 font-mono">${r.id}</span></td>
+          <td class="py-3 leading-tight"><span class="text-[10px] text-slate-400">閲:</span> ${r.viewScope}<br><span class="text-[10px] text-slate-400">編:</span> ${r.editScope}</td>
+          <td class="py-3 text-[10px] whitespace-nowrap">${mgmtHtml}</td>
+          <td class="py-3 text-[10px] whitespace-nowrap">${toolHtml}</td>
+          <td class="py-3 text-center">
+            ${r.id !== "role_admin" ? `<button onclick="editRole('${r.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded text-white border border-slate-600">編集</button>` : lockStr}
+          </td>
+        </tr>`;
+      });
+      document.getElementById('roleTbody').innerHTML = html;
+    }
+
+    function editUser(id) {
+      const u = usersList.find(x => x.id === id);
+      if(!u) return;
+      document.getElementById('u_id').value = u.id; document.getElementById('u_pass').value = u.pass;
+      document.getElementById('u_name').value = u.name; document.getElementById('u_role').value = u.roleId;
+      document.getElementById('u_branch').value = u.branch;
+      document.getElementById('u_roleLevel').value = u.roleLevel || "一般";
+
+      window.scrollTo(0, 0);
+      switchTab('users');
+    }
+
+    function editRole(id) {
+      const r = rolesList.find(x => x.id === id);
+      if(!r) return;
+      document.getElementById('r_id').value = r.id; document.getElementById('r_name').value = r.name;
+      document.getElementById('r_view').value = r.viewScope; document.getElementById('r_edit').value = r.editScope;
+      document.getElementById('r_manage').value = r.manageAccess;
+      
+      document.getElementById('r_ana').value = r.canAnalytics;
+      document.getElementById('r_plan').value = r.canPlanning;
+      document.getElementById('r_track').value = r.canTracking;
+      document.getElementById('r_inv').value = r.canInventory;
+      document.getElementById('r_inv_save').value = r.canInventorySave || "不可";
+      document.getElementById('r_task').value = r.canTasks;
+      document.getElementById('r_hr').value = r.canHr || "不可"; 
+      document.getElementById('r_eval_target').value = r.isEvalTarget || "対象";
+      document.getElementById('r_notice').value = r.canNotice;
+      document.getElementById('r_log').value = r.canLog;
+      document.getElementById('r_report').value = r.canReport || "不可";
+      
+      document.getElementById('r_true_cash').value = r.canViewTrueCash || "不可";
+      document.getElementById('r_period').value = r.canChangePeriod || "不可";
+
+      window.scrollTo(0, 0);
+      switchTab('roles');
+    }
+
+    async function saveRole() {
+      const payload = {
+        id: document.getElementById('r_id').value, name: document.getElementById('r_name').value,
+        viewScope: document.getElementById('r_view').value, editScope: document.getElementById('r_edit').value,
+        manageAccess: document.getElementById('r_manage').value,
+        canAnalytics: document.getElementById('r_ana').value,
+        canPlanning: document.getElementById('r_plan').value,
+        canTracking: document.getElementById('r_track').value,
+        canInventory: document.getElementById('r_inv').value,
+        canInventorySave: document.getElementById('r_inv_save').value, 
+        canTasks: document.getElementById('r_task').value,
+        canHr: document.getElementById('r_hr').value,
+        isEvalTarget: document.getElementById('r_eval_target').value,
+        canNotice: document.getElementById('r_notice').value,
+        canLog: document.getElementById('r_log').value,
+        canReport: document.getElementById('r_report').value,
+        canViewTrueCash: document.getElementById('r_true_cash').value,
+        canChangePeriod: document.getElementById('r_period').value
+      };
+      if(!payload.id || !payload.name) { alert("必須項目を入力してください。"); return; }
+      
+      try {
+        const { error } = await db.from('roles').upsert({
+            id: payload.id, name: payload.name, view_scope: payload.viewScope, edit_scope: payload.editScope, manage_access: payload.manageAccess,
+            can_analytics: payload.canAnalytics, can_planning: payload.canPlanning, can_tracking: payload.canTracking, can_inventory: payload.canInventory,
+            can_inventory_save: payload.canInventorySave, can_tasks: payload.canTasks, can_hr: payload.canHr, is_eval_target: payload.isEvalTarget,
+            can_notice: payload.canNotice, can_log: payload.canLog, can_report: payload.canReport, 
+            can_view_true_cash: payload.canViewTrueCash,
+            can_change_period: payload.canChangePeriod,
+            updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+        alert("権限情報を保存しました。");
+        await addOperationLog("設定変更(権限)", `権限[${payload.id}]の情報を更新`);
+        loadData();
+        if(currentUser.permissions.canLog) loadLogs();
+      } catch (err) {
+        alert("保存エラー: " + err.message);
+      }
+    }
+
+    async function saveUser() {
+      const payload = {
+        id: document.getElementById('u_id').value, pass: document.getElementById('u_pass').value,
+        name: document.getElementById('u_name').value, roleId: document.getElementById('u_role').value,
+        branch: document.getElementById('u_branch').value,
+        roleLevel: document.getElementById('u_roleLevel').value 
+      };
+      if(!payload.id || !payload.pass || !payload.name) { alert("必須項目を入力してください。"); return; }
+      
+      try {
+        const { error } = await db.from('system_users').upsert({
+            id: payload.id, password: payload.pass, name: payload.name, role_id: payload.roleId, branch: payload.branch, role_level: payload.roleLevel, updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+        alert("ユーザー情報を保存しました。");
+        await addOperationLog("設定変更(ユーザー)", `ユーザー[${payload.id}]の情報を更新`);
+        loadData();
+        if(currentUser.permissions.canLog) loadLogs();
+      } catch (err) {
+        alert("保存エラー: " + err.message);
+      }
+    }
+
+    async function saveStaff() {
+      const targetBranch = currentUser.permissions.editAll ? document.getElementById('s_branch').value : currentUser.branch;
+      const oldBranch = document.getElementById('s_old_branch').value;
+      const oldName = document.getElementById('s_old_name').value;
+      const name = document.getElementById('s_name').value.trim();
+      const pin = document.getElementById('s_pin').value.trim();
+      const level = document.getElementById('s_level').value;
+      
+      if(!name || pin.length !== 4 || isNaN(pin)) { 
+          alert("スタッフ名と、4桁の数字PINコードを正しく入力してください。"); 
+          return; 
+      }
+      
+      try {
+        if (oldBranch && oldName) {
+            const { error } = await db.from('store_staffs').update({
+                branch: targetBranch, name: name, pin: pin, level: level, updated_at: new Date().toISOString()
+            }).eq('branch', oldBranch).eq('name', oldName);
+            if (error) throw error;
+        } else {
+            const { error } = await db.from('store_staffs').insert([{
+                branch: targetBranch, name: name, pin: pin, level: level
+            }]);
+            if (error) throw error;
+        }
+        
+        alert("スタッフ情報を保存しました。"); 
+        document.getElementById('s_old_branch').value = "";
+        document.getElementById('s_old_name').value = "";
+        document.getElementById('s_name').value = "";
+        document.getElementById('s_pin').value = "";
+        document.getElementById('s_level').value = "一般スタッフ";
+        
+        await addOperationLog("設定変更(スタッフ)", `店舗[${targetBranch}]のスタッフ[${name}]情報を更新`);
+        loadStaffs(); 
+        if(currentUser.permissions.canLog) loadLogs(); 
+      } catch (err) {
+        alert("保存エラー: " + err.message);
+      }
+    }
+    
+    async function deleteStaff(branch, name) {
+      if(!confirm(`${name} さんの情報を削除してもよろしいですか？`)) return;
+      const targetBranch = currentUser.permissions.editAll ? branch : currentUser.branch;
+      
+      try {
+        const { error } = await db.from('store_staffs').delete().eq('branch', targetBranch).eq('name', name);
+        if (error) throw error;
+        alert(`${name} さんの情報を削除しました。`);
+        await addOperationLog("設定削除(スタッフ)", `店舗[${targetBranch}]のスタッフ[${name}]を削除`);
+        loadStaffs(); 
+        if (currentUser.permissions.canLog) loadLogs(); 
+      } catch (err) {
+        alert("削除エラー: " + err.message);
+      }
+    }
+
+    async function updateHrPin() {
+      const pin = document.getElementById('hr_master_pin').value;
+      if (!pin || pin.length !== 6 || isNaN(pin)) {
+        alert("6桁の数字を入力してください。");
+        return;
+      }
+      if (!confirm("人事評価システムのマスターPINを変更しますか？\n（変更後は現場の全スタッフに新しいPINを共有する必要があります）")) return;
+      
+      const btn = document.getElementById('btnUpdateHrPin');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 変更中...';
+      
+      try {
+        const { error } = await db.from('system_settings').upsert({
+            key: 'hr_master_pin', value: pin, updated_at: new Date().toISOString()
+        });
+        if (error) throw error;
+        
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-key"></i> マスターPINを変更';
+        alert("マスターPINを更新しました。");
+        document.getElementById('hr_master_pin').value = "";
+        await addOperationLog("設定変更(システム)", `人事評価マスターPINを更新`);
+        if(currentUser.permissions.canLog) loadLogs();
+      } catch (err) {
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-key"></i> マスターPINを変更';
+        alert("更新エラー: " + err.message);
+      }
+    }
+
+    async function loadNotices() {
+      document.getElementById('noticeTbody').innerHTML = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>`;
+      try {
+        const [nRes, bRes] = await Promise.all([
+          db.from('notices').select('*').order('created_at', { ascending: false }),
+          db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true })
+        ]);
+        
+        if (nRes.error) throw nRes.error;
+        if (bRes.error) throw bRes.error;
+        
+        const nSel = document.getElementById('n_branch');
+        if (nSel && nSel.options.length <= 1) {
+           nSel.innerHTML = '<option value="全店舗">全店舗</option>';
+           bRes.data.forEach(b => { nSel.innerHTML += `<option value="${b.name}">${b.name}</option>`; });
+        }
+
+        let html = "";
+        if(nRes.data && nRes.data.length > 0) {
+          nRes.data.forEach(n => {
+            let lvlColor = "text-slate-300";
+            if(n.level === "重要") lvlColor = "text-rose-400 font-bold";
+            if(n.level === "警告") lvlColor = "text-amber-400 font-bold";
+            
+            html += `<tr class="hover:bg-slate-800/50 transition-colors">
+              <td class="py-3 px-2 text-slate-400 font-mono text-xs">${n.date}</td>
+              <td class="py-3 px-2 text-slate-300 text-xs">${n.branch}</td>
+              <td class="py-3 px-2 text-xs ${lvlColor}">${n.level}</td>
+              <td class="py-3 px-2 text-white text-sm truncate max-w-[200px]" title="${n.title}">${n.title}</td>
+              <td class="py-3 px-2 text-center">
+                <button onclick="deleteNotice('${n.id}')" class="text-[10px] bg-rose-950/50 hover:bg-rose-900 text-rose-400 border border-rose-900 px-2 py-1 rounded transition-colors"><i class="fa-solid fa-trash"></i></button>
+              </td>
+            </tr>`;
+          });
+        } else {
+          html = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">配信されたお知らせはありません。</td></tr>`;
+        }
+        document.getElementById('noticeTbody').innerHTML = html;
+      } catch (err) {
+        document.getElementById('noticeTbody').innerHTML = `<tr><td colspan="5" class="text-center py-4 text-rose-400 font-bold">${err.message}</td></tr>`;
+      }
+    }
+
+    async function saveNotice() {
+      const payload = {
+        date: document.getElementById('n_date').value.replace(/-/g, '/'),
+        branch: document.getElementById('n_branch').value,
+        level: document.getElementById('n_level').value,
+        title: document.getElementById('n_title').value,
+        body: document.getElementById('n_body').value
+      };
+      
+      if(!payload.date || !payload.title || !payload.body) { alert("必須項目を入力してください。"); return; }
+      
+      const btn = document.getElementById('btnSaveNotice');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 配信中...';
+      
+      try {
+        const { error } = await db.from('notices').insert([{
+            date: payload.date, branch: payload.branch, level: payload.level, title: payload.title, body: payload.body
+        }]);
+        if (error) throw error;
+
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 配信する';
+        alert("お知らせを配信しました。"); 
+        document.getElementById('n_title').value = '';
+        document.getElementById('n_body').value = '';
+        await addOperationLog("お知らせ配信", `お知らせ[${payload.title}]を配信`);
+        loadNotices(); 
+        if (currentUser.permissions.canLog) loadLogs(); 
+      } catch (err) {
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 配信する';
+        alert("配信エラー: " + err.message);
+      }
+    }
+
+    async function deleteNotice(id) {
+      if(!confirm("このお知らせを削除してもよろしいですか？")) return;
+      
+      try {
+        const { error } = await db.from('notices').delete().eq('id', id);
+        if (error) throw error;
+        await addOperationLog("設定削除(お知らせ)", `お知らせを削除`);
+        loadNotices(); 
+        if (currentUser.permissions.canLog) loadLogs(); 
+      } catch (err) {
+        alert("削除エラー: " + err.message);
+      }
+    }
+
+    function goHome() { if (appUrl) window.open(appUrl + "?p=portal", "_top"); }
+  </script>
+</body>
+</html>

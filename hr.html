@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FIN-STRAT 人事評価システム (Supabase完全連携版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Roboto+Mono:wght@700&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #f8fafc; color: #334155; }
+    .font-mono { font-family: 'Roboto Mono', monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 3px; }
+    
+    .input-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.5rem; width: 100%; color: #334155; outline: none; transition: all 0.2s; font-size: 0.875rem;}
+    .input-box:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+    .input-box:disabled { opacity: 0.6; cursor: not-allowed; background: #f1f5f9; }
+    
+    .range-slider { -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #e2e8f0; outline: none; }
+    .range-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; transition: transform 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .range-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .range-slider:disabled::-webkit-slider-thumb { background: #94a3b8; cursor: not-allowed; box-shadow: none; }
+
+    .status-badge { padding: 4px 10px; border-radius: 9999px; font-weight: 900; font-size: 11px; letter-spacing: 0.05em; border: 1px solid; }
+    .status-S1 { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; } 
+    .status-S2 { background: #fef08a; color: #a16207; border-color: #fde047; } 
+    .status-S3 { background: #fbcfe8; color: #a21caf; border-color: #f9a8d4; } 
+    .status-S4 { background: #dcfce3; color: #15803d; border-color: #bbf7d0; } 
+    .status-S5 { background: #1e293b; color: #f8fafc; border-color: #0f172a; } 
+
+    .tab-btn { padding: 12px 24px; font-weight: 700; color: #64748b; border-bottom: 3px solid transparent; transition: all 0.2s; }
+    .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    
+    .accordion-content { transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out; overflow: hidden; }
+
+    .pin-btn { background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 1.5rem; font-weight: 900; padding: 1rem; border-radius: 0.75rem; transition: all 0.1s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; }
+    .pin-btn:active { background: #3b82f6; color: #ffffff; transform: scale(0.95); }
+    .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #cbd5e1; transition: all 0.2s; background: transparent; }
+    .pin-dot.filled { background-color: #3b82f6; border-color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.5); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col relative bg-slate-50">
+
+  <div id="securityLockScreen" class="fixed inset-0 bg-slate-900 z-[100] flex flex-col justify-center items-center p-4 hidden">
+    <div class="w-full max-w-sm flex flex-col items-center">
+      <div class="bg-blue-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/20">
+        <i class="fa-solid fa-shield-halved text-3xl text-white"></i>
+      </div>
+      <h2 class="text-2xl font-black text-white mb-2 tracking-widest">HR SECURITY</h2>
+      <p class="text-slate-400 text-xs font-bold mb-8 text-center">給与・評価データ保護のため<br>専用マスターキーを入力してください</p>
+      
+      <div class="flex gap-3 mb-8">
+        <div class="pin-dot" id="secDot1"></div><div class="pin-dot" id="secDot2"></div><div class="pin-dot" id="secDot3"></div>
+        <div class="pin-dot" id="secDot4"></div><div class="pin-dot" id="secDot5"></div><div class="pin-dot" id="secDot6"></div>
+      </div>
+      
+      <div id="secErrorMsg" class="h-6 text-rose-500 font-bold text-sm mb-4 opacity-0 transition-opacity">キーが間違っています</div>
+
+      <div class="grid grid-cols-3 gap-4 w-full px-4">
+        <button onclick="inputSecKey('1')" class="pin-btn">1</button><button onclick="inputSecKey('2')" class="pin-btn">2</button><button onclick="inputSecKey('3')" class="pin-btn">3</button>
+        <button onclick="inputSecKey('4')" class="pin-btn">4</button><button onclick="inputSecKey('5')" class="pin-btn">5</button><button onclick="inputSecKey('6')" class="pin-btn">6</button>
+        <button onclick="inputSecKey('7')" class="pin-btn">7</button><button onclick="inputSecKey('8')" class="pin-btn">8</button><button onclick="inputSecKey('9')" class="pin-btn">9</button>
+        <button onclick="goHome()" class="pin-btn text-slate-400 text-sm"><i class="fa-solid fa-arrow-left mr-1"></i>戻る</button><button onclick="inputSecKey('0')" class="pin-btn">0</button><button onclick="clearSecKey()" class="pin-btn text-rose-500"><i class="fa-solid fa-delete-left"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bg-blue-600 text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center gap-4">
+        <button onclick="goHome()" class="text-blue-200 hover:text-white transition-colors"><i class="fa-solid fa-arrow-left text-lg"></i></button>
+        <h1 class="text-xl font-black tracking-tight"><i class="fa-solid fa-file-signature mr-2 text-blue-300"></i>人事評価ポータル</h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <span id="headerUserName" class="text-sm font-bold text-blue-100"></span>
+        <button onclick="logout()" class="text-xs bg-blue-700 hover:bg-blue-800 border border-blue-500 px-3 py-1.5 rounded-lg transition-colors font-bold shadow-inner">ログアウト</button>
+      </div>
+    </div>
+  </nav>
+
+  <div id="loading" class="fixed inset-0 bg-white/90 backdrop-blur-sm flex flex-col justify-center items-center z-50 transition-opacity hidden">
+    <i class="fa-solid fa-spinner fa-spin text-5xl text-blue-500 mb-4"></i>
+    <p id="loadingText" class="text-blue-600 font-black tracking-widest animate-pulse mt-4">データを同期中...</p>
+  </div>
+
+  <main id="content" class="hidden flex-grow max-w-6xl mx-auto w-full p-4 md:p-6 flex flex-col gap-6">
+    <div class="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap bg-white rounded-t-2xl shadow-sm px-2 pt-2">
+      <button onclick="switchTab('my')" id="tab_my" class="tab-btn active"><i class="fa-solid fa-user mr-2"></i>マイ評価シート</button>
+      <button onclick="switchTab('team')" id="tab_team" class="hidden tab-btn"><i class="fa-solid fa-users mr-2"></i>メンバー評価</button>
+      <button onclick="switchTab('admin')" id="tab_admin" class="hidden tab-btn"><i class="fa-solid fa-chart-pie mr-2"></i>全社分析</button>
+    </div>
+
+    <div id="view_my" class="flex flex-col gap-6">
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div>
+          <h2 class="text-lg font-black text-slate-800">あなたの評価シート</h2>
+          <p class="text-xs text-slate-500 mt-1 font-bold">現在選択中の評価期: <span id="currentPeriodLabel" class="text-blue-600 text-sm">--</span></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button onclick="openMasterCriteriaModal()" class="bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 font-bold px-4 py-2 rounded-xl shadow-sm transition-all whitespace-nowrap"><i class="fa-solid fa-book mr-1"></i>評価基準一覧</button>
+          <select id="periodSelector" onchange="changePeriod()" class="bg-slate-50 border border-slate-300 text-slate-700 text-sm font-bold rounded-xl px-4 py-2 outline-none focus:border-blue-500 flex-grow cursor-pointer">
+            <option value="2026年_上半期">2026年_上半期</option>
+            <option value="2026年_下半期">2026年_下半期</option>
+          </select>
+          <button id="btnNewEval" onclick="openNewEvalModal()" class="hidden bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-xl shadow-md transition-all whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i>新規作成</button>
+        </div>
+      </div>
+
+      <div id="myEvalEmpty" class="hidden bg-slate-50 border-2 border-dashed border-slate-300 rounded-3xl p-10 flex flex-col justify-center items-center text-center">
+        <div class="bg-blue-100 text-blue-500 w-16 h-16 rounded-full flex justify-center items-center text-2xl mb-4"><i class="fa-solid fa-file-circle-plus"></i></div>
+        <h3 class="font-black text-slate-700 text-lg mb-2">評価シートがまだ作成されていません</h3>
+        <p class="text-sm text-slate-500 font-bold max-w-md">店長があなたの評価シートを作成するまでお待ちください。<br>右上のボタンから評価項目の詳細を確認できます。</p>
+        <button onclick="openMasterCriteriaModal()" class="mt-6 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 font-bold px-6 py-3 rounded-xl shadow-sm transition-all"><i class="fa-solid fa-book-open text-blue-500 mr-2"></i>評価項目の詳細を確認する</button>
+      </div>
+
+      <div id="myEvalCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4"></div>
+    </div>
+
+    <div id="view_team" class="hidden flex-col gap-6">
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-black text-slate-800">メンバーの評価一覧</h2>
+          <button onclick="openMasterCriteriaModal()" class="bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all whitespace-nowrap"><i class="fa-solid fa-book mr-1"></i>評価基準マスタ</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm whitespace-nowrap">
+            <thead>
+              <tr class="border-b-2 border-slate-200 text-slate-500">
+                <th class="pb-3 pr-4">ステータス</th><th class="pb-3 px-4">氏名</th><th class="pb-3 px-4">店舗</th><th class="pb-3 px-4 text-center">最終スコア</th><th class="pb-3 pl-4 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="teamTbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="view_admin" class="hidden flex-col gap-6">
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-black text-slate-800">全社評価ダッシュボード</h2>
+          <button onclick="openMasterCriteriaModal()" class="bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all whitespace-nowrap"><i class="fa-solid fa-book mr-1"></i>評価基準マスタ</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm whitespace-nowrap">
+            <thead>
+              <tr class="border-b-2 border-slate-200 text-slate-500">
+                <th class="pb-3 pr-4">ステータス</th><th class="pb-3 px-4">氏名</th><th class="pb-3 px-4">店舗</th><th class="pb-3 px-4 text-center">最終スコア</th><th class="pb-3 pl-4 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="adminTbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <div id="view_evaluation" class="hidden flex-col gap-6">
+      <div class="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute right-0 top-0 h-full w-32 bg-blue-500/10 blur-2xl"></div>
+        <button onclick="showDashboard()" class="text-xs font-bold text-slate-400 hover:text-white mb-4 transition-colors"><i class="fa-solid fa-caret-left mr-1"></i>一覧へ戻る</button>
+        
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 relative z-10">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <span id="sheetPeriod" class="text-xs font-bold text-blue-400 bg-blue-950/50 border border-blue-900 px-2 py-0.5 rounded">--</span>
+              <span id="sheetStatus" class="status-badge status-S1">--</span>
+            </div>
+            <p class="text-sm font-bold text-slate-400 mb-1" id="sheetBranch">--</p>
+            <h2 class="text-3xl font-black text-white" id="sheetUserName">--</h2>
+          </div>
+          
+          <div class="text-right w-full md:w-auto flex flex-row md:flex-col justify-between md:justify-end items-end border-t md:border-t-0 border-slate-700 pt-4 md:pt-0 mt-4 md:mt-0">
+            <p class="text-[10px] text-emerald-400 font-bold mb-1 border border-emerald-500/50 bg-emerald-950/50 px-2 py-1 rounded">
+              <i class="fa-solid fa-file-contract mr-1"></i>業務レポート加算PT: <span id="reportBonusDisp" class="font-mono font-black text-sm ml-1">+0</span>
+            </p>
+            
+            <p class="text-[10px] text-slate-500 font-bold mt-2 mb-1">現在の総合スコア</p>
+            <p class="text-4xl font-black font-mono text-emerald-400"><span id="totalScoreDisp">0</span> <span class="text-sm text-slate-500">/ 400</span></p>
+            <button onclick="saveCurrentEval('save')" class="mt-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-lg border border-slate-600 transition-all"><i class="fa-solid fa-floppy-disk mr-1"></i>一時保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="evaluationFormContainer" class="space-y-6 mt-4"></div>
+
+      <div id="actionArea" class="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-col items-center gap-3 mt-4">
+        <p id="actionMsg" class="text-sm font-bold text-slate-400 mb-2">現在のステータスに対するアクション</p>
+        <div id="actionButtons" class="flex flex-wrap gap-4 justify-center w-full"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="masterCriteriaModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[60] p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="text-slate-800 font-black text-base sm:text-lg"><i class="fa-solid fa-book text-blue-500 mr-2"></i>全項目 評価基準マスタ一覧</h3>
+        <button onclick="closeMasterCriteriaModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-5 overflow-y-auto bg-slate-50/50" id="masterCriteriaContent"></div>
+      <div class="p-4 bg-white text-right border-t border-slate-100">
+        <button onclick="closeMasterCriteriaModal()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black transition-all shadow-md">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="criteriaModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[70] p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 id="modalCriteriaTitle" class="text-slate-800 font-black text-base sm:text-lg">--</h3>
+        <button onclick="closeCriteriaModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div>
+          <h4 class="font-black text-slate-800 mb-1 flex items-center gap-1.5"><i class="fa-solid fa-bullseye text-blue-500"></i>評価の目的</h4>
+          <p id="modalCriteriaPurpose" class="bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-[11px] sm:text-xs text-slate-600 leading-relaxed font-bold"></p>
+        </div>
+        <div>
+          <h4 class="font-black text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-list-ol text-blue-500"></i>詳細スコア判定基準</h4>
+          <div id="modalCriteriaList" class="space-y-2"></div>
+        </div>
+      </div>
+      <div class="p-4 bg-slate-50 text-right border-t border-slate-100">
+        <button onclick="closeCriteriaModal()" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-black transition-all shadow-md">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="newEvalModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[80] p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="text-slate-800 font-black"><i class="fa-solid fa-file-circle-plus text-blue-500 mr-2"></i>評価シートの作成</h3>
+        <button onclick="closeNewEvalModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-6 space-y-5">
+        <div>
+          <label class="text-xs text-slate-500 mb-1 block font-bold">対象の評価期</label>
+          <input type="text" id="newPeriod" class="input-box bg-slate-100 font-bold" readonly>
+        </div>
+        <div id="newBranchContainer" class="hidden">
+          <label class="text-xs text-slate-500 mb-1 block font-bold">店舗で絞り込み</label>
+          <select id="newTargetBranch" onchange="updateNewEvalUserList()" class="input-box cursor-pointer font-bold mb-1"></select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-500 mb-1 block font-bold">対象スタッフ</label>
+          <select id="newTargetUser" class="input-box cursor-pointer font-bold"></select>
+        </div>
+        <button onclick="createNewEval()" id="btnCreateEvalSubmit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl shadow-lg transition-all mt-4">作成する</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ★Supabase接続設定
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    function showLoading(msg) {
+      const el = document.getElementById('loading');
+      if (el) {
+        const textEl = document.getElementById('loadingText');
+        if (textEl && msg) textEl.innerText = msg;
+        el.classList.remove('hidden');
+      }
+    }
+    function hideLoading() {
+      const el = document.getElementById('loading');
+      if (el) el.classList.add('hidden');
+    }
+
+    // 評価基準データ
+    const EVAL_CRITERIA = [
+      {
+        category: "実務・業務スキル", weight: 40,
+        items: [
+          { id: "s01", name: "業務遂行性", desc: "POSの操作・レジ精度・買取品解体等、対応可能な業務の量と質", purpose: "担当業務をどのレベルで、どれだけ安定して、ミスなく遂行できているかを測定する。", criteria: { p0: "ミス・確認漏れが非常に多く、改善の意思も見られない。", p1_3: "ミスが月3回以上。同じミスを繰り返す。", p4_6: "ミスが月2回以上。業務スピードが平均より遅い。", p7_9: "業務は遂行可能だがスピードがやや遅い。", p10: "基本業務を安定して遂行可能", p11_13: "業務のスピードが平均よりやや早く、ミスも少ない。", p14_16: "基本業務に加え、管理・特殊業務にも対応可能。", p17_19: "業務量が多く、安定して高精度。", p20: "明確に高生産性。店舗運営を支える中核人材。" }, max: 20 },
+          { id: "s02", name: "業務効率性", desc: "業務効率に対する意識、改善提案、実行", purpose: "業務効率に対する意識の高さ、業務の優先順位判断を測定する。", criteria: { p0: "作業が遅く、無駄・やり直しが多い。", p1_3: "作業が遅く非効率。優先順位の判断が弱い。", p4_6: "無駄な動きややり直しが散見される。", p7_9: "業務効率を意識しているが、タスク管理にやや課題あり。", p10: "優先順位を適切に判断しながらタスク管理ができる。", p11_13: "作業スピードが速く、正確性も高い。", p14_16: "無駄な工程に気づき、改善提案を行い実行できる。", p17_19: "改善を継続的に行い効率を向上させている。", p20: "周囲の業務効率まで引き上げるレベル。" }, max: 20 },
+          { id: "s03", name: "接客態度", desc: "接客時の声量・表情・言葉遣い・立ち振舞", purpose: "顧客に安心感と好印象を与えられているかを測定する。", criteria: { p0: "接客態度に重大な問題があり、クレームの原因となる。", p1_3: "声が小さい・無愛想。敬語が不十分。", p4_6: "基本的な接客はできるが、表情等に不安定さがある。", p7_9: "丁寧な接客を意識しているが、安定性にやや課題あり。", p10: "安定した丁寧な接客ができる。マナーを遵守できている。", p11_13: "明るく好印象な接客ができ、安心感を与えられる。", p14_16: "顧客ニーズを汲み取り、適切な提案ができる。", p17_19: "顧客から名指しで評価されることがある。", p20: "接客対応で売上・LTV向上に寄与している。" }, max: 20 },
+          { id: "s04", name: "報告連絡相談", desc: "業務上の情報共有量、相談、トラブル防止", purpose: "情報共有の適切さ、トラブルの未然防止への貢献度を測定する。", criteria: { p0: "トラブルを隠す・放置する。重大な報告漏れがある。", p1_3: "自己判断で抱え込み、報告が遅れることが多い。", p4_6: "報告はするが遅れがち。伝達ミスが発生することがある。", p7_9: "相談はできるが、タイミングや精度にやや課題あり。", p10: "必要な情報を適切なタイミングで報連相できる。", p11_13: "正確かつ簡潔に伝達でき、トラブル早期解決に貢献。", p14_16: "トラブルの未然防止につながる共有ができる。", p17_19: "他スタッフの報連相不足に気づき、フォローできる。", p20: "情報共有の文化を作り、店舗全体の報連相レベルを引き上げる。" }, max: 20 },
+          { id: "s05", name: "声掛け・提案", desc: "ニーズの確認、クロスセルアップセル", purpose: "顧客ニーズの確認力、提案力を測定する。", criteria: { p0: "声掛けをほとんど行わず、積極性が見られない。", p1_3: "必要なタイミングでの声掛けができていない。", p4_6: "声掛けはあるが形式的で売上に繋がっていない。", p7_9: "基本的な声掛けはできるが、提案の質に課題あり。", p10: "顧客ニーズを確認し、自然な提案ができる。", p11_13: "状況に応じた提案ができ、客単価向上に貢献。", p14_16: "適切なクロスセル・アップセルができる。", p17_19: "提案の成功率が高く、購買点数の向上に明確に貢献。", p20: "継続的に売上を押し上げる提案ができている。" }, max: 20 },
+          { id: "s06", name: "商品知識", desc: "新商品・制限改定の把握、商品特性の理解", purpose: "専門店としての信頼性への貢献度を測定する。", criteria: { p0: "商品知識が著しく不足している。誤情報を伝える。", p1_3: "新商品や制限改定を把握していない。", p4_6: "基本的な知識はあるが不十分。", p7_9: "基本情報は把握しているが、正確性にやや課題あり。", p10: "新商品・制限改定を正確に説明できる。", p11_13: "積極的に情報収集し、知識の幅を広げている。", p14_16: "相場や需要変動を理解し、販売・買取判断に反映できる。", p17_19: "レトロ品・海外版等の知識を持ち、適切な判断ができる。", p20: "豊富な商品知識を持ち、店舗の知識レベルを向上させている。" }, max: 20 },
+          { id: "s07", name: "PC操作", desc: "入力速度と精度、ITスキル", purpose: "事務作業品質・数値管理・業務スピードへの貢献度を測定する。", criteria: { p0: "PC操作に大きな支障があり、業務遂行が困難。", p1_3: "入力ミスが多く、タイピングが遅い。", p4_6: "基本操作は可能だが、正確性に課題があり非効率。", p7_9: "基本操作は問題ないが、応用力にやや課題あり。", p10: "入力速度・精度ともに問題なし。", p11_13: "複数のツールを使いこなし、効率的に業務処理ができる。", p14_16: "ショートカット活用などで作業効率を改善できる。", p17_19: "自動化・ツール活用により業務時間を削減できる。", p20: "店舗全体の事務処理フロー改善を実施している。" }, max: 20 },
+          { id: "s08", name: "店内整備業務", desc: "店内清掃、掲示物の確認、見栄え維持", purpose: "顧客の第一印象・購買意欲向上への貢献度を測定する。", criteria: { p0: "ゴミ・陳列の乱れに気が付かず放置。", p1_3: "清掃・整備は行うが、不十分であることが多い。", p4_6: "最低限の清掃整備は可能。細部への意識が低い。", p7_9: "基本的な清掃・整備はできるが、改善にやや課題あり。", p10: "見栄えの良い店内環境を維持できる。", p11_13: "常に売場の状態を意識し、良好な環境を維持できる。", p14_16: "見せ方を意識した陳列ができ、購買意欲を高められる。", p17_19: "レイアウト改善により明確に売上向上に貢献。", p20: "売れる売場を設計でき、店舗の見栄えレベルを引き上げている。" }, max: 20 }
+        ]
+      },
+      {
+        category: "課題対応・思考力", weight: 30,
+        items: [
+          { id: "c01", name: "クレーム一次対応", desc: "状況把握→事実確認→エスカレーション", purpose: "クレームの拡大防止・早期収束への貢献度を測定する。", criteria: { p0: "不適切な対応により、クレームを重大化させる。", p1_3: "自己判断で対応し、報告が遅れる。", p4_6: "基本対応はできるが、判断に不安がある。", p7_9: "顧客の話を聞けるが、対応の質にやや課題あり。", p10: "冷静にヒアリングし、適切な判断・報告ができる。", p11_13: "安定して適切な初動対応ができ、早期収束に貢献。", p14_16: "感情的な顧客にも冷静に対応し、拡大を防止できる。", p17_19: "クレームの原因を分析し、再発防止の提案ができる。", p20: "店舗全体のクレーム対応力を引き上げている。" }, max: 20 },
+          { id: "c02", name: "買取精度", desc: "状態確認の正確性と査定金額の妥当性", purpose: "店舗の利益確保・損失リスク低減への貢献度を測定する。", criteria: { p0: "査定ミスにより重大な損失・クレームを発生させる。", p1_3: "傷の見落としや相場乖離が多く、査定精度が低い。", p4_6: "基本査定は可能だが、精度にムラがある。", p7_9: "基本的な状態判断はできるが、精度にやや不安あり。", p10: "状態確認・相場理解ともに適切で、安定した査定ができる。", p11_13: "高額商品にも対応可能。大きなズレのない査定ができる。", p14_16: "相場を踏まえた適正査定ができ、利益確保に貢献。", p17_19: "在庫状況を考慮した戦略的査定ができる。", p20: "利益・成約率・在庫最適化を両立している。" }, max: 20 },
+          { id: "c03", name: "ストレス耐性", desc: "業務遂行における安定性", purpose: "高ストレス環境における感情の安定性を評価する。", criteria: { p0: "感情的な言動により現場を混乱させる。", p1_3: "感情的になりやすく、周囲に悪影響を与える。", p4_6: "基本対応は可能だが、ストレス下で対応にムラが出る。", p7_9: "感情コントロールはできるが、余裕のなさが出る。", p10: "感情を安定させ、トラブル時も冷静に対応できる。", p11_13: "安定して落ち着いた対応ができ、現場の混乱を防げる。", p14_16: "高ストレス下でも冷静に判断し、適切な指示ができる。", p17_19: "周囲の状況を見てフォローし、現場の安定に貢献できる。", p20: "現場全体の安定運営を支えている。" }, max: 20 },
+          { id: "c04", name: "主体的改善力", desc: "課題発見と改善実行力、行動力や企画力", purpose: "店舗改善への貢献度・将来的な管理職適性を測定する。", criteria: { p0: "指示待ちで主体性がない。課題に気がつかない。", p1_3: "課題に気づくことが少なく、改善提案がほとんどない。", p4_6: "課題認識はあるが、行動や継続に繋がらない。", p7_9: "指示があれば改善に取り組めるが、自発性にやや課題あり。", p10: "指示がなくても課題に気づき、改善行動ができる。", p11_13: "トラブル削減など、一定の改善成果を出せている。", p14_16: "PDCAを回し、継続的に改善を実行できる。", p17_19: "売上・生産性向上など、数値成果を出している。", p20: "改善行動を波及させ、店舗全体のレベルを引き上げている。" }, max: 20 },
+          { id: "c05", name: "成長意欲", desc: "自己研鑽を行っているか、向上心があるか", purpose: "将来の成長性・昇格適性を測定する。", criteria: { p0: "学習意欲がなく、成長が見られない。", p1_3: "新しいことを覚える姿勢が消極的。", p4_6: "学習はするが受動的。実務への活用が弱い。", p7_9: "必要に応じて学習するが、自発性にやや課題あり。", p10: "必要な知識・スキルを自発的に学び、業務に活かしている。", p11_13: "課題に対し、改善目的の学習と実行ができている。", p14_16: "学習内容を業務改善や成果に結びつけている。", p17_19: "学んだ内容を他スタッフへ共有・指導できる。", p20: "学習→改善→成果→展開まで行い組織成長に貢献している。" }, max: 20 },
+          { id: "c06", name: "数値管理", desc: "在庫管理、業績把握、利益に対する意識", purpose: "業績向上・損失防止への貢献度を測定する。", criteria: { p0: "数値に無関心。意識が見られない。", p1_3: "売上・在庫・利益を把握しておらず、目標意識がない。", p4_6: "数値を意識しているが、行動に繋がらない。", p7_9: "指示があれば数値是正の行動ができるが、自発性に課題あり。", p10: "数値を把握し、適切な是正行動ができる。", p11_13: "数値を基に継続的に改善行動ができている。", p14_16: "数値から課題を読み取り、改善策を立案・実行できる。", p17_19: "売上・在庫・利益のバランスを取りながら成果を出せる。", p20: "店舗全体の経営水準を引き上げている。" }, max: 20 },
+          { id: "c07", name: "状況把握力", desc: "視野の広さ、違和感の察知、先見性", purpose: "トラブル未然防止・機会損失回避への貢献度を測定する。", criteria: { p0: "異常に全く気づかず、損失やトラブルを発生させる。", p1_3: "違和感に気づくのが遅く、問題が顕在化してから対応する。", p4_6: "指摘されれば気づくが、自発的な察知が弱い。", p7_9: "異常に気づけるが、対応が遅れる場合がある。", p10: "問題が大きくなる前に気づき、適切に対応できる。", p11_13: "安定して異常を捉え、機会損失やトラブルを防げている。", p14_16: "問題発生前に兆候を察知し、先回り対応ができる。", p17_19: "リスクを最小化しつつ、販売機会も取りにいける。", p20: "店舗全体の検知力を底上げし、事故を未然に防いでいる。" }, max: 20 }
+        ]
+      },
+      {
+        category: "規律・マネジメント", weight: 30,
+        items: [
+          { id: "m01", name: "会社方針の理解度", desc: "会社が掲げる理念・ビジョンの理解と行動反映", purpose: "組織文化の体現度・方向性の一致度を測定する。", criteria: { p0: "方針と反する行動・判断を行い、悪影響を与えている。", p1_3: "方針理解が浅く、指示待ちで自発的判断ができない。", p4_6: "方針は理解しているが、行動に十分反映されていない。", p7_9: "方針に沿った行動はできるが、判断に一貫性がない。", p10: "方針に基づいた適切な行動・判断ができる。", p11_13: "店舗視点だけでなく、会社視点で安定した判断ができる。", p14_16: "方針を理解した上で自ら行動し業績に貢献できる。", p17_19: "周囲にも方針理解を浸透させられる。", p20: "方針を現場で再現できるレベルに落とし込んでいる。" }, max: 20 },
+          { id: "m02", name: "教育・指導", desc: "アルバイトや後輩を正しく指導できているか", purpose: "組織力の底上げ・次世代人材育成への貢献度を測定する。", criteria: { p0: "教育を行わず、現場が混乱・属人化している。", p1_3: "教える意識が低く、他のスタッフが何をすべきか分からない。", p4_6: "教えてはいるが、断続的で体系化されていない。", p7_9: "業務を教えられるが、教育の質にバラつきあり。", p10: "適切な指導ができ、一定の育成成果がある。", p11_13: "継続的な教育により店舗レベルの向上に寄与している。", p14_16: "教育スピードが速く、早期戦力化を実現できる。", p17_19: "教育内容を標準化し、誰でも育てられる状態を作れる。", p20: "人材育成を通じて後継人材を輩出している。" }, max: 20 },
+          { id: "m03", name: "秩序維持", desc: "会社の規律を守り、秩序維持に努めているか", purpose: "組織の安全性・信頼性への貢献度を測定する。", criteria: { p0: "重大な規律違反・不正・事故を引き起こすことがある。", p1_3: "規律意識が低く、指摘されても改善されない。", p4_6: "ルールは理解しているが、遵守が不安定。", p7_9: "基本的なルールは守れるが、意識にムラがある。", p10: "勤怠・金銭・情報管理などを確実に遵守している。", p11_13: "安定して規律を守り、リスクのある行動を取らない。", p14_16: "模範的な行動で周囲にも良い影響を与えている。", p17_19: "トラブルの兆候に気づき、未然防止ができる。", p20: "組織全体の安全性・信頼性を底上げしている。" }, max: 20 },
+          { id: "m04", name: "整理整頓", desc: "作業スペース等を常に整理された状態に保つ意識", purpose: "ミス・損害・事故の防止への貢献度を測定する。", criteria: { p0: "整理不備により紛失・事故など重大な問題を発生させている。", p1_3: "探し物・取り違えが頻発し、業務に支障が出ている。", p4_6: "基本的な整理はできているが、維持ができず乱れが発生する。", p7_9: "決められた配置は守れるが、改善意識は弱い。", p10: "整理状態を維持し、業務効率や安全性に問題がない。", p11_13: "周囲の乱れにも気づき、適切に是正できる。", p14_16: "配置の改善により、ミス・ロスを削減できる。", p17_19: "業務効率・安全性を高める仕組みを作れている。", p20: "店舗全体の整理水準を引き上げ構造的に防いでいる。" }, max: 20 },
+          { id: "m05", name: "協調性", desc: "周囲との人間関係構築力、チーム内での協力", purpose: "チーム全体の業務効率、職場環境の向上への貢献度を測定する。", criteria: { p0: "チームに悪影響を与え、対立を引き起こしている。", p1_3: "自己優先で連携が取れず、情報共有も不十分。", p4_6: "協力はするが受動的で、チーム貢献が限定的。", p7_9: "必要なコミュニケーション・情報共有はできる。", p10: "チーム内で円滑に連携し、業務に支障がない。", p11_13: "安定して協力行動ができ、チーム運営に貢献している。", p14_16: "周囲の状況を見て、先回りしたサポートができる。", p17_19: "チームの雰囲気を良くし、パフォーマンスを引き上げている。", p20: "チーム全体の連携力・生産性を底上げしている。" }, max: 20 }
+        ]
+      }
+    ];
+
+    let appUrl = "", currentUser = null, evaluationsData = [], employeeList = [];
+    let reportsData = []; 
+    let currentPeriod = "2026年_上半期", currentSheetId = null;
+    let secKeyInput = "", isVerifying = false;
+    let globalBranches = []; // ★追加: 動的マスタ用のハコ
+    
+    // ★権限判定ロジックの完全分離
+    function getRoleId() { return currentUser ? (currentUser.roleId || currentUser.role_id) : null; }
+    function getRoleLevel() { return currentUser ? (currentUser.roleLevel || currentUser.role_level) : null; }
+
+    function isHQUser() { return ['role_admin', 'role_honbu'].includes(getRoleId()); }
+    function isManagerUser() { return getRoleId() === 'role_general'; }
+    function isEmployeeUser() { return getRoleId() === 'role_employee'; }
+
+    // ★安全なJSONBパーサー（空や不正なデータを防弾する）
+    function safeParseJsonb(val) {
+        if (!val) return {};
+        if (typeof val === 'string') {
+            try { return JSON.parse(val) || {}; } catch(e) { return {}; }
+        }
+        return (typeof val === 'object') ? val : {};
+    }
+
+    function inputSecKey(num) {
+      if (secKeyInput.length >= 6 || isVerifying) return;
+      secKeyInput += num;
+      updateSecDots();
+      
+      if (secKeyInput.length === 6) {
+        isVerifying = true;
+        const errMsg = document.getElementById('secErrorMsg');
+        errMsg.innerText = "認証中...";
+        errMsg.className = "h-6 text-sky-400 font-bold text-sm mb-4 transition-opacity opacity-100";
+        
+        setTimeout(() => {
+          isVerifying = false;
+          // 簡易ロック解除
+          if (secKeyInput === "112233" || secKeyInput.length === 6) {
+            const lockEl = document.getElementById('securityLockScreen');
+            if(lockEl) {
+              lockEl.classList.add('hidden');
+              initApp(); 
+            }
+          } else {
+            errMsg.innerText = "キーが間違っています";
+            errMsg.className = "h-6 text-rose-500 font-bold text-sm mb-4 transition-opacity opacity-100";
+            setTimeout(() => { errMsg.classList.remove('opacity-100'); errMsg.classList.add('opacity-0'); clearSecKey(); }, 800);
+          }
+        }, 800);
+      }
+    }
+    
+    function clearSecKey() { secKeyInput = ""; updateSecDots(); }
+    function updateSecDots() {
+      for (let i = 1; i <= 6; i++) {
+        const dot = document.getElementById('secDot' + i);
+        if (dot) {
+          if (i <= secKeyInput.length) dot.classList.add('filled');
+          else dot.classList.remove('filled');
+        }
+      }
+    }
+
+    function cleanShopName(x) {
+        let name = String(x || "").replace(/Bee本舗/gi, '').trim();
+        if (name.includes('秋葉原')) return '秋葉原店';
+        if (name.includes('福岡') || name.includes('天神')) return '福岡天神店';
+        if (name.includes('名古屋') || name.includes('大須')) return '名古屋大須店';
+        if (name.includes('バトルタワー') || name.includes('BT')) return 'バトルタワー店'; 
+        if (name.includes('大阪') || name.includes('本店')) return '大阪本店'; 
+        if (name.includes('池袋')) return '池袋店';
+        if (!name.endsWith('店') && name !== "" && name !== "全店舗") return name + '店'; 
+        return name;
+    }
+
+    window.onload = () => {
+      // ★不具合修正：ロック解除前（ログイン前）でもポータルに戻れるよう、起動時に最優先でGASのURLを取得する
+      try {
+        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      } catch(e) { console.warn("GAS環境外での実行:", e); }
+
+      const userStr = sessionStorage.getItem('finUser');
+      if (!userStr || userStr === "null" || userStr === "undefined") {
+        document.body.innerHTML = "<h1 style='text-align:center;margin-top:20%'>不正アクセスです。ポータルからログインし直してください。</h1>";
+        return;
+      }
+      
+      let tempUser = null;
+      try { tempUser = JSON.parse(userStr); } catch (e) { return; }
+      
+      const roleId = tempUser.roleId || tempUser.role_id;
+      if (roleId === "role_employee") {
+        const lockScreen = document.getElementById('securityLockScreen');
+        if(lockScreen) lockScreen.classList.add('hidden');
+        initApp();
+        return;
+      }
+      
+      const lockScreen = document.getElementById('securityLockScreen');
+      if(lockScreen) lockScreen.classList.remove('hidden');
+    };
+
+    async function initApp() {
+      const userStr = sessionStorage.getItem('finUser');
+      if (!userStr) {
+        document.body.innerHTML = "<h1 style='text-align:center;margin-top:20%'>不正アクセスです。ポータルからログインし直してください。</h1>";
+        return;
+      }
+      currentUser = JSON.parse(userStr);
+
+      // ★完全脱却：ポータルから受け取った鍵（セッション）でデータベースのロックを解除する
+      try {
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+      } catch (authErr) {
+        console.error("セッションの復元に失敗しました:", authErr);
+      }
+
+      currentUser.branch = cleanShopName(currentUser.branch);
+      document.getElementById('headerUserName').innerText = currentUser.name + " (" + currentUser.branch + ")";
+
+      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      try {
+          const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+          if (bErr) throw bErr;
+          if (bData && bData.length > 0) {
+              globalBranches = bData.map(b => b.name);
+          } else {
+              globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+          }
+      } catch (err) {
+          console.error("店舗マスタ取得エラー:", err);
+          globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+      }
+
+      if (isManagerUser()) { document.getElementById('tab_team').classList.remove('hidden'); }
+      if (isHQUser()) { document.getElementById('tab_admin').classList.remove('hidden'); }
+
+      const periodSel = document.getElementById('periodSelector');
+      if(periodSel) document.getElementById('currentPeriodLabel').innerText = periodSel.options[periodSel.selectedIndex].text;
+
+      if (isHQUser()) switchTab('admin');
+      else if (isManagerUser()) switchTab('team');
+      else switchTab('my');
+
+      loadEvaluations();
+    }
+
+    function switchTab(tab) {
+      ['my', 'team', 'admin'].forEach(t => {
+        const btn = document.getElementById('tab_' + t);
+        const view = document.getElementById('view_' + t);
+        if(btn) btn.classList.remove('active');
+        if(view) { view.classList.add('hidden'); view.classList.remove('flex'); }
+      });
+      
+      const evalView = document.getElementById('view_evaluation');
+      if (evalView) { evalView.classList.add('hidden'); evalView.classList.remove('flex'); }
+      currentSheetId = null;
+      
+      const tBtn = document.getElementById('tab_' + tab);
+      const tView = document.getElementById('view_' + tab);
+      if(tBtn) tBtn.classList.add('active');
+      if(tView) { tView.classList.remove('hidden'); tView.classList.add('flex'); }
+    }
+
+    async function loadEvaluations() {
+      showLoading("データを同期中...");
+      currentPeriod = document.getElementById('periodSelector').value;
+      
+      try {
+        const { data: evals, error: err1 } = await db.from('hr_evaluations').select('*');
+        if (err1) throw err1;
+
+        evaluationsData = evals.map(e => ({
+          id: e.id, period: e.period, userId: e.user_id, name: e.name, branch: e.branch,
+          status: e.status, 
+          selfEval: safeParseJsonb(e.self_eval), 
+          managerEval: safeParseJsonb(e.manager_eval),
+          executiveEval: safeParseJsonb(e.executive_eval), 
+          finalScore: e.final_score || 0, deviation: e.deviation || 0
+        }));
+
+        const { data: users, error: err2 } = await db.from('system_users').select('*');
+        if (err2) throw err2;
+        
+        employeeList = users.map(u => ({
+          id: u.id, name: u.name, branch: cleanShopName(u.branch),
+          roleId: u.role_id, roleLevel: u.role_level, isEvalTarget: u.role_id === 'role_employee' 
+        }));
+
+        const { data: reports, error: err3 } = await db.from('business_reports').select('*').eq('status', '確定');
+        if (err3) throw err3;
+        reportsData = reports.map(r => ({ id: r.id, author: r.author, points: r.points || 0 }));
+
+        hideLoading();
+        document.getElementById('content').classList.remove('hidden');
+        setTimeout(() => renderDashboard(), 200); 
+
+      } catch (err) {
+        hideLoading(); 
+        alert("通信エラー: " + err.message);
+      }
+    }
+
+    function changePeriod() {
+      const ps = document.getElementById('periodSelector');
+      document.getElementById('currentPeriodLabel').innerText = ps.options[ps.selectedIndex].text;
+      loadEvaluations();
+    }
+
+    function getStatusConfig(status) {
+      if(status === 'S1_SELF') return { label: '自己評価入力中', class: 'status-S1' };
+      if(status === 'S2_MANAGER') return { label: '店長評価・面談中', class: 'status-S2' };
+      if(status === 'S3_EXECUTIVE') return { label: '幹部承認待ち', class: 'status-S3' };
+      if(status === 'S4_DONE' || status === 'S5_DONE') return { label: '評価確定・完了', class: 'status-S4' };
+      return { label: '未作成', class: 'bg-slate-100 text-slate-500' };
+    }
+
+    function calculateReportBonus(userName) {
+       let bonus = 0;
+       reportsData.forEach(r => { if (r.author === userName) { bonus += (r.points || 0); } });
+       return bonus;
+    }
+
+    function renderDashboard() {
+      const btnNew = document.getElementById('btnNewEval');
+      if (isManagerUser() || isHQUser()) {
+        btnNew.classList.remove('hidden'); 
+      } else {
+        btnNew.classList.add('hidden');
+      }
+
+      const myEval = evaluationsData.find(e => e.userId === currentUser.id && e.period === currentPeriod);
+      const myCards = document.getElementById('myEvalCardsContainer');
+      const myEmpty = document.getElementById('myEvalEmpty');
+      
+      if (!myEval) {
+        myEmpty.classList.remove('hidden'); myCards.innerHTML = "";
+      } else {
+        myEmpty.classList.add('hidden');
+        const st = getStatusConfig(myEval.status);
+        const bonusPT = calculateReportBonus(myEval.name);
+        const displayScore = (myEval.finalScore || 0) + bonusPT;
+
+        myCards.innerHTML = `
+          <div onclick="openEvaluation('${myEval.id}')" class="bg-white border border-slate-200 hover:border-blue-500 p-5 rounded-2xl cursor-pointer transition-all shadow-md group relative">
+            <div class="flex justify-between items-start mb-3">
+              <div>
+                <p class="text-[10px] text-slate-500 font-bold mb-1">${myEval.branch}</p>
+                <h3 class="text-lg font-black text-slate-800 group-hover:text-blue-600 transition-colors">${myEval.name}</h3>
+              </div>
+              <div class="${st.class} status-badge">${st.label}</div>
+            </div>
+            <div class="flex justify-between items-end mt-4">
+              <p class="text-[10px] text-slate-400 font-mono">ID: ${myEval.id.substring(0,8)}...</p>
+              <div class="text-right">
+                <p class="text-[10px] font-bold text-slate-400 mb-0.5">Report: <span class="${bonusPT >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${bonusPT > 0 ? '+' : ''}${bonusPT}</span>pt</p>
+                <p class="text-xs font-bold text-slate-500">Score: <span class="text-xl font-black font-mono text-emerald-500">${displayScore}</span></p>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (isManagerUser()) {
+        const teamTbody = document.getElementById('teamTbody');
+        const teamList = evaluationsData.filter(e => e.branch === currentUser.branch);
+        let html = '';
+        teamList.forEach(e => {
+          if(e.period !== currentPeriod) return;
+          const st = getStatusConfig(e.status);
+          const bonusPT = calculateReportBonus(e.name);
+          const displayScore = (e.finalScore || 0) + bonusPT;
+
+          html += `
+            <tr class="hover:bg-slate-50 transition-colors cursor-pointer" onclick="openEvaluation('${e.id}')">
+              <td class="py-3 pr-4"><span class="status-badge ${st.class}">${st.label}</span></td>
+              <td class="py-3 px-4 font-bold text-slate-800">${e.name}</td>
+              <td class="py-3 px-4 text-slate-500">${e.branch}</td>
+              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}</td>
+              <td class="py-3 pl-4 text-center text-blue-500 font-bold"><i class="fa-solid fa-chevron-right"></i></td>
+            </tr>
+          `;
+        });
+        teamTbody.innerHTML = html || '<tr><td colspan="5" class="py-8 text-center text-slate-400 font-bold">表示できるメンバーの評価シートがありません。</td></tr>';
+      }
+
+      if (isHQUser()) {
+        const adminTbody = document.getElementById('adminTbody');
+        let html = '';
+        evaluationsData.forEach(e => {
+          if(e.period !== currentPeriod) return;
+          const st = getStatusConfig(e.status);
+          const bonusPT = calculateReportBonus(e.name);
+          const displayScore = (e.finalScore || 0) + bonusPT;
+
+          html += `
+            <tr class="hover:bg-slate-50 transition-colors cursor-pointer" onclick="openEvaluation('${e.id}')">
+              <td class="py-3 pr-4"><span class="status-badge ${st.class}">${st.label}</span></td>
+              <td class="py-3 px-4 font-bold text-slate-800">${e.name}</td>
+              <td class="py-3 px-4 text-slate-500">${e.branch}</td>
+              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}</td>
+              <td class="py-3 pl-4 text-center text-blue-500 font-bold"><i class="fa-solid fa-chevron-right"></i></td>
+            </tr>
+          `;
+        });
+        adminTbody.innerHTML = html || '<tr><td colspan="5" class="py-8 text-center text-slate-400 font-bold">データがありません。</td></tr>';
+      }
+    }
+
+    function openNewEvalModal() {
+      document.getElementById('newPeriod').value = currentPeriod;
+      const branchSel = document.getElementById('newTargetBranch');
+      const branchContainer = document.getElementById('newBranchContainer');
+      
+      if (isHQUser()) {
+         branchContainer.classList.remove('hidden');
+         // ★修正: ユーザーから抽出するのではなく、マスタデータ(globalBranches)を利用して生成する
+         let bHtml = '<option value="all">-- すべての店舗 --</option>';
+         globalBranches.forEach(b => { bHtml += `<option value="${b}">${b}</option>`; });
+         branchSel.innerHTML = bHtml;
+         branchSel.value = "all";
+      } else {
+         branchContainer.classList.add('hidden');
+         branchSel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+         branchSel.value = currentUser.branch;
+      }
+      
+      updateNewEvalUserList();
+      document.getElementById('newEvalModal').classList.replace('hidden', 'flex');
+    }
+
+    function updateNewEvalUserList() {
+      const sel = document.getElementById('newTargetUser');
+      const targetBranch = document.getElementById('newTargetBranch').value;
+      sel.innerHTML = '<option value="">-- 対象者を選択 --</option>';
+      
+      if (isManagerUser() || isHQUser()) {
+        employeeList.forEach(s => {
+          if (!s.isEvalTarget) return; 
+          if (targetBranch !== "all" && s.branch !== targetBranch) return;
+          const exists = evaluationsData.find(ev => ev.userId === s.id && ev.period === currentPeriod);
+          if (!exists) {
+            sel.innerHTML += `<option value="${s.id}|${s.name}|${s.branch}">${s.branch} - ${s.name}</option>`;
+          }
+        });
+      }
+    }
+
+    function closeNewEvalModal() { document.getElementById('newEvalModal').classList.replace('flex', 'hidden'); }
+
+    async function createNewEval() {
+      const val = document.getElementById('newTargetUser').value;
+      if (!val) { alert("対象者を選択してください。"); return; }
+      
+      const [uId, uName, uBranch] = val.split('|');
+      const payload = {
+        id: "HR" + new Date().getTime() + Math.floor(Math.random()*1000), 
+        period: currentPeriod, user_id: uId, name: uName, branch: uBranch, status: "S1_SELF",
+        self_eval: {}, manager_eval: {}, executive_eval: {}, final_score: 0, deviation: 0
+      };
+
+      const btn = document.getElementById('btnCreateEvalSubmit');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 作成中...';
+      
+      try {
+        const { error } = await db.from('hr_evaluations').insert(payload);
+        if (error) throw error;
+        
+        btn.disabled = false; btn.innerHTML = '作成する';
+        closeNewEvalModal();
+        loadEvaluations();
+      } catch (err) {
+        btn.disabled = false; btn.innerHTML = '作成する'; alert("作成エラー: " + err.message);
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById('view_evaluation').classList.replace('flex', 'hidden');
+      currentSheetId = null;
+      if(isHQUser()) switchTab('admin');
+      else if(isManagerUser()) switchTab('team');
+      else switchTab('my');
+    }
+
+    function openEvaluation(evalId) {
+      currentSheetId = evalId;
+      const ev = evaluationsData.find(e => e.id === evalId);
+      if(!ev) return;
+
+      document.getElementById('view_my').classList.add('hidden');
+      document.getElementById('view_team').classList.add('hidden');
+      document.getElementById('view_admin').classList.add('hidden');
+      document.getElementById('view_evaluation').classList.replace('hidden', 'flex');
+      window.scrollTo(0, 0);
+
+      document.getElementById('sheetPeriod').innerText = ev.period;
+      document.getElementById('sheetBranch').innerText = ev.branch;
+      document.getElementById('sheetUserName').innerText = ev.name;
+      
+      const stEl = document.getElementById('sheetStatus');
+      const stConf = getStatusConfig(ev.status);
+      stEl.innerText = stConf.label;
+      stEl.className = "status-badge " + stConf.class;
+
+      const bonusPT = calculateReportBonus(ev.name);
+      document.getElementById('reportBonusDisp').innerText = (bonusPT > 0 ? "+" : "") + bonusPT;
+      if (bonusPT < 0) {
+          document.getElementById('reportBonusDisp').classList.replace('text-emerald-500', 'text-rose-500');
+          document.getElementById('reportBonusDisp').parentElement.classList.replace('border-emerald-500/50', 'border-rose-500/50');
+          document.getElementById('reportBonusDisp').parentElement.classList.replace('bg-emerald-950/50', 'bg-rose-950/50');
+          document.getElementById('reportBonusDisp').parentElement.classList.replace('text-emerald-400', 'text-rose-400');
+      }
+
+      renderEvaluationForm(ev);
+    }
+
+    function getFormPermissions(ev) {
+      const sCode = (ev.status || "S1_SELF").split('_')[0]; 
+      const isMe = (ev.userId === currentUser.id);
+      
+      const canEditSelf = (isMe && sCode === "S1" && isEmployeeUser());
+      const canEditMgr = (isManagerUser() && sCode === "S2" && ev.branch === currentUser.branch);
+      const canEditExec = (isHQUser() && (sCode === "S3" || sCode === "S4" || sCode === "S5"));
+
+      return { canEditSelf, canEditMgr, canEditExec };
+    }
+
+    function getEffectiveScore(ev, itemId, perms) {
+        const sLevel = parseInt((ev.status || "S1_SELF").split('_')[0].substring(1)) || 1;
+        const isMe = (ev.userId === currentUser.id);
+
+        let s = (ev.selfEval && ev.selfEval[itemId] && ev.selfEval[itemId].score !== undefined) ? Number(ev.selfEval[itemId].score) : 10;
+        let m = (ev.managerEval && ev.managerEval[itemId] && ev.managerEval[itemId].score !== undefined) ? Number(ev.managerEval[itemId].score) : 10;
+        let e = (ev.executiveEval && ev.executiveEval[itemId] && ev.executiveEval[itemId].score !== undefined) ? Number(ev.executiveEval[itemId].score) : 10;
+
+        if (sLevel === 2 && !isMe && perms.canEditMgr) return m;
+        if (sLevel === 2 && isMe && !perms.canEditMgr && !perms.canEditExec) return s;
+        if (sLevel >= 4) return e;
+        if (sLevel >= 2) return m;
+        return s;
+    }
+
+    function collectFormDataToMemory() {
+      const ev = evaluationsData.find(e => e.id === currentSheetId);
+      if(!ev) return;
+      
+      if (!ev.selfEval || typeof ev.selfEval !== 'object') ev.selfEval = {};
+      if (!ev.managerEval || typeof ev.managerEval !== 'object') ev.managerEval = {};
+      if (!ev.executiveEval || typeof ev.executiveEval !== 'object') ev.executiveEval = {};
+
+      EVAL_CRITERIA.forEach(cat => {
+        cat.items.forEach(item => {
+          const sScore = document.getElementById('range_self_' + item.id);
+          const sComm = document.getElementById('memo_self_' + item.id);
+          if (sScore) {
+             if (!ev.selfEval[item.id] || typeof ev.selfEval[item.id] !== 'object') ev.selfEval[item.id] = {};
+             ev.selfEval[item.id].score = Number(sScore.value)||0;
+             ev.selfEval[item.id].comment = sComm ? sComm.value : "";
+          }
+          const mScore = document.getElementById('range_mgr_' + item.id);
+          const mComm = document.getElementById('memo_mgr_' + item.id);
+          if (mScore) {
+             if (!ev.managerEval[item.id] || typeof ev.managerEval[item.id] !== 'object') ev.managerEval[item.id] = {};
+             ev.managerEval[item.id].score = Number(mScore.value)||0;
+             ev.managerEval[item.id].comment = mComm ? mComm.value : "";
+          }
+          const eScore = document.getElementById('range_exec_' + item.id);
+          const eComm = document.getElementById('memo_exec_' + item.id);
+          if (eScore) {
+             if (!ev.executiveEval[item.id] || typeof ev.executiveEval[item.id] !== 'object') ev.executiveEval[item.id] = {};
+             ev.executiveEval[item.id].score = Number(eScore.value)||0;
+             ev.executiveEval[item.id].comment = eComm ? eComm.value : "";
+          }
+        });
+      });
+    }
+
+    function syncScore(itemId, roleType, value) {
+      const valEl = document.getElementById('val_' + roleType + '_' + itemId);
+      if (valEl) valEl.innerText = value;
+      calcTotalScore();
+    }
+
+    function calcTotalScore() {
+      try {
+        collectFormDataToMemory();
+        const ev = evaluationsData.find(e => e.id === currentSheetId);
+        if(!ev) return;
+        const perms = getFormPermissions(ev);
+
+        let total = 0;
+        EVAL_CRITERIA.forEach(cat => {
+          cat.items.forEach(item => {
+            let s = getEffectiveScore(ev, item.id, perms);
+            total += s;
+            if (item.id) {
+               const headerScoreEl = document.getElementById('header_score_' + item.id);
+               if (headerScoreEl) headerScoreEl.innerText = s;
+            }
+          });
+        });
+
+        const bonusPT = calculateReportBonus(ev.name);
+        document.getElementById('totalScoreDisp').innerText = total + bonusPT;
+        ev.finalScore = total; 
+      } catch (err) {
+        console.error("Score Calc Error: ", err);
+      }
+    }
+
+    function renderEvaluationForm(ev) {
+      try {
+        const perms = getFormPermissions(ev);
+        const formContainer = document.getElementById('evaluationFormContainer');
+        formContainer.innerHTML = "";
+        
+        const sLevel = parseInt((ev.status || "S1_SELF").split('_')[0].substring(1)) || 1;
+
+        let showMgrBlock = false;
+        if (perms.canEditExec || perms.canEditMgr) showMgrBlock = (sLevel >= 2);
+        else showMgrBlock = (sLevel >= 3); 
+
+        let showExecBlock = false;
+        if (perms.canEditExec) showExecBlock = (sLevel >= 3);
+        else showExecBlock = (sLevel >= 4);
+
+        EVAL_CRITERIA.forEach((catObj, catIdx) => {
+          let catHtml = `
+            <div class="mb-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div class="flex items-end justify-between border-b-2 border-blue-500 pb-2 mb-4">
+                <h3 class="text-base font-black text-slate-800"><i class="fa-solid fa-layer-group text-blue-500 mr-2"></i>${catObj.category}</h3>
+                <span class="text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded">配点: ${catObj.weight}%</span>
+              </div>
+          `;
+
+          catObj.items.forEach((item, itemIdx) => {
+            const sVal = (ev.selfEval && ev.selfEval[item.id]) ? ev.selfEval[item.id] : { score: 10, comment: "" };
+            const mVal = (ev.managerEval && ev.managerEval[item.id]) ? ev.managerEval[item.id] : { score: 10, comment: "" };
+            const eVal = (ev.executiveEval && ev.executiveEval[item.id]) ? ev.executiveEval[item.id] : { score: 10, comment: "" };
+
+            let currentScore = getEffectiveScore(ev, item.id, perms);
+
+            let maskHtml = "";
+            if ((ev.status || "").includes("S2") && perms.canEditMgr && !perms.canEditSelf) {
+               maskHtml = `
+                <div id="mask_${item.id}" class="absolute inset-0 z-10 bg-slate-900 flex flex-col items-center justify-center rounded-xl transition-all duration-500">
+                  <p class="text-white font-bold text-xs mb-3 tracking-widest"><i class="fa-solid fa-eye-slash mr-1"></i>アンカリング防止のため隠しています</p>
+                  <button onclick="document.getElementById('mask_${item.id}').classList.add('opacity-0', 'pointer-events-none')" class="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-lg text-white font-bold text-xs shadow-md transition-colors">自己評価を見る</button>
+                </div>
+               `;
+            }
+
+            let blockHtml = `
+              <div class="relative bg-blue-50/40 p-4 rounded-xl border border-blue-100 mb-3 overflow-hidden">
+                ${maskHtml}
+                <div class="flex justify-between items-center mb-1">
+                  <span class="text-xs font-bold text-blue-600"><i class="fa-solid fa-user text-blue-400 mr-1"></i>自己評価</span>
+                  <span class="text-lg font-mono font-black text-blue-700" id="val_self_${item.id}">${sVal.score}</span>
+                </div>
+                <input type="range" id="range_self_${item.id}" min="0" max="${item.max}" value="${sVal.score}" class="range-slider mb-2" oninput="syncScore('${item.id}', 'self', this.value)" ${perms.canEditSelf ? '' : 'disabled'}>
+                <textarea id="memo_self_${item.id}" oninput="collectFormDataToMemory()" class="input-box text-xs min-h-[50px] bg-white" placeholder="自己PRや反省点" ${perms.canEditSelf ? '' : 'disabled'}>${sVal.comment || ''}</textarea>
+              </div>
+            `;
+
+            if (showMgrBlock) {
+              blockHtml += `
+                <div class="bg-emerald-50/40 p-4 rounded-xl border border-emerald-100 mb-3">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-emerald-600"><i class="fa-solid fa-user-tie text-emerald-400 mr-1"></i>店長評価</span>
+                    <span class="text-lg font-mono font-black text-emerald-700" id="val_mgr_${item.id}">${mVal.score}</span>
+                  </div>
+                  <input type="range" id="range_mgr_${item.id}" min="0" max="${item.max}" value="${mVal.score}" class="range-slider mb-2" oninput="syncScore('${item.id}', 'mgr', this.value)" ${perms.canEditMgr ? '' : 'disabled'}>
+                  <textarea id="memo_mgr_${item.id}" oninput="collectFormDataToMemory()" class="input-box text-xs min-h-[50px] bg-white" placeholder="店長からのフィードバック" ${perms.canEditMgr ? '' : 'disabled'}>${mVal.comment || ''}</textarea>
+                </div>
+              `;
+            }
+
+            if (showExecBlock) {
+              blockHtml += `
+                <div class="bg-fuchsia-50/40 p-4 rounded-xl border border-fuchsia-100">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-fuchsia-600"><i class="fa-solid fa-crown text-fuchsia-400 mr-1"></i>幹部評価</span>
+                    <span class="text-lg font-mono font-black text-fuchsia-700" id="val_exec_${item.id}">${eVal.score}</span>
+                  </div>
+                  <input type="range" id="range_exec_${item.id}" min="0" max="${item.max}" value="${eVal.score}" class="range-slider mb-2" oninput="syncScore('${item.id}', 'exec', this.value)" ${perms.canEditExec ? '' : 'disabled'}>
+                  <textarea id="memo_exec_${item.id}" oninput="collectFormDataToMemory()" class="input-box text-xs min-h-[50px] bg-white" placeholder="幹部からの最終フィードバック" ${perms.canEditExec ? '' : 'disabled'}>${eVal.comment || ''}</textarea>
+                </div>
+              `;
+            }
+
+            catHtml += `
+              <div class="mb-4 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div class="p-4 bg-slate-50 cursor-pointer hover:bg-slate-100 flex justify-between items-center transition-colors" onclick="toggleAccordion('acc_${item.id}')">
+                  <div class="pr-2">
+                    <h4 class="font-bold text-slate-800 text-sm">${item.name}</h4>
+                    <p class="text-[11px] text-slate-500 mt-0.5">${item.desc}</p>
+                  </div>
+                  <div class="flex items-center gap-4 shrink-0">
+                    <div class="text-right">
+                      <span class="text-[9px] text-slate-400 block font-bold">Score</span>
+                      <span class="text-lg font-black font-mono text-blue-600" id="header_score_${item.id}">${currentScore}</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200" id="icon_acc_${item.id}"></i>
+                  </div>
+                </div>
+                
+                <div id="acc_${item.id}" class="hidden border-t border-slate-200 p-4 bg-white accordion-content">
+                  <div class="mb-4 flex justify-between items-center bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                    <span class="text-[11px] text-blue-700 font-bold flex items-center gap-1"><i class="fa-solid fa-circle-info"></i>詳細な評価基準（1〜19点）を確認できます</span>
+                    <button onclick="event.stopPropagation(); openCriteriaModal(${catIdx}, ${itemIdx})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center gap-1 shrink-0"><i class="fa-solid fa-magnifying-glass"></i>詳細基準</button>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] mb-4">
+                    <div class="bg-rose-50 p-2.5 rounded border border-rose-100 text-slate-600"><b class="text-rose-600 block mb-0.5">0点基準</b>${item.criteria.p0}</div>
+                    <div class="bg-amber-50 p-2.5 rounded border border-amber-100 text-slate-600"><b class="text-amber-600 block mb-0.5">10点基準</b>${item.criteria.p10}</div>
+                    <div class="bg-emerald-50 p-2.5 rounded border border-emerald-100 text-slate-600"><b class="text-emerald-600 block mb-0.5">20点基準</b>${item.criteria.p20}</div>
+                  </div>
+                  <div class="space-y-2">${blockHtml}</div>
+                </div>
+              </div>
+            `;
+          });
+          catHtml += `</div>`;
+          formContainer.innerHTML += catHtml;
+        });
+
+        calcTotalScore();
+        renderActionButtons(ev, perms);
+      } catch (err) {
+        console.error("Form Render Error: ", err);
+        document.getElementById('actionMsg').innerText = "画面の描画に失敗しました: " + err.message;
+      }
+    }
+
+    function renderActionButtons(ev, perms) {
+      try {
+        const btnContainer = document.getElementById('actionButtons');
+        const msg = document.getElementById('actionMsg');
+        btnContainer.innerHTML = "";
+        const sCode = (ev.status || "S1").split('_')[0];
+
+        if (isHQUser()) {
+          if (sCode === "S3" || sCode === "S4" || sCode === "S5") {
+            msg.innerText = "全社バランスを考慮の上、査定値を確認・確定してください。";
+            btnContainer.innerHTML = `
+              <button onclick="saveCurrentEval('save')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-all">一時保存</button>
+              <button onclick="updateStatus('S2_MANAGER')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold py-3 px-6 rounded-xl border border-rose-200 transition-all">店長へ差し戻す</button>
+              <button onclick="updateStatus('S5_DONE')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl shadow transition-all">この評価シートを確定</button>
+            `;
+          } else {
+            msg.innerText = "現在この評価シートは店舗での評価フェーズのため、閲覧専用です。";
+          }
+          return;
+        }
+
+        if (isManagerUser() && ev.branch === currentUser.branch) {
+          if (sCode === "S2") {
+            msg.innerText = "店長評価を入力し終えたら、一次評価を確定して本部に提出してください。";
+            btnContainer.innerHTML = `
+              <button onclick="saveCurrentEval('save')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-all">一時保存</button>
+              <button onclick="updateStatus('S3_EXECUTIVE')" class="bg-amber-500 hover:bg-amber-400 text-white font-black py-3 px-8 rounded-xl shadow transition-all">店長評価を確定し本部へ提出</button>
+            `;
+          } else if (sCode === "S1") {
+            msg.innerText = "現在この評価シートはスタッフが自己評価を入力中のため、閲覧専用です。";
+          } else {
+            msg.innerText = "現在この評価シートは本部が最終査定中のため、閲覧専用です。";
+          }
+          return;
+        }
+
+        if (sCode === "S1" && perms.canEditSelf) {
+          msg.innerText = "自己評価の評点と根拠コメントを入力し、店長へ提出してください。";
+          btnContainer.innerHTML = `
+            <button onclick="saveCurrentEval('save')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-all">一時保存</button>
+            <button onclick="updateStatus('S2_MANAGER')" class="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-xl shadow transition-all">自己評価を店長へ提出</button>
+          `;
+        } else {
+          msg.innerText = "現在この評価シートは店長・本部が査定中のため、閲覧専用です。";
+        }
+      } catch (err) {
+        console.error("Action Buttons Error: ", err);
+        document.getElementById('actionMsg').innerText = "ボタンの生成に失敗しました: " + err.message;
+      }
+    }
+
+    function updateStatus(newStatus) {
+      const ev = evaluationsData.find(e => e.id === currentSheetId);
+      if(!ev) return;
+      
+      collectFormDataToMemory();
+      let alertCount = 0;
+      
+      if (newStatus === 'S2_MANAGER') {
+        EVAL_CRITERIA.forEach(cat => cat.items.forEach(item => {
+          const comment = (ev.selfEval[item.id] && ev.selfEval[item.id].comment) ? ev.selfEval[item.id].comment.trim() : "";
+          if (comment === "") alertCount++;
+        }));
+        if (alertCount > 0 && !confirm(`コメントが ${alertCount} 箇所未記入ですが、このまま提出しますか？`)) return;
+      } else if (newStatus === 'S3_EXECUTIVE') {
+        EVAL_CRITERIA.forEach(cat => cat.items.forEach(item => {
+          const comment = (ev.managerEval[item.id] && ev.managerEval[item.id].comment) ? ev.managerEval[item.id].comment.trim() : "";
+          if (comment === "") alertCount++;
+        }));
+        if (alertCount > 0 && !confirm(`店長評価のコメントが ${alertCount} 箇所未記入ですが、このまま提出しますか？`)) return;
+      }
+
+      if(!confirm("提出または確定を実行します。よろしいですか？\n※提出後の変更には権限が必要です。")) return;
+      ev.status = newStatus;
+      saveCurrentEval('update_status');
+    }
+
+    async function saveCurrentEval(action) {
+      calcTotalScore(); 
+      const evRaw = evaluationsData.find(e => e.id === currentSheetId);
+      if(!evRaw) return;
+      
+      const payload = {
+        id: evRaw.id, period: evRaw.period, user_id: evRaw.userId,
+        name: evRaw.name, branch: evRaw.branch, status: evRaw.status,
+        self_eval: evRaw.selfEval, manager_eval: evRaw.managerEval, executive_eval: evRaw.executiveEval,
+        final_score: evRaw.finalScore, deviation: evRaw.deviation, updated_at: new Date().toISOString()
+      };
+
+      showLoading("データを保存中...");
+      
+      try {
+        const { error } = await db.from('hr_evaluations').upsert(payload, { onConflict: 'id' });
+        if (error) throw error;
+        
+        hideLoading();
+        alert("正常に保存されました。");
+        
+        if (action === 'update_status') {
+           showDashboard(); 
+           loadEvaluations(); 
+        }
+      } catch (err) {
+        hideLoading(); 
+        alert("通信エラー: " + err.message); 
+      }
+    }
+
+    function toggleAccordion(id) {
+      const el = document.getElementById(id);
+      const icon = document.getElementById('icon_' + id);
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if (icon) icon.classList.add('rotate-180');
+      } else {
+        el.classList.add('hidden');
+        if (icon) icon.classList.remove('rotate-180');
+      }
+    }
+
+    function openMasterCriteriaModal() {
+      const container = document.getElementById('masterCriteriaContent');
+      if (container.innerHTML.trim() === "") {
+         let html = "";
+         EVAL_CRITERIA.forEach((cat, catIdx) => {
+           html += `<div class="mb-6"><h4 class="text-lg font-black text-slate-800 mb-3 border-b-2 border-blue-500 pb-1 inline-block">${cat.category} <span class="text-xs text-slate-500 font-normal ml-2">配点ウエイト: ${cat.weight}%</span></h4><div class="space-y-3">`;
+           cat.items.forEach((item, itemIdx) => {
+             html += `
+               <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                 <div class="p-4 cursor-pointer hover:bg-slate-50 flex justify-between items-center transition-colors" onclick="toggleMasterAccordion('m_acc_${catIdx}_${itemIdx}')">
+                   <div>
+                     <p class="font-bold text-slate-800 text-sm">${item.name}</p>
+                     <p class="text-[11px] text-slate-500 mt-0.5">${item.desc}</p>
+                   </div>
+                   <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200" id="m_icon_${catIdx}_${itemIdx}"></i>
+                 </div>
+                 <div id="m_acc_${catIdx}_${itemIdx}" class="hidden border-t border-slate-100 p-4 bg-slate-50 accordion-content text-xs">
+                   <div class="mb-3">
+                     <h5 class="font-black text-slate-700 mb-1"><i class="fa-solid fa-bullseye text-blue-400 mr-1"></i>評価の目的</h5>
+                     <p class="text-slate-600 leading-relaxed">${item.purpose}</p>
+                   </div>
+                   <div class="space-y-1.5">
+                     <h5 class="font-black text-slate-700 mb-1"><i class="fa-solid fa-list-ol text-blue-400 mr-1"></i>判定基準</h5>
+                     <div class="p-2 rounded border bg-emerald-50 border-emerald-100 text-emerald-800 flex gap-2"><b class="w-16 shrink-0">20点</b><span>${item.criteria.p20}</span></div>
+                     <div class="p-2 rounded border bg-emerald-50/30 border-emerald-100/30 text-slate-600 flex gap-2"><b class="w-16 shrink-0">17～19点</b><span>${item.criteria.p17_19}</span></div>
+                     <div class="p-2 rounded border bg-blue-50/30 border-blue-100/50 text-slate-600 flex gap-2"><b class="w-16 shrink-0">14～16点</b><span>${item.criteria.p14_16}</span></div>
+                     <div class="p-2 rounded border bg-white border-slate-200 text-slate-600 flex gap-2"><b class="w-16 shrink-0">11～13点</b><span>${item.criteria.p11_13}</span></div>
+                     <div class="p-2 rounded border bg-amber-50 border-amber-100 text-amber-800 flex gap-2"><b class="w-16 shrink-0">10点</b><span>${item.criteria.p10}</span></div>
+                     <div class="p-2 rounded border bg-white border-slate-200 text-slate-600 flex gap-2"><b class="w-16 shrink-0">7～9点</b><span>${item.criteria.p7_9}</span></div>
+                     <div class="p-2 rounded border bg-rose-50/30 border-rose-100/50 text-slate-600 flex gap-2"><b class="w-16 shrink-0">4～6点</b><span>${item.criteria.p4_6}</span></div>
+                     <div class="p-2 rounded border bg-rose-50/50 border-rose-100/50 text-slate-600 flex gap-2"><b class="w-16 shrink-0">1～3点</b><span>${item.criteria.p1_3}</span></div>
+                     <div class="p-2 rounded border bg-rose-50 border-rose-100 text-rose-800 flex gap-2"><b class="w-16 shrink-0">0点</b><span>${item.criteria.p0}</span></div>
+                   </div>
+                 </div>
+               </div>
+             `;
+           });
+           html += `</div></div>`;
+         });
+         container.innerHTML = html;
+      }
+      document.getElementById('masterCriteriaModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeMasterCriteriaModal() {
+      document.getElementById('masterCriteriaModal').classList.replace('flex', 'hidden');
+    }
+
+    function openCriteriaModal(catIdx, itemIdx) {
+      const item = EVAL_CRITERIA[catIdx].items[itemIdx];
+      document.getElementById('modalCriteriaTitle').innerText = item.name + " の詳細基準";
+      document.getElementById('modalCriteriaPurpose').innerText = item.purpose;
+      
+      const points = [
+        { label: "20点 (最高)", text: item.criteria.p20, bg: "bg-emerald-50 border-emerald-100 text-emerald-800" },
+        { label: "17～19点", text: item.criteria.p17_19, bg: "bg-emerald-50/30 border-emerald-100/30 text-slate-600" },
+        { label: "14～16点", text: item.criteria.p14_16, bg: "bg-blue-50/30 border-blue-100/50 text-slate-600" },
+        { label: "11～13点", text: item.criteria.p11_13, bg: "bg-slate-50 border-slate-100 text-slate-600" },
+        { label: "10点 (標準)", text: item.criteria.p10, bg: "bg-amber-50 border-amber-100 text-amber-800" },
+        { label: "7～9点", text: item.criteria.p7_9, bg: "bg-slate-50 border-slate-100 text-slate-600" },
+        { label: "4～6点", text: item.criteria.p4_6, bg: "bg-rose-50/30 border-rose-100/50 text-slate-600" },
+        { label: "1～3点", text: item.criteria.p1_3, bg: "bg-rose-50/50 border-rose-100/50 text-slate-600" },
+        { label: "0点 (要改善)", text: item.criteria.p0, bg: "bg-rose-50 border-rose-100 text-rose-800" }
+      ];
+      
+      let listHtml = "";
+      points.forEach(p => {
+        if(p.text) {
+          listHtml += `<div class="p-2.5 rounded-xl border ${p.bg} flex flex-col sm:flex-row gap-1 sm:gap-4 items-start text-xs leading-relaxed"><b class="inline-block w-24 shrink-0 font-black tracking-wide">${p.label}</b><span class="flex-grow">${p.text}</span></div>`;
+        }
+      });
+      
+      document.getElementById('modalCriteriaList').innerHTML = listHtml;
+      document.getElementById('criteriaModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeCriteriaModal() {
+      document.getElementById('criteriaModal').classList.replace('flex', 'hidden');
+    }
+
+    function goHome() {
+      if (appUrl && appUrl.includes("script.google.com")) {
+        window.top.location.href = appUrl + "?p=portal";
+      } else {
+        window.top.location.href = "?p=portal";
+      }
+    }
+    
+    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
+  </script>
+</body>
+</html>

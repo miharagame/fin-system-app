@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .locked-tool { opacity: 0.4; filter: grayscale(100%); transition: all 0.3s; cursor: not-allowed; }
+    .locked-tool:hover { opacity: 0.6; }
+    input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+    .accordion-content { transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out; overflow: hidden; }
+    
+    .app-btn-3d {
+      transition: all 0.15s ease-out;
+      box-shadow: 0 6px 0 0 #1e293b, 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    }
+    .app-btn-3d:active, .app-btn-3d.active-press {
+      transform: translateY(6px);
+      box-shadow: 0 0px 0 0 #1e293b, 0 4px 6px -2px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 relative">
+
+  <div id="initLoading" class="fixed inset-0 bg-slate-950 z-50 flex flex-col justify-center items-center transition-all duration-300">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-sky-500 mb-4"></i>
+    <p class="text-sky-400 text-sm font-black animate-pulse" id="loadingText">データを展開中...</p>
+  </div>
+
+  <div id="authScreen" class="hidden bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-md text-center m-auto">
+    <div class="bg-gradient-to-tr from-sky-500 to-indigo-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-sky-500/20">
+      <i class="fa-solid fa-fingerprint text-4xl text-white"></i>
+    </div>
+    <h1 class="text-3xl font-black tracking-tighter text-white mb-2">Management Hub</h1>
+    <p class="text-slate-500 text-xs font-bold tracking-widest mb-8">システムログイン</p>
+    
+    <div id="authError" class="hidden bg-rose-500/10 border border-rose-500/50 text-rose-400 text-sm p-4 rounded-xl mb-6 font-bold"></div>
+
+    <div class="space-y-4 text-left">
+      <div class="relative">
+        <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+        <input type="text" id="userIdInput" placeholder="ユーザーID" class="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-slate-200 focus:outline-none focus:border-sky-500">
+      </div>
+      <div class="relative">
+        <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+        <input type="password" id="passwordInput" placeholder="パスワード" class="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-slate-200 focus:outline-none focus:border-sky-500">
+      </div>
+      <button onclick="attemptLogin()" id="loginBtn" class="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-black py-4 rounded-2xl transition-all">ログイン</button>
+    </div>
+  </div>
+
+  <div id="menuScreen" class="hidden w-full max-w-7xl mx-auto flex flex-col gap-6">
+    <div class="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 overflow-x-auto whitespace-nowrap">
+      <div class="pr-4">
+        <p class="text-xs font-bold text-slate-500">Welcome,</p>
+        <p class="text-lg font-black text-white"><span id="userNameDisplay">--</span> <span id="userBranchDisplay" class="text-xs text-sky-400 ml-2"></span></p>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <button onclick="openMasterCriteriaModal()" class="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors bg-blue-950/30 px-3 py-1.5 rounded-lg border border-blue-900"><i class="fa-solid fa-book mr-1"></i> 評価基準確認</button>
+        <button id="btnManageUsers" onclick="navigate('users')" class="hidden text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-950/30 px-3 py-1.5 rounded-lg border border-indigo-900"><i class="fa-solid fa-users-gear mr-1"></i> 管理設定</button>
+        <input type="month" id="monthSelector" onchange="changePortalMonth()" class="text-sm font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded border border-slate-700 outline-none cursor-pointer [color-scheme:dark]">
+        <button onclick="logout()" class="text-xs font-bold text-slate-500 hover:text-rose-400 transition-colors"><i class="fa-solid fa-right-from-bracket"></i> ログアウト</button>
+      </div>
+    </div>
+
+    <div id="projectAlertsArea" class="flex-col gap-3 hidden mb-2 mt-2"></div>
+    <div id="noticesArea" class="flex flex-col gap-3 hidden"></div>
+
+    <div id="hrDashboard" class="hidden flex-col gap-6 items-center justify-center py-20">
+      <div class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-10 shadow-2xl border border-blue-500 w-full max-w-2xl text-center relative overflow-hidden">
+        <div class="absolute -right-10 -top-10 opacity-20"><i class="fa-solid fa-file-signature text-9xl"></i></div>
+        <h2 class="text-3xl font-black text-white mb-2 relative z-10">人事評価・レポート ポータル</h2>
+        <p class="text-blue-100 font-bold mb-8 relative z-10">評価シートの確認や、日々の業務レポートの提出はこちらから</p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
+          <button onclick="openMasterCriteriaModal()" class="bg-blue-900/40 text-white hover:bg-blue-900/60 border border-blue-400 font-bold py-4 px-8 rounded-2xl transition-all text-base flex items-center justify-center gap-2">
+            <i class="fa-solid fa-book-open"></i> 評価基準を見る
+          </button>
+          <button id="btnGoHrPage" onclick="navigate('hr')" class="bg-white text-blue-700 hover:bg-blue-50 font-black py-4 px-8 rounded-2xl shadow-lg transition-all text-base flex items-center justify-center gap-2">
+            評価シートを開く <i class="fa-solid fa-arrow-right"></i>
+          </button>
+          <button id="btnGoReportPage" onclick="navigate('report')" class="bg-rose-600 text-white hover:bg-rose-500 font-black py-4 px-8 rounded-2xl shadow-lg transition-all text-base flex items-center justify-center gap-2">
+            <i class="fa-solid fa-file-contract"></i> 業務レポート提出
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="adminDashboard" class="hidden flex-col gap-6">
+      <div class="mt-2 mb-2 border-b border-slate-800 pb-2">
+        <h2 class="font-bold text-white text-sm"><i class="fa-solid fa-toolbox text-indigo-400 mr-2"></i> アプリケーション・ツール</h2>
+        <p class="text-[10px] text-slate-500">アカウントの権限に応じて利用可能なツールがハイライトされます</p>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-2">
+        <div id="wrap_analytics" class="relative group">
+          <div id="lock_analytics" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuAnalytics" onclick="handleToolClick(event, 'analytics')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-chart-line text-xl sm:text-2xl text-sky-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">業績分析</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">過去の決算・財務状況を分析</p>
+          </a>
+        </div>
+        
+        <div id="wrap_planning" class="relative group">
+          <div id="lock_planning" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuPlanning" onclick="handleToolClick(event, 'planning')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-chess-knight text-xl sm:text-2xl text-emerald-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">経営計画</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">目標から逆算したノルマ算出</p>
+          </a>
+        </div>
+        
+        <div id="wrap_tracking" class="relative group">
+          <div id="lock_tracking" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuTracking" onclick="handleToolClick(event, 'tracking')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-bullseye text-xl sm:text-2xl text-amber-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">予実管理</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">日次実績入力とタイムライン</p>
+          </a>
+        </div>
+
+        <div id="wrap_inventory" class="relative group">
+          <div id="lock_inventory" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuInventory" onclick="handleToolClick(event, 'inventory')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-boxes-stacked text-xl sm:text-2xl text-fuchsia-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">在庫分析</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">POS data取込と滞留分析</p>
+          </a>
+        </div>
+
+        <div id="wrap_tasks" class="relative group">
+          <div id="lock_tasks" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuTasks" onclick="handleToolClick(event, 'tasks')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-list-check text-xl sm:text-2xl text-indigo-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">タスク管理</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">ルーティン・プロジェクト進行</p>
+          </a>
+        </div>
+
+        <div id="wrap_hr" class="relative group">
+          <div id="lock_hr" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold hidden"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuHr" onclick="handleToolClick(event, 'hr')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-file-signature text-xl sm:text-2xl text-blue-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">人事評価</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">目標設定・自己評価・他者評価</p>
+          </a>
+        </div>
+
+        <div id="wrap_report" class="relative group">
+          <div id="lock_report" class="absolute top-3 right-3 z-10 bg-slate-900/80 border border-slate-700 text-slate-400 px-2 py-1 rounded flex items-center gap-1 text-[9px] font-bold hidden"><i class="fa-solid fa-lock"></i> NO ACCESS</div>
+          <a href="#" id="menuReport" onclick="handleToolClick(event, 'report')" class="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 app-btn-3d block h-full locked-tool">
+            <div class="flex items-center gap-3 mb-1">
+              <i class="fa-solid fa-file-contract text-xl sm:text-2xl text-rose-400 transition-transform icon-anim"></i>
+              <h2 class="text-sm sm:text-base font-black text-white">業務レポート</h2>
+            </div>
+            <p class="text-[10px] text-slate-400 pl-8 sm:pl-9 hidden sm:block">始末書・改善提案の提出</p>
+          </a>
+        </div>
+      </div>
+
+      <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-slate-800 pb-4 mt-4">
+        <div>
+          <h2 class="font-bold text-white text-sm"><i class="fa-solid fa-chart-pie text-sky-400 mr-2"></i>全社実績・分析期間の選択</h2>
+          <p class="text-[11px] text-slate-400 mt-1">集計対象: <span id="currentPeriodDisplay" class="font-mono text-sky-300 font-bold bg-sky-950/50 px-2 py-0.5 rounded border border-sky-900/50">--</span></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+            <button onclick="changeGraphPeriod('daily')" id="btn_daily" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">本日</button>
+            <button onclick="changeGraphPeriod('weekly')" id="btn_weekly" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">直近7日</button>
+            <button onclick="changeGraphPeriod('monthly')" id="btn_monthly" class="period-btn active bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-md transition-all shadow">当月</button>
+            <button onclick="changeGraphPeriod('semi')" id="btn_semi" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">半期累計</button>
+            <button onclick="changeGraphPeriod('annual')" id="btn_annual" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">年間累計</button>
+            <button onclick="changeGraphPeriod('all')" id="btn_all" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">全期間</button>
+            <button onclick="changeGraphPeriod('custom')" id="btn_custom" class="period-btn text-[10px] font-bold px-3 py-1.5 rounded-md text-slate-500 hover:text-white transition-all">期間指定</button>
+          </div>
+          <div id="customDateRange" class="hidden items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+            <input type="date" id="dateFrom" onchange="applyCustomPeriod()" class="bg-slate-900 text-[10px] font-bold text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none [color-scheme:dark]">
+            <span class="text-slate-500 text-[10px] font-bold">～</span>
+            <input type="date" id="dateTo" onchange="applyCustomPeriod()" class="bg-slate-900 text-[10px] font-bold text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none [color-scheme:dark]">
+          </div>
+        </div>
+      </div>
+
+      <div id="portalCardGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mt-4">
+        
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute right-0 top-0 h-full w-20 bg-sky-500/10 blur-xl"></div>
+          <div>
+            <p class="text-xs text-sky-400 font-bold mb-1">選択期間 全社累計 売上高</p>
+            <p class="text-3xl font-black font-mono"><span id="totSales">--</span> <span class="text-sm font-sans font-bold text-slate-400">円</span></p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute right-0 top-0 h-full w-20 bg-emerald-500/10 blur-xl"></div>
+          <div>
+            <p class="text-xs text-emerald-400 font-bold mb-1">選択期間 全社累計 粗利額</p>
+            <p class="text-3xl font-black font-mono"><span id="totGross">--</span> <span class="text-sm font-sans font-bold text-slate-400">円</span></p>
+          </div>
+          <div class="mt-2 border-t border-slate-800/50 pt-3 flex justify-between items-center">
+             <p class="text-xs text-slate-400 font-bold">期間平均粗利率:</p>
+             <p class="text-2xl font-black font-mono text-emerald-400"><span id="totMarginRate">--</span><span class="text-sm font-sans ml-1 text-emerald-500/70">%</span></p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute right-0 top-0 h-full w-20 bg-amber-500/10 blur-xl"></div>
+          <div>
+            <p class="text-xs text-amber-400 font-bold mb-1">選択期間 全社累計 現金化額</p>
+            <p class="text-3xl font-black font-mono text-amber-500"><span id="totCash">--</span> <span class="text-sm font-sans font-bold text-amber-500/50">円</span></p>
+          </div>
+          <div class="mt-2 border-t border-slate-800/50 pt-2 text-[10px] text-slate-400 font-mono space-y-1">
+            <div class="flex justify-between items-center">
+               <p id="lblCashTargetTitle">本日までの目標:</p>
+               <p class="text-amber-300 font-bold"><span id="totCashTargetCum">--</span> 円</p>
+            </div>
+            <div class="flex justify-between items-center">
+               <p>期間の達成率:</p>
+               <p class="text-amber-400 font-black text-xs"><span id="totCashRate">--</span> %</p>
+            </div>
+            <div class="flex justify-between border-t border-slate-800/50 pt-1.5 mt-1.5 text-slate-500">
+               <p>1日目安: <span id="totCashDaily">--</span>円</p>
+               <p>期間満額目標: <span id="totCashTargetFull">--</span>円</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute right-0 top-0 h-full w-20 bg-fuchsia-500/10 blur-xl"></div>
+          <div>
+            <p class="text-xs text-fuchsia-400 font-bold mb-1">選択期間 全社累計 在庫増減</p>
+            <p class="text-3xl font-black font-mono text-fuchsia-500"><span id="totInv">--</span> <span class="text-sm font-sans font-bold text-fuchsia-500/50">円</span></p>
+          </div>
+          <div class="mt-2 border-t border-slate-800/50 pt-2 text-[10px] text-slate-400 font-mono space-y-1">
+            <div class="flex justify-between items-center">
+               <p id="lblInvTargetTitle">本日までの上限:</p>
+               <p class="text-fuchsia-300 font-bold"><span id="totInvTargetCum">--</span> 円</p>
+            </div>
+            <div class="flex justify-between items-center">
+               <p>枠の超過額:</p>
+               <div class="flex items-center gap-1">
+                 <span id="totInvExcess" class="font-bold text-white">--</span><span class="text-slate-500">円</span>
+                 <span id="badgeInvExcess" class="hidden bg-rose-600 text-white text-[9px] px-1.5 py-0.5 rounded font-bold animate-pulse shadow-[0_0_8px_rgba(225,29,72,0.8)]">超過</span>
+               </div>
+            </div>
+            <div class="flex justify-between border-t border-slate-800/50 pt-1.5 mt-1.5 text-slate-500">
+               <p>1日上限: <span id="totInvLimitDaily">--</span>円</p>
+               <p>期間満額上限: <span id="totInvTargetFull">--</span>円</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="trueCashCard" class="hidden bg-gradient-to-br from-slate-900 to-indigo-950/40 rounded-3xl p-6 border border-indigo-500/30 shadow-2xl relative overflow-hidden flex flex-col justify-between">
+          <div class="absolute right-0 top-0 h-full w-24 bg-indigo-500/10 blur-2xl"></div>
+          <div>
+            <p class="text-xs text-indigo-400 font-bold mb-1 flex items-center gap-1.5"><i class="fa-solid fa-coins"></i>選択期間 全社累計 最終手残り額</p>
+            <p class="text-3xl font-black font-mono text-white" id="totTrueCash">-- <span class="text-sm font-sans font-bold text-slate-500">円</span></p>
+          </div>
+          <div class="mt-2 border-t border-indigo-900/50 pt-2 text-[10px] text-slate-400 font-mono leading-relaxed bg-slate-950/30 p-2 rounded-xl border border-slate-800/50">
+            <p class="font-bold text-indigo-300 mb-0.5">【間接 CF 着地予測】</p>
+            <p>利益CFから固定費・借入元本返済・みなし法人税(33%)・消費税(固定費課税40%)を期間日数で正確に日割按分して自動リアルタイム控除した真の実質プール額です。</p>
+          </div>
+        </div>
+        
+      </div>
+
+      <div class="grid grid-cols-1 gap-6 items-start mt-6">
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl flex flex-col gap-4">
+          <div class="w-full h-[300px] relative"><canvas id="branchChart"></canvas></div>
+          <div class="overflow-x-auto mt-2">
+            <table class="w-full text-xs text-left whitespace-nowrap">
+              <thead>
+                <tr class="border-b border-slate-700 text-slate-400 font-bold">
+                  <th class="py-2 px-2">店舗</th>
+                  <th class="py-2 px-2 text-right">売上高(円)</th>
+                  <th class="py-2 px-2 text-right text-rose-400">買取高(円)</th>
+                  <th class="py-2 px-2 text-right">粗利額(円)</th>
+                  <th class="py-2 px-2 text-right text-emerald-400">粗利率(%)</th>
+                  <th class="py-2 px-2 text-right text-amber-400">現金化額(円)</th>
+                  <th class="py-2 px-2 text-right text-fuchsia-400">在庫増減(円)</th>
+                  <th class="py-2 px-2 text-right text-indigo-400">生産性(円/h)</th>
+                </tr>
+              </thead>
+              <tbody id="branchTbody" class="divide-y divide-slate-800/50"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="masterCriteriaModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[60] p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <h3 class="text-white font-black text-base sm:text-lg"><i class="fa-solid fa-book text-blue-400 mr-2"></i>全項目 評価基準マスタ一覧</h3>
+        <button onclick="closeMasterCriteriaModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div class="p-5 overflow-y-auto bg-slate-950 text-slate-300" id="masterCriteriaContent"></div>
+      <div class="p-4 bg-slate-900 text-right border-t border-slate-800">
+        <button onclick="closeMasterCriteriaModal()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black transition-all shadow-md">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. Supabase接続設定 ＆ グローバル変数宣言
+    // ==========================================
+    const supabaseUrl = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const supabaseKey = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = supabase.createClient(supabaseUrl, supabaseKey);
+
+    let appUrl = "", chartObj = null, currentUser = null;
+    let toolPermissions = { analytics: false, planning: false, tracking: false, inventory: false, tasks: false, hr: false, report: false };
+    
+    let allRecords = [];
+    let targetBranches = [];
+    let currentPeriodMode = 'monthly'; 
+    let currentMonthStr = "";
+    let currentTargets = {};
+    let monthlySummaryFromServer = [];
+
+    let branchFixedCostsMap = {};
+    let globalSettingsMap = {};
+    let globalBranches = []; // ★追加: マスタから取得した店舗一覧を保持するハコ
+
+    window.onload = () => {
+      google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      const savedUser = sessionStorage.getItem('finUser');
+      if (savedUser) { 
+        attemptAutoLogin(JSON.parse(savedUser)); 
+      } else {
+        document.getElementById("initLoading").classList.add("hidden");
+        document.getElementById("authScreen").classList.remove("hidden");
+      }
+    };
+
+    async function attemptLogin() {
+      const id = document.getElementById("userIdInput").value;
+      const pass = document.getElementById("passwordInput").value;
+      const btn = document.getElementById("loginBtn");
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 認証中...'; btn.disabled = true;
+
+      try {
+        const dummyEmail = id + "@system.local";
+        const { data: authData, error: authErr } = await db.auth.signInWithPassword({
+            email: dummyEmail,
+            password: pass
+        });
+        if (authErr) throw new Error("IDまたはパスワードが違います。");
+
+        if (authData && authData.session) {
+            sessionStorage.setItem('sb_access', authData.session.access_token);
+            sessionStorage.setItem('sb_refresh', authData.session.refresh_token);
+        }
+
+        const { data: uData, error: uErr } = await db.from('system_users').select('*').eq('id', id).single();
+        if (uErr || !uData) throw new Error("ユーザー情報の取得に失敗しました。");
+
+        const { data: rData, error: rErr } = await db.from('roles').select('*').eq('id', uData.role_id).single();
+        if (rErr || !rData) throw new Error("権限情報の取得に失敗しました。");
+
+        currentUser = {
+          id: uData.id, 
+          name: uData.name, 
+          roleId: uData.role_id, 
+          branch: uData.branch, 
+          roleLevel: uData.role_level,
+          permissions: {
+            editAll: rData.edit_scope === '全店舗',
+            viewAll: rData.view_scope === '全店舗',
+            manageAccess: rData.manage_access === '可能',
+            canManageUsers: rData.manage_access === '可能', 
+            canAnalytics: rData.can_analytics === '可能',
+            canPlanning: rData.can_planning === '可能',
+            canTracking: rData.can_tracking === '可能',
+            canInventory: rData.can_inventory === '可能',
+            canTasks: rData.can_tasks !== '不可',
+            canHr: rData.can_hr,
+            canNotice: rData.can_notice === '可能',
+            canLog: rData.can_log === '可能',
+            canReport: rData.can_report === '可能',
+            canViewTrueCash: rData.can_view_true_cash === '可能',
+            canChangePeriod: rData.can_change_period === '可能'
+          }
+        };
+
+        sessionStorage.setItem('finUser', JSON.stringify(currentUser));
+        document.getElementById("authScreen").classList.add("hidden");
+        document.getElementById("initLoading").classList.remove("hidden"); 
+
+        db.from('operation_logs').insert([{
+          timestamp: new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().replace("T", " ").substring(0, 19),
+          user_id: currentUser.id, name: currentUser.name, branch: currentUser.branch,
+          category: "ログイン", details: "ポータルへログイン"
+        }]).then();
+
+        fetchAndShowMenu(currentUser, null);
+
+      } catch (err) {
+        btn.innerHTML = 'ログイン'; btn.disabled = false;
+        const errEl = document.getElementById("authError");
+        errEl.innerText = err.message; errEl.classList.remove("hidden");
+      }
+    }
+
+    function attemptAutoLogin(user) { 
+      currentUser = user;
+      fetchAndShowMenu(user, null);
+    }
+
+    async function fetchAndShowMenu(user, targetMonthStr) {
+      document.getElementById("initLoading").classList.remove("hidden");
+      const now = new Date();
+      currentMonthStr = targetMonthStr || new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().substring(0, 7);
+      
+      try {
+        const [noticesRes, projRes, fixedCostsRes, globalSettingsRes, branchesRes] = await Promise.all([
+          db.from('notices').select('*').order('created_at', { ascending: false }),
+          db.from('projects').select('*').neq('status', 'deleted'),
+          db.from('fin_branch_fixed_costs').select('*'),
+          db.from('fin_global_settings').select('*'),
+          db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true })
+        ]);
+        
+        if (noticesRes.error) throw noticesRes.error;
+        if (projRes.error) throw projRes.error;
+        if (branchesRes.error) throw branchesRes.error;
+
+        if (branchesRes.data && branchesRes.data.length > 0) {
+            globalBranches = branchesRes.data.map(b => b.name);
+        } else {
+            globalBranches = ["大阪本店", "バトルタワー店", "秋葉原店", "福岡天神店", "名古屋大須店", "池袋店"];
+        }
+        
+        branchFixedCostsMap = {};
+        if (fixedCostsRes.data) {
+          fixedCostsRes.data.forEach(r => {
+            branchFixedCostsMap[r.branch] = { totalSga: r.total_sga, directSga: r.direct_sga, allocatedRepay: r.allocated_repay };
+          });
+        }
+        globalSettingsMap = {};
+        if (globalSettingsRes.data) {
+          globalSettingsRes.data.forEach(r => {
+            globalSettingsMap[r.key] = r.value;
+          });
+        }
+        
+        const myNotices = (noticesRes.data || []).filter(n => n.branch === '全店舗' || n.branch === user.branch);
+        const alerts = [];
+        const myProjects = (projRes.data || []).filter(p => user.permissions.viewAll || p.branch === user.branch);
+        
+        myProjects.forEach(p => {
+          if (p.type !== 'project' || p.progress >= 100 || !p.due_date) return;
+          const due = new Date(p.due_date); due.setHours(0,0,0,0);
+          const today = new Date(); today.setHours(0,0,0,0);
+          const diffDays = Math.floor((due - today) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 3) {
+            alerts.push({
+              isOverdue: diffDays < 0, dueDate: p.due_date, branch: p.branch,
+              projectName: "プロジェクト", taskName: p.name, progress: p.progress || 0, assignee: p.assignee || '未定'
+            });
+          }
+        });
+        alerts.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+        let allFetchedRecords = [];
+        let fromIndex = 0;
+        const limitSize = 1000;
+        let hasMoreData = true;
+
+        while (hasMoreData) {
+          const { data: chunkData, error: recErr } = await db
+            .from('daily_records')
+            .select('branch, target_date, sales, purchase, gross_profit, cash_flow, inv_change, discount, work_hours')
+            .order('target_date', { ascending: true })
+            .range(fromIndex, fromIndex + limitSize - 1);
+
+          if (recErr) throw recErr;
+
+          if (chunkData && chunkData.length > 0) {
+            allFetchedRecords = allFetchedRecords.concat(chunkData);
+            fromIndex += limitSize;
+            if (chunkData.length < limitSize) {
+              hasMoreData = false;
+            }
+          } else {
+            hasMoreData = false;
+          }
+        }
+
+        allRecords = allFetchedRecords.map(r => ({
+          branch: r.branch,
+          date: r.target_date ? r.target_date.substring(0, 10) : "",
+          sales: Number(r.sales) || 0,
+          purchase: Number(r.purchase) || 0,
+          grossProfit: Number(r.gross_profit) || 0,
+          cashFlow: Number(r.cash_flow) || 0,
+          invChange: Number(r.inv_change) || 0,
+          discount: Number(r.discount) || 0,
+          workHours: Number(r.work_hours) || 0
+        }));
+        
+        targetBranches = [...new Set(allRecords.map(r => r.branch))];
+        if (targetBranches.length === 0) targetBranches = globalBranches; 
+        
+        const { data: summaryDataRes, error: summaryErr } = await db.from('fin_monthly_stats').select('*').eq('target_month', currentMonthStr);
+
+        monthlySummaryFromServer = [];
+        if (summaryDataRes) {
+            summaryDataRes.forEach(d => {
+                monthlySummaryFromServer.push({
+                    branch: d.branch,
+                    grossProfit: Number(d.gross_profit) || 0,
+                    invChange: (Number(d.total_purchase) || 0) - (Number(d.cogs) || 0),
+                    isConfirmed: true
+                });
+            });
+        }
+
+        await calculateAndDrawPeriod();
+        applyPortalData({ notices: myNotices, projectAlerts: alerts });
+        
+      } catch(err) {
+        document.getElementById("initLoading").classList.add("hidden");
+        console.error("ポータル初期化エラー:", err);
+        alert("データ読み込みエラー: " + err.message);
+        logout();
+      }
+    }
+
+    function applyPortalData(res) {
+      document.getElementById("menuScreen").classList.remove("hidden");
+      document.getElementById("userNameDisplay").innerText = currentUser.name;
+      document.getElementById("userBranchDisplay").innerText = "[" + currentUser.branch + "]";
+      
+      const perms = currentUser.permissions || {};
+      
+      toolPermissions.analytics = perms.canAnalytics;
+      toolPermissions.planning = perms.canPlanning;
+      toolPermissions.tracking = perms.canTracking;
+      toolPermissions.inventory = perms.canInventory; 
+      toolPermissions.tasks = perms.canTasks !== false; 
+      toolPermissions.hr = perms.canHr && perms.canHr !== "不可"; 
+      toolPermissions.report = perms.canReport; 
+      
+      const applyToolPerm = (id, hasPerm, hoverColor) => {
+          const lock = document.getElementById('lock_' + id);
+          const btn = document.getElementById('menu' + id.charAt(0).toUpperCase() + id.slice(1));
+          
+          if(btn && lock) {
+              if (hasPerm) {
+                  btn.classList.remove('locked-tool');
+                  btn.classList.add('hover:border-' + hoverColor);
+                  const icon = btn.querySelector('.icon-anim');
+                  if (icon) icon.classList.add('group-hover:scale-110');
+                  lock.classList.add('hidden');
+              } else {
+                  btn.classList.add('locked-tool');
+                  btn.classList.remove('hover:border-' + hoverColor);
+                  const icon = btn.querySelector('.icon-anim');
+                  if (icon) icon.classList.remove('group-hover:scale-110');
+                  lock.classList.remove('hidden');
+              }
+          }
+      };
+      
+      applyToolPerm('analytics', toolPermissions.analytics, 'sky-500');
+      applyToolPerm('planning', toolPermissions.planning, 'emerald-500');
+      applyToolPerm('tracking', toolPermissions.tracking, 'amber-500');
+      applyToolPerm('inventory', toolPermissions.inventory, 'fuchsia-500');
+      applyToolPerm('tasks', toolPermissions.tasks, 'indigo-500');
+      applyToolPerm('hr', toolPermissions.hr, 'blue-500');
+      applyToolPerm('report', toolPermissions.report, 'rose-500'); 
+
+      const btnManage = document.getElementById("btnManageUsers");
+      if (perms.manageAccess || perms.canManageUsers) {
+          if (btnManage) btnManage.classList.remove("hidden");
+      } else {
+          if (btnManage) btnManage.classList.add("hidden");
+      }
+
+      const canViewLongTerm = perms.canChangePeriod;
+      ['semi', 'annual', 'all', 'custom'].forEach(p => {
+          const btn = document.getElementById('btn_' + p);
+          if (btn) {
+              if (canViewLongTerm) btn.classList.remove('hidden');
+              else btn.classList.add('hidden', 'hidden-by-perm');
+          }
+      });
+      
+      const mSel = document.getElementById('monthSelector');
+      if (mSel) {
+          if (canViewLongTerm) {
+              mSel.disabled = false;
+              mSel.classList.remove('opacity-50', 'cursor-not-allowed');
+              mSel.title = "";
+          } else {
+              mSel.disabled = true;
+              mSel.classList.add('opacity-50', 'cursor-not-allowed');
+              mSel.title = "別月や長期のデータを閲覧する権限がありません";
+          }
+      }
+
+      if (currentUser.roleId === 'role_employee') {
+          document.getElementById("adminDashboard").classList.add("hidden");
+          document.getElementById("adminDashboard").classList.remove("flex");
+          document.getElementById("hrDashboard").classList.remove("hidden");
+          document.getElementById("hrDashboard").classList.add("flex");
+          
+          const btnGoHr = document.getElementById('btnGoHrPage');
+          if(btnGoHr) {
+            if(!toolPermissions.hr) {
+              btnGoHr.disabled = true;
+              btnGoHr.className = "bg-slate-800 text-slate-500 px-8 py-4 rounded-2xl cursor-not-allowed border border-slate-700 opacity-50";
+              btnGoHr.innerHTML = `<i class="fa-solid fa-lock"></i> アクセス不可`;
+            } else {
+              btnGoHr.disabled = false;
+              btnGoHr.className = "bg-white text-blue-700 hover:bg-blue-50 font-black py-4 px-8 rounded-2xl shadow-lg transition-all text-base flex items-center justify-center gap-2";
+              btnGoHr.innerHTML = `評価シートを開く <i class="fa-solid fa-arrow-right"></i>`;
+            }
+          }
+
+          const btnGoReport = document.getElementById('btnGoReportPage');
+          if(btnGoReport) {
+            if(!toolPermissions.report) {
+              btnGoReport.disabled = true;
+              btnGoReport.className = "bg-slate-800 text-slate-500 px-8 py-4 rounded-2xl cursor-not-allowed border border-slate-700 opacity-50 flex items-center justify-center gap-2";
+              btnGoReport.innerHTML = `<i class="fa-solid fa-lock"></i> アクセス不可`;
+            } else {
+              btnGoReport.disabled = false;
+              btnGoReport.className = "bg-rose-600 text-white hover:bg-rose-500 font-black py-4 px-8 rounded-2xl shadow-lg transition-all text-base flex items-center justify-center gap-2";
+              btnGoReport.innerHTML = `<i class="fa-solid fa-file-contract"></i> 業務レポート提出`;
+            }
+          }
+
+      } else {
+          document.getElementById("hrDashboard").classList.add("hidden");
+          document.getElementById("hrDashboard").classList.remove("flex");
+          document.getElementById("adminDashboard").classList.remove("hidden");
+          document.getElementById("adminDashboard").classList.add("flex");
+          
+          document.getElementById('monthSelector').value = currentMonthStr.replace("/", "-");
+          changeGraphPeriod('monthly');
+      }
+
+      renderNotices(res.notices);
+      renderProjectAlerts(res.projectAlerts);
+      document.getElementById("initLoading").classList.add("hidden");
+    }
+
+    function changePortalMonth() {
+        const selectedMonth = document.getElementById('monthSelector').value;
+        if (!selectedMonth) return;
+        fetchAndShowMenu(currentUser, selectedMonth);
+    }
+
+    function handleToolClick(e, tool) {
+        e.preventDefault();
+        if(toolPermissions[tool]) {
+            navigate(tool);
+        } else {
+            alert("この機能にアクセスする権限がありません。\nシステム管理者にご確認ください。");
+        }
+    }
+
+    function renderProjectAlerts(alerts) {
+      const area = document.getElementById('projectAlertsArea');
+      if (!alerts || alerts.length === 0) {
+        area.classList.add('hidden');
+        area.classList.remove('flex');
+        return;
+      }
+      
+      let html = `<h2 class="text-rose-400 font-bold text-sm mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>プロジェクト期限アラート</h2>`;
+      
+      alerts.forEach(a => {
+        let alertBadge = a.isOverdue 
+          ? `<span class="bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded ml-2 animate-pulse">期限超過</span>` 
+          : `<span class="bg-amber-500 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded ml-2">期限迫る</span>`;
+          
+        let borderClass = a.isOverdue ? "border-rose-500/50 bg-rose-950/20" : "border-amber-500/50 bg-amber-950/20";
+        let iconColor = a.isOverdue ? "text-rose-500" : "text-amber-500";
+        
+        html += `
+          <div class="rounded-xl border p-4 shadow-lg flex flex-col md:flex-row gap-4 items-start md:items-center ${borderClass}">
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="text-xl ${iconColor}"><i class="fa-solid fa-clock"></i></span>
+              <span class="text-xs font-mono text-slate-300 opacity-90">${a.dueDate}</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-slate-900 border-slate-700 text-slate-300">${a.branch}</span>
+            </div>
+            <div class="flex-grow">
+              <p class="text-[10px] text-slate-400 mb-0.5 font-bold">${a.projectName}</p>
+              <h3 class="text-sm font-bold text-slate-200">${a.taskName} ${alertBadge}</h3>
+              <p class="text-xs text-slate-400 mt-1">現在の進捗: <span class="font-mono text-white">${a.progress}%</span> / 担当: ${a.assignee || '未定'}</p>
+            </div>
+            <div class="shrink-0 mt-2 md:mt-0">
+              <button onclick="navigate('tasks')" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition-all shrink-0"><i class="fa-solid fa-list-check"></i> タスク管理を開く</button>
+            </div>
+          </div>
+        `;
+      });
+      
+      area.innerHTML = html;
+      area.classList.remove('hidden');
+      area.classList.add('flex');
+    }
+
+    function renderNotices(notices) {
+      const area = document.getElementById('noticesArea');
+      if (!notices || notices.length === 0) {
+        area.classList.add('hidden');
+        return;
+      }
+      
+      let html = "";
+      notices.forEach(n => {
+        let colorClass = "bg-slate-800 border-slate-700 text-slate-200";
+        let iconHtml = '<i class="fa-solid fa-circle-info text-sky-400"></i>';
+        
+        if (n.level === "重要") {
+          colorClass = "bg-rose-950/40 border-rose-900 text-rose-100";
+          iconHtml = '<i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse"></i>';
+        } else if (n.level === "警告") {
+          colorClass = "bg-amber-950/40 border-amber-900 text-amber-100";
+          iconHtml = '<i class="fa-solid fa-bell text-amber-500"></i>';
+        } else if (n.level === "通常") {
+          colorClass = "bg-sky-950/30 border-sky-900 text-sky-100";
+          iconHtml = '<i class="fa-solid fa-circle-info text-sky-400"></i>';
+        }
+
+        html += `
+          <div class="rounded-xl border p-4 shadow-lg flex flex-col md:flex-row gap-4 items-start md:items-center ${colorClass}">
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="text-lg">${iconHtml}</span>
+              <span class="text-xs font-mono opacity-70">${n.date}</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-black/30 border-white/20">${n.branch}</span>
+            </div>
+            <div class="flex-grow">
+              <h3 class="text-sm font-bold mb-1">${n.title}</h3>
+              <p class="text-xs opacity-80 leading-relaxed whitespace-pre-wrap">${n.body}</p>
+            </div>
+          </div>
+        `;
+      });
+      
+      area.innerHTML = html;
+      area.classList.remove('hidden');
+    }
+
+    function changeGraphPeriod(period) {
+        currentPeriodMode = period;
+        
+        ['daily', 'weekly', 'monthly', 'semi', 'annual', 'all', 'custom'].forEach(p => {
+            const btn = document.getElementById('btn_' + p);
+            if (btn) {
+                if(p === period) {
+                    btn.classList.add('bg-slate-800', 'text-white', 'shadow');
+                    btn.classList.remove('text-slate-500');
+                } else {
+                    btn.classList.remove('bg-slate-800', 'text-white', 'shadow');
+                    btn.classList.add('text-slate-500');
+                }
+            }
+        });
+
+        const customUI = document.getElementById('customDateRange');
+        if (period === 'custom') {
+            if (customUI) { customUI.classList.remove('hidden'); customUI.classList.add('flex'); }
+            const now = new Date();
+            const todayStrLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            const currentMonthStrLocal = currentMonthStr || todayStrLocal.substring(0, 7);
+            
+            if (!document.getElementById('dateFrom').value) {
+                document.getElementById('dateFrom').value = currentMonthStrLocal.replace("/", "-") + "-01";
+            }
+            if (!document.getElementById('dateTo').value) {
+                document.getElementById('dateTo').value = todayStrLocal;
+            }
+            applyCustomPeriod(); 
+            return;
+        } else {
+            if (customUI) { customUI.classList.add('hidden'); customUI.classList.remove('flex'); }
+        }
+
+        calculateAndDrawPeriod();
+    }
+
+    function applyCustomPeriod() {
+        calculateAndDrawPeriod();
+    }
+
+    async function calculateAndDrawPeriod() {
+        document.getElementById("initLoading").classList.remove("hidden");
+        document.getElementById("loadingText").innerText = "集計中...";
+
+        let bStats = {};
+        targetBranches.forEach(b => {
+            bStats[b] = { sales: 0, purchase: 0, grossProfit: 0, cashFlow: 0, invChange: 0, discount: 0, workHours: 0, isConfirmed: false };
+        });
+
+        const now = new Date();
+        const todayStrLocal = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const selectedMonth = document.getElementById('monthSelector').value || todayStrLocal.substring(0, 7);
+        const currentMonthStrLocal = selectedMonth.replace("/", "-");
+        
+        const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+        const sevenDaysAgoStr = new Date(sevenDaysAgo.getTime() - (sevenDaysAgo.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+        const dFrom = document.getElementById('dateFrom').value;
+        const dTo = document.getElementById('dateTo').value;
+
+        let startDate = "";
+        let endDate = todayStrLocal;
+
+        if (currentPeriodMode === 'daily') {
+            startDate = todayStrLocal; endDate = todayStrLocal;
+        } else if (currentPeriodMode === 'weekly') {
+            startDate = sevenDaysAgoStr; endDate = todayStrLocal;
+        } else if (currentPeriodMode === 'monthly') {
+            const [yyyy, mm] = selectedMonth.split('-');
+            const dim = new Date(parseInt(yyyy,10), parseInt(mm,10), 0).getDate();
+            startDate = `${currentMonthStrLocal}-01`;
+            endDate = `${currentMonthStrLocal}-${String(dim).padStart(2,'0')}`;
+        } else if (currentPeriodMode === 'semi') {
+            const yStr = selectedMonth.substring(0, 4);
+            const mNum = parseInt(selectedMonth.substring(5, 7), 10);
+            if (mNum >= 3 && mNum <= 8) {
+                startDate = `${yStr}-03-01`; endDate = `${yStr}-08-31`;
+            } else {
+                let baseYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
+                let nextYear = String(parseInt(baseYear, 10) + 1);
+                let dimFeb = new Date(parseInt(nextYear,10), 2, 0).getDate();
+                startDate = `${baseYear}-09-01`; endDate = `${nextYear}-02-${String(dimFeb).padStart(2,'0')}`;
+            }
+        } else if (currentPeriodMode === 'annual') {
+            const yStr = selectedMonth.substring(0, 4);
+            const mNum = parseInt(selectedMonth.substring(5, 7), 10);
+            let baseYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
+            let nextYear = String(parseInt(baseYear, 10) + 1);
+            let dimFeb = new Date(parseInt(nextYear,10), 2, 0).getDate();
+            startDate = `${baseYear}-03-01`; endDate = `${nextYear}-02-${String(dimFeb).padStart(2,'0')}`;
+        } else if (currentPeriodMode === 'all') {
+            startDate = "2000-01-01"; endDate = "2099-12-31";
+        } else if (currentPeriodMode === 'custom') {
+            startDate = dFrom || "2000-01-01"; endDate = dTo || todayStrLocal;
+        }
+
+        const displayStart = startDate === "2000-01-01" ? "システム開始" : startDate.replace(/-/g, '/');
+        const displayEnd = endDate === "2099-12-31" ? "現在" : endDate.replace(/-/g, '/');
+        const elPeriodDisplay = document.getElementById('currentPeriodDisplay');
+        if (elPeriodDisplay) elPeriodDisplay.innerText = `${displayStart} ～ ${displayEnd}`;
+
+        let totalSales = 0, totalGross = 0, totalCash = 0, totalInv = 0;
+        allRecords.forEach(r => {
+            if(!bStats[r.branch]) return; 
+            if (r.date >= startDate && r.date <= endDate) {
+                bStats[r.branch].sales += r.sales;
+                bStats[r.branch].grossProfit += r.grossProfit;
+                bStats[r.branch].purchase += r.purchase;
+                bStats[r.branch].cashFlow += r.cashFlow;
+                bStats[r.branch].invChange += r.invChange;
+                bStats[r.branch].discount += r.discount || 0;
+                bStats[r.branch].workHours += r.workHours || 0;
+                
+                totalSales += r.sales;
+                totalGross += r.grossProfit;
+                totalCash += r.cashFlow;
+                totalInv += r.invChange;
+            }
+        });
+
+        if (currentPeriodMode === 'monthly' && monthlySummaryFromServer.length > 0) {
+            monthlySummaryFromServer.forEach(cStats => {
+                if (bStats[cStats.branch]) {
+                    totalGross -= bStats[cStats.branch].grossProfit;
+                    totalInv -= bStats[cStats.branch].invChange;
+                    
+                    bStats[cStats.branch].grossProfit = cStats.grossProfit;
+                    bStats[cStats.branch].invChange = cStats.invChange;
+                    bStats[cStats.branch].isConfirmed = true; 
+                    
+                    totalGross += cStats.grossProfit;
+                    totalInv += cStats.invChange;
+                }
+            });
+        }
+
+        document.getElementById('totSales').innerText = Math.round(totalSales).toLocaleString();
+        document.getElementById('totGross').innerText = Math.round(totalGross).toLocaleString();
+        document.getElementById('totCash').innerText = Math.round(totalCash).toLocaleString();
+        document.getElementById('totInv').innerText = (totalInv >= 0 ? "+" : "") + Math.round(totalInv).toLocaleString();
+        
+        let avgMargin = totalSales > 0 ? (totalGross / totalSales) * 100 : 0;
+        let elMargin = document.getElementById('totMarginRate');
+        if (elMargin) elMargin.innerText = avgMargin.toFixed(1);
+
+        let targetStartDate = startDate;
+        let targetEndDate = endDate;
+        if (targetEndDate > todayStrLocal) targetEndDate = todayStrLocal; 
+
+        let breakdown = {};
+        let totalTargetDays = 0;
+        
+        if (targetStartDate <= targetEndDate) {
+            let curr = new Date(targetStartDate.replace(/-/g, '/'));
+            let endObj = new Date(targetEndDate.replace(/-/g, '/'));
+            while (curr <= endObj) {
+                let yyyyStr = curr.getFullYear();
+                let mmStr = String(curr.getMonth() + 1).padStart(2, '0');
+                let key = `${yyyyStr}-${mmStr}`;
+                if (!breakdown[key]) {
+                    breakdown[key] = { daysCount: 0, totalDaysInMonth: new Date(curr.getFullYear(), curr.getMonth() + 1, 0).getDate() };
+                }
+                breakdown[key].daysCount++;
+                totalTargetDays++;
+                curr.setDate(curr.getDate() + 1);
+            }
+        }
+
+        let targetMonthsList = Object.keys(breakdown);
+        let monthlyTargets = {};
+        if (targetMonthsList.length > 0 && targetBranches.length > 0) {
+            try {
+                const { data: bData, error: bErr } = await db
+                    .from('fin_monthly_targets')
+                    .select('*')
+                    .in('target_month', targetMonthsList)
+                    .in('branch', targetBranches);
+                
+                if (bErr) throw bErr;
+                if (bData) {
+                    bData.forEach(d => {
+                        if (!monthlyTargets[d.branch]) monthlyTargets[d.branch] = {};
+                        monthlyTargets[d.branch][d.target_month] = {
+                            sales: Number(d.target_sales) || 0,
+                            cash: Number(d.target_cash) || 0,
+                            invLimit: Number(d.target_inv_limit) || 0,
+                            marginRate: Number(d.margin_rate) || 0
+                        };
+                    });
+                }
+            } catch (err) {
+                console.error("月次目標の取得に失敗:", err);
+            }
+        }
+
+        let targetLabel = "本日までの目標:";
+        let upperLabel = "本日までの上限:";
+        if (currentPeriodMode === 'daily') { targetLabel = "本日の目標:"; upperLabel = "本日の上限:"; }
+        else if (currentPeriodMode === 'weekly') { targetLabel = "直近7日の目標:"; upperLabel = "直近7日の上限:"; }
+        else if (currentPeriodMode === 'semi') { targetLabel = "本日までの目標(半期):"; upperLabel = "本日までの上限(半期):"; }
+        else if (currentPeriodMode === 'annual') { targetLabel = "本日までの目標(通期):"; upperLabel = "本日までの上限(通期):"; }
+        else if (currentPeriodMode === 'custom') { targetLabel = "指定期間の目標:"; upperLabel = "指定期間の上限:"; }
+        else if (currentPeriodMode === 'all') { targetLabel = "全期間の累計目標:"; upperLabel = "全期間の累計上限:"; }
+
+        document.getElementById('lblCashTargetTitle').innerText = targetLabel;
+        document.getElementById('lblInvTargetTitle').innerText = upperLabel;
+
+        let totalCashTarget = 0;
+        let totalInvLimit = 0;
+        let totalGrossTarget = 0;
+
+        targetBranches.forEach(branch => {
+            for (let monthKey in breakdown) {
+                let t = (monthlyTargets[branch] && monthlyTargets[branch][monthKey]) ? monthlyTargets[branch][monthKey] : {sales:0, cash:0, invLimit:0, marginRate:0};
+                
+                let daysInMonth = breakdown[monthKey].totalDaysInMonth;
+                let daysInPeriod = breakdown[monthKey].daysCount;
+                let monthRatio = daysInMonth > 0 ? (daysInPeriod / daysInMonth) : 0;
+
+                totalCashTarget += t.cash * monthRatio;
+                totalInvLimit += t.invLimit * monthRatio;
+                totalGrossTarget += t.sales * (t.marginRate / 100) * monthRatio;
+            }
+        });
+
+        document.getElementById('totCashTargetFull').innerText = Math.round(totalCashTarget).toLocaleString();
+        document.getElementById('totCashTargetCum').innerText = Math.round(totalCashTarget).toLocaleString();
+        document.getElementById('totCashDaily').innerText = totalTargetDays > 0 ? Math.round(totalCashTarget / totalTargetDays).toLocaleString() : "0";
+        let cashRate = totalCashTarget > 0 ? (totalCash / totalCashTarget * 100) : 0;
+        document.getElementById('totCashRate').innerText = cashRate.toFixed(1);
+
+        let invExcess = totalInv - totalInvLimit;
+        document.getElementById('totInvTargetFull').innerText = Math.round(totalInvLimit).toLocaleString();
+        document.getElementById('totInvTargetCum').innerText = Math.round(totalInvLimit).toLocaleString();
+        document.getElementById('totInvLimitDaily').innerText = totalTargetDays > 0 ? Math.round(totalInvLimit / totalTargetDays).toLocaleString() : "0";
+
+        const excessEl = document.getElementById('totInvExcess');
+        const badgeExcess = document.getElementById('badgeInvExcess');
+        if (excessEl && badgeExcess) {
+            if (invExcess > 0) {
+                excessEl.innerText = "+" + Math.round(invExcess).toLocaleString();
+                excessEl.className = "font-bold text-rose-400";
+                badgeExcess.classList.remove('hidden');
+            } else {
+                excessEl.innerText = Math.round(invExcess).toLocaleString();
+                excessEl.className = "font-bold text-emerald-400";
+                badgeExcess.classList.add('hidden');
+            }
+        }
+
+        if (currentUser.permissions.canViewTrueCash) {
+            document.getElementById('trueCashCard').classList.remove('hidden');
+            const grid = document.getElementById('portalCardGrid');
+            grid.classList.remove('md:grid-cols-4'); grid.classList.add('md:grid-cols-5');
+
+            let totalSgaYearly = 0;
+            for (let b in branchFixedCostsMap) {
+                totalSgaYearly += (branchFixedCostsMap[b].totalSga || 0);
+            }
+            const fixedCostCurrent = ((totalSgaYearly * 10000) / 365) * totalTargetDays;
+            
+            const repayMonthly万 = Number(globalSettingsMap['repayTotalMonthly']) || 0;
+            const repaymentCurrent = ((repayMonthly万 * 10000 * 12) / 365) * totalTargetDays;
+
+            const cTaxRate = 0.10;
+            const corpTaxRate = 0.33; 
+            const taxableFixedRatio = 0.40; 
+
+            const grossProfitEquivalent = totalCash + totalInv; 
+            const baseCTax = grossProfitEquivalent > 0 ? grossProfitEquivalent * (cTaxRate / (1 + cTaxRate)) : 0;
+            const deductedCTax = (fixedCostCurrent * taxableFixedRatio) * (cTaxRate / (1 + cTaxRate));
+            const cTaxAmount = Math.max(0, Math.round(baseCTax - deductedCTax));
+
+            const opProfit = Math.round(grossProfitEquivalent - cTaxAmount - fixedCostCurrent);
+            const taxableIncome = Math.max(0, opProfit);
+            const corpTaxAmount = Math.round(taxableIncome * corpTaxRate);
+            const netProfit = opProfit - corpTaxAmount;
+            
+            const trueNetCash = netProfit - totalInv - repaymentCurrent;
+
+            document.getElementById('totTrueCash').innerHTML = `${Math.round(trueNetCash).toLocaleString()} <span class="text-sm font-sans font-bold text-slate-500">円</span>`;
+        } else {
+            document.getElementById('trueCashCard').classList.add('hidden');
+            const grid = document.getElementById('portalCardGrid');
+            grid.classList.remove('md:grid-cols-5'); grid.classList.add('md:grid-cols-4');
+        }
+
+        let summaryData = [];
+        var tBranches = currentUser.permissions.viewAll ? targetBranches : [currentUser.branch];
+        
+        tBranches.forEach(b => {
+            var stats = bStats[b];
+            if(!stats) return;
+
+            var mTarget = 0;
+            if (monthlyTargets[b] && monthlyTargets[b][currentMonthStr]) {
+                mTarget = monthlyTargets[b][currentMonthStr].cash || 0;
+            }
+
+            let netS = stats.sales - stats.discount;
+            let mRate = netS > 0 ? (stats.grossProfit / netS) * 100 : 0;
+            let laborProd = stats.workHours > 0 ? stats.grossProfit / stats.workHours : 0;
+            
+            summaryData.push({
+                branch: b, sales: stats.sales, purchase: stats.purchase, grossProfit: stats.grossProfit,
+                marginRate: mRate, cashFlow: stats.cashFlow, invChange: stats.invChange, isConfirmed: stats.isConfirmed,
+                laborProd: laborProd, monthlyTarget: mTarget
+            });
+        });
+        
+        const branchOrder = globalBranches; 
+        summaryData.sort((a, b) => {
+            let idxA = branchOrder.indexOf(a.branch); let idxB = branchOrder.indexOf(b.branch);
+            if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999;
+            return idxA - idxB;
+        });
+        
+        buildDashboard(summaryData);
+        document.getElementById("initLoading").classList.add("hidden");
+    }
+
+    function buildDashboard(summaryData) {
+      let labels = [], salesData = [], grossData = [], purchaseData = [], invData = [], cashData = [];
+      let tbody = "";
+
+      summaryData.forEach(s => {
+        labels.push(s.branch);
+        salesData.push(Math.round(s.sales || 0));
+        grossData.push(Math.round(s.grossProfit || 0));
+        purchaseData.push(Math.round(s.purchase || 0));
+        invData.push(Math.round(s.invChange || 0));
+        cashData.push(Math.round(s.cashFlow || 0));
+
+        let highlight = (currentUser && s.branch === currentUser.branch) ? "bg-slate-800" : "";
+        let invSign = (s.invChange || 0) >= 0 ? "+" : "";
+        
+        let badge = s.isConfirmed ? `<span class="ml-2 bg-rose-900/80 border border-rose-500 text-rose-400 text-[9px] px-1.5 py-0.5 rounded-full font-bold shadow-[0_0_5px_rgba(225,29,72,0.3)]"><i class="fa-solid fa-lock text-[8px] mr-1"></i>確定</span>` : '';
+        
+        tbody += `<tr class="${highlight} hover:bg-slate-800/50 transition-colors">
+          <td class="py-3 px-2 text-slate-200 font-bold whitespace-nowrap">${s.branch}${badge}</td>
+          <td class="py-3 px-2 text-right font-mono text-sky-400">${Math.round(s.sales || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono text-rose-400">${Math.round(s.purchase || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono text-emerald-400">${Math.round(s.grossProfit || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-emerald-300">${s.marginRate.toFixed(1)}%</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-amber-400">${Math.round(s.cashFlow || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-fuchsia-400">${invSign}${Math.round(s.invChange || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-indigo-400">${Math.round(s.laborProd || 0).toLocaleString()}</td>
+        </tr>`;
+      });
+      document.getElementById('branchTbody').innerHTML = tbody;
+
+      if(chartObj) chartObj.destroy();
+      const ctx = document.getElementById('branchChart').getContext('2d');
+      chartObj = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: '売上高', data: salesData, backgroundColor: 'rgba(56, 189, 248, 0.6)' },
+            { label: '買取高', data: purchaseData, backgroundColor: 'rgba(244, 63, 94, 0.6)' },
+            { label: '粗利額', data: grossData, backgroundColor: 'rgba(52, 211, 153, 0.6)' },
+            { label: '現金化額', data: cashData, backgroundColor: 'rgba(251, 191, 36, 0.6)' },
+            { label: '在庫増減', data: invData, backgroundColor: 'rgba(217, 70, 239, 0.6)' }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1', boxWidth: 12, padding: 10 } } },
+          scales: { x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } } }
+        }
+      });
+    }
+
+    function navigate(page) { if (appUrl) window.open(appUrl + "?p=" + page, "_top"); }
+    
+    function logout() { 
+      sessionStorage.removeItem('finUser'); 
+      document.getElementById("initLoading").classList.add("hidden");
+      document.getElementById("menuScreen").classList.add("hidden"); 
+      document.getElementById("authScreen").classList.remove("hidden"); 
+      document.getElementById("userIdInput").value = ""; 
+      document.getElementById("passwordInput").value = ""; 
+    }
+
+    function openMasterCriteriaModal() {
+      const container = document.getElementById('masterCriteriaContent');
+      if (container.innerHTML.trim() === "") {
+         let html = "";
+         EVAL_CRITERIA.forEach((cat, catIdx) => {
+           html += `<div class="mb-6"><h4 class="text-base font-black text-slate-200 mb-3 border-b border-slate-700 pb-1 inline-block">${cat.category} <span class="text-xs text-slate-500 font-normal ml-2">配点ウエイト: ${cat.weight}%</span></h4><div class="space-y-3">`;
+           cat.items.forEach((item, itemIdx) => {
+             html += `
+               <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                 <div class="p-4 cursor-pointer hover:bg-slate-800 flex justify-between items-center transition-colors" onclick="toggleMasterAccordion('m_acc_${catIdx}_${itemIdx}')">
+                   <div>
+                     <p class="font-bold text-white text-sm">${item.name}</p>
+                     <p class="text-[11px] text-slate-400 mt-0.5">${item.desc}</p>
+                   </div>
+                   <i class="fa-solid fa-chevron-down text-slate-500 text-xs transition-transform duration-200" id="m_icon_${catIdx}_${itemIdx}"></i>
+                 </div>
+                 <div id="m_acc_${catIdx}_${itemIdx}" class="hidden border-t border-slate-800 p-4 bg-slate-950 accordion-content text-xs">
+                   <div class="mb-3">
+                     <h5 class="font-black text-sky-400 mb-1"><i class="fa-solid fa-bullseye mr-1"></i>評価の目的</h5>
+                     <p class="text-slate-300 leading-relaxed">${item.purpose}</p>
+                   </div>
+                   <div class="space-y-1.5 font-mono text-[11px]">
+                     <h5 class="font-black text-sky-400 mb-1 font-sans"><i class="fa-solid fa-list-ol mr-1"></i>判定基準</h5>
+                     <div class="p-2 rounded border bg-emerald-950/40 border-emerald-900 text-emerald-400 flex gap-2"><b class="w-16 shrink-0 font-sans">20点</b><span>${item.criteria.p20}</span></div>
+                     <div class="p-2 rounded border bg-emerald-950/20 border-emerald-100/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">17～19点</b><span>${item.criteria.p17_19}</span></div>
+                     <div class="p-2 rounded border bg-blue-950/20 border-blue-900/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">14～16点</b><span>${item.criteria.p14_16}</span></div>
+                     <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">11～13点</b><span>${item.criteria.p11_13}</span></div>
+                     <div class="p-2 rounded border bg-amber-950/40 border-amber-900 text-amber-400 flex gap-2"><b class="w-16 shrink-0 font-sans">10点</b><span>${item.criteria.p10}</span></div>
+                     <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">7～9点</b><span>${item.criteria.p7_9}</span></div>
+                     <div class="p-2 rounded border bg-rose-950/20 border-rose-900/30 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">4～6点</b><span>${item.criteria.p4_6}</span></div>
+                     <div class="p-2 rounded border bg-rose-950/40 border-rose-900/50 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">1～3点</b><span>${item.criteria.p1_3}</span></div>
+                     <div class="p-2 rounded border bg-rose-900/20 border-rose-800 text-rose-400 flex gap-2"><b class="w-16 shrink-0 font-sans">0点</b><span>${item.criteria.p0}</span></div>
+                   </div>
+                 </div>
+               </div>
+             `;
+           });
+           html += `</div></div>`;
+         });
+         container.innerHTML = html;
+      }
+      document.getElementById('masterCriteriaModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeMasterCriteriaModal() {
+      document.getElementById('masterCriteriaModal').classList.replace('flex', 'hidden');
+    }
+
+    function toggleMasterAccordion(id) {
+      const el = document.getElementById(id);
+      const icon = document.getElementById('m_icon_' + id.substring(6));
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if (icon) icon.classList.add('rotate-180');
+      } else {
+        el.classList.add('hidden');
+        if (icon) icon.classList.remove('rotate-180');
+      }
+    }
+  </script>
+</body>
+</html>

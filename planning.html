@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>FIN-STRAT: 経営計画シミュレータ (Supabase完全版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Roboto+Mono:wght@700&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #020617; color: #f8fafc; overflow-y: scroll; }
+    .font-mono { font-family: 'Roboto Mono', monospace; }
+    .input-num { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; text-align: right; width: 120px; font-weight: bold; outline: none; transition: all 0.2s; }
+    .input-num:focus { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
+    .input-action { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; text-align: center; width: 80px; font-weight: bold; outline: none; transition: all 0.2s; color: #f8fafc;}
+    .input-action:focus { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .tab-btn { padding-bottom: 0.5rem; transition: all 0.2s; cursor: pointer; }
+    .tab-btn.active { color: #38bdf8; border-bottom: 2px solid #38bdf8; font-weight: 900; }
+    .tab-btn-amber.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 900; }
+    .tab-btn-emerald.active { color: #34d399; border-bottom: 2px solid #34d399; font-weight: 900; }
+    .tab-btn-fuchsia.active { color: #e879f9; border-bottom: 2px solid #e879f9; font-weight: 900; }
+    .warning-bg { background-color: rgba(225, 29, 72, 0.2); border-color: rgba(225, 29, 72, 0.5); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  
+  <nav class="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
+    <div class="flex items-center gap-3">
+      <button onclick="goHome()" class="text-slate-400 hover:text-white mr-4 transition-colors"><i class="fa-solid fa-arrow-left"></i> ポータルへ</button>
+      <h1 class="text-lg font-black"><i class="fa-solid fa-compass-drafting text-sky-400 mr-2"></i>戦略シミュレータ</h1>
+      
+      <div class="ml-4 flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 hidden" id="simBranchWrapper">
+        <i class="fa-solid fa-store text-slate-500 text-xs mr-2"></i>
+        <select id="simBranchSelector" onchange="calc()" class="bg-slate-900 text-sm font-bold text-white outline-none cursor-pointer">
+          <option value="全店舗">全社合計</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="userNameHeader" class="text-xs font-bold text-emerald-400"></span>
+      <button onclick="openHistory()" class="text-xs font-bold text-sky-400 hover:text-sky-300 transition-colors bg-sky-950/30 px-3 py-1.5 rounded-lg border border-sky-900"><i class="fa-solid fa-clock-rotate-left mr-1"></i> 保存履歴を見る</button>
+      <button onclick="logout()" class="text-xs font-bold text-slate-500 hover:text-rose-400 transition-colors"><i class="fa-solid fa-right-from-bracket"></i> ログアウト</button>
+    </div>
+  </nav>
+
+  <div id="loading" class="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex flex-col justify-center items-center z-50 transition-all">
+    <i class="fa-solid fa-spinner fa-spin text-4xl text-emerald-500 mb-4"></i>
+    <p class="text-emerald-400 text-sm font-black tracking-widest animate-pulse" id="loadingText">システム起動中...</p>
+  </div>
+
+  <main id="content" class="hidden max-w-7xl mx-auto p-4 md:p-6 flex flex-col gap-6 w-full">
+    
+    <div class="flex gap-6 border-b border-slate-800 overflow-x-auto whitespace-nowrap">
+      <div onclick="switchSimTab('annual')" id="tab_annual" class="tab-btn active text-sm text-slate-400 font-bold"><i class="fa-solid fa-building mr-1"></i>年次経営計画</div>
+      <div onclick="switchSimTab('daily')" id="tab_daily" class="tab-btn tab-btn-amber text-sm text-slate-500 hover:text-white font-bold"><i class="fa-solid fa-bullseye mr-1 text-amber-400"></i>本日アクション逆算</div>
+      <div onclick="switchSimTab('shift')" id="tab_shift" class="tab-btn tab-btn-emerald text-sm text-slate-500 hover:text-white font-bold"><i class="fa-solid fa-users-gear mr-1 text-emerald-400"></i>店舗シフト・生産性計画</div>
+      <div onclick="switchSimTab('admin')" id="tab_admin" class="tab-btn tab-btn-fuchsia text-sm text-slate-500 hover:text-white font-bold hidden"><i class="fa-solid fa-lock mr-1 text-fuchsia-400"></i>マスタ配信・管理 (本部用)</div>
+    </div>
+
+    <div id="view_annual" class="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+      <div class="lg:col-span-4 flex flex-col gap-6">
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-5">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+            <h2 class="font-bold text-sky-400">戦略パラメータ設定</h2>
+          </div>
+          <div class="flex justify-between items-center"><span class="text-sm font-bold">年間売上目標</span><div><input type="text" id="inpSales" value="20,000" oninput="formatIntAndCalc(this)" class="input-num text-sky-400"><span class="text-xs ml-1">万円</span></div></div>
+          <div class="flex justify-between items-center"><span class="text-sm font-bold text-emerald-400">想定粗利率</span><div><input type="text" id="inpMargin" value="30" oninput="formatIntAndCalc(this)" class="input-num text-emerald-400"><span class="text-xs ml-1">%</span></div></div>
+          
+          <div class="border-t border-slate-800 pt-4 space-y-4">
+            <h3 class="text-xs text-slate-500 font-bold">キャッシュレス決済予測</h3>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-indigo-300">売上に占めるC/L比率</span>
+              <div><input type="text" id="inpCashlessRatio" value="50" oninput="formatIntAndCalc(this)" class="input-num text-xs py-1 text-indigo-400 border-slate-800"><span class="text-xs ml-1">%</span></div>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-rose-300">平均 決済手数料率</span>
+              <div><input type="text" id="inpCashlessFeeRate" value="3.2" oninput="formatFloatAndCalc(this)" class="input-num text-xs py-1 text-rose-400 border-slate-800"><span class="text-xs ml-1">%</span></div>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+            <div class="flex justify-between items-center"><span class="text-xs font-bold text-slate-300">月間 販管費 (マスタ自動連携)</span><div class="text-sm font-black text-white font-mono"><span id="lblSgaTotal">0</span> 万円</div></div>
+            <div class="flex justify-between items-center border-t border-slate-800 pt-3"><span class="text-xs font-bold text-rose-400">月間 返済額 (マスタ自動連携)</span><div class="text-sm font-black text-white font-mono"><span id="lblRepayment">0</span> 万円</div></div>
+          </div>
+          
+          <div class="border-t border-slate-800 pt-4 space-y-4">
+            <h3 class="text-xs text-slate-500 font-bold">税金計算の調整パラメータ</h3>
+            <div class="flex justify-between items-center"><span class="text-xs">法人税等 実効税率</span><div><input type="text" id="inpCorpTaxRate" value="30" oninput="formatIntAndCalc(this)" class="input-num text-xs py-1"><span class="text-xs ml-1">%</span></div></div>
+            <div class="flex justify-between items-center"><span class="text-xs">販管費の消費税 課税割合</span><div><input type="text" id="inpTaxableFixed" value="42" oninput="formatIntAndCalc(this)" class="input-num text-xs py-1"><span class="text-xs ml-1">%</span></div></div>
+          </div>
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+            <div class="flex justify-between items-center"><span class="text-xs font-bold text-amber-500">想定 在庫増加額</span><div><input type="text" id="inpInvIncrease" value="500" oninput="formatIntAndCalc(this)" class="input-num text-amber-500 border-slate-800"><span class="text-[10px] ml-1 text-slate-500">万円</span></div></div>
+            <div class="flex justify-between items-center"><span class="text-xs font-bold text-sky-400">目標 最終手残り現金</span><div><input type="text" id="inpTargetCash" value="2,000" oninput="formatIntAndCalc(this)" class="input-num text-sky-400 border-slate-800"><span class="text-[10px] ml-1 text-slate-500">万円</span></div></div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <button id="saveBtn" onclick="saveData()" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 font-bold py-3 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm"><i class="fa-regular fa-folder-open"></i> シミュレーション履歴を保存</button>
+          <p id="msgGotoAdmin" class="text-center text-[10px] text-fuchsia-400 font-bold mt-2 hidden"><i class="fa-solid fa-arrow-up"></i> 本番マスタへの反映は上部の「マスタ配信・管理」タブから行ってください</p>
+        </div>
+        <div id="saveMsg" class="text-center text-sm font-bold hidden"></div>
+      </div>
+
+      <div class="lg:col-span-8 flex flex-col gap-6">
+        <div class="bg-slate-900 rounded-3xl p-8 border border-slate-800 shadow-xl">
+          <h2 class="font-bold text-white mb-6 border-b border-slate-800 pb-2">キャッシュフロー計算プロセス</h2>
+          <div class="space-y-4 font-mono">
+            <div class="bg-slate-950 p-4 rounded-xl flex justify-between items-center border border-slate-800">
+              <div><p class="text-xs text-slate-400 font-sans font-bold">① 粗利額 (売上 × 粗利率)</p></div>
+              <div class="text-xl font-bold text-emerald-400" id="resGross">-- 万円</div>
+            </div>
+            
+            <div class="bg-indigo-950/20 p-4 rounded-xl flex justify-between items-center border border-indigo-900/30">
+              <div><p class="text-xs text-indigo-400 font-sans font-bold">予測 年間C/L決済手数料</p></div>
+              <div class="text-lg font-bold text-indigo-400">- <span id="resCashlessFee">--</span> 万円</div>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl flex justify-between items-center border border-slate-800">
+              <div><p class="text-xs text-slate-400 font-sans font-bold">② 営業利益 (粗利 － 販管費(総額) － 決済手数料)</p></div>
+              <div class="text-xl font-bold text-sky-400" id="resPreTax">-- 万円</div>
+            </div>
+            <div class="flex gap-4">
+              <div class="bg-rose-950/20 p-4 rounded-xl flex-1 border border-rose-900/30">
+                <p class="text-xs text-rose-400 font-sans font-bold mb-1">予測 法人税等</p>
+                <div class="text-lg font-bold text-rose-400" id="resCorpTax">-- 万円</div>
+              </div>
+              <div class="bg-rose-950/20 p-4 rounded-xl flex-1 border border-rose-900/30">
+                <p class="text-xs text-rose-400 font-sans font-bold mb-1">予測 消費税額</p>
+                <div class="text-lg font-bold text-rose-400" id="resConsTax">-- 万円</div>
+              </div>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl flex justify-between items-center border border-slate-700">
+              <div><p class="text-sm text-white font-sans font-black">④ 税引後当期純利益</p></div>
+              <div class="text-2xl font-black text-white" id="resNetProfit">-- 万円</div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-rose-900/20 p-4 rounded-xl border border-rose-800/50">
+                <p class="text-[10px] text-rose-400 font-bold mb-1">⑤ 年間返済額 (元本合計)</p>
+                <div class="text-xl font-bold text-rose-500">- <span id="resRepayTotal">--</span> 万円</div>
+              </div>
+              <div class="bg-amber-900/20 p-4 rounded-xl border border-amber-800/50">
+                <p class="text-[10px] text-amber-500 font-bold mb-1">⑥ 想定在庫増加額</p>
+                <div class="text-xl font-bold text-amber-500">- <span id="resInvDeduct">--</span> 万円</div>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-sky-900 to-slate-900 p-6 rounded-2xl flex justify-between items-center border border-sky-700 shadow-lg relative overflow-hidden">
+              <div class="z-10"><p class="text-sm text-white font-sans font-black tracking-widest">⑥ 最終手残り現金</p><p class="text-[10px] text-sky-200 mt-1 font-bold">純利益 － 返済 － 在庫増加</p></div>
+              <div class="flex items-center gap-4 z-10 text-right">
+                <div><p class="text-[10px] text-sky-300 font-bold mb-1">目標差額</p><div id="resCashDiff" class="text-xs font-bold px-2 py-1 rounded">-- 万円</div></div>
+                <div class="text-4xl font-black text-white" id="resFinalCash">-- 万円</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-slate-900 rounded-3xl p-8 border border-emerald-900/50 shadow-xl">
+          <h2 class="font-bold text-emerald-500 mb-6 border-b border-slate-800 pb-2">現場日次目標 (全社365日換算)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">1日 売上目標</p>
+              <p id="resDailySales" class="text-2xl font-black font-mono text-sky-400">-- 万円</p>
+              <p class="text-[9px] text-slate-600 mt-2 font-mono font-bold">年間売上 ÷ 365日</p>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">1日 粗利目標</p>
+              <p id="resDailyGross" class="text-2xl font-black font-mono text-emerald-500">-- 万円</p>
+              <p class="text-[9px] text-slate-600 mt-2 font-mono font-bold">1日売上 × 粗利率</p>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-emerald-900/30 relative overflow-hidden">
+              <div class="absolute right-0 top-0 w-16 h-16 bg-emerald-500/10 blur-xl"></div>
+              <p class="text-[10px] text-emerald-400 font-bold mb-1">1日 現金化目標</p>
+              <p id="resDailyCash" class="text-2xl font-black font-mono text-emerald-400">-- 万円</p>
+              <p class="text-[9px] text-emerald-900 mt-2 font-mono font-bold">(年間粗利 - 在庫増 - 決済費) ÷ 365日</p>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-rose-900/30">
+              <p class="text-[10px] text-rose-400 font-bold mb-1">1日 買取限度枠 (目安)</p>
+              <p id="resDailyPurchase" class="text-2xl font-black font-mono text-rose-400">-- 万円</p>
+              <p class="text-[9px] text-rose-900 mt-2 font-mono font-bold">1日売上 － 1日現金化目標</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view_daily" class="hidden flex-col gap-6 w-full max-w-4xl mx-auto">
+      <div class="bg-slate-900 p-6 sm:p-8 rounded-3xl border border-amber-900/50 shadow-xl w-full">
+        
+        <div class="mb-8">
+          <h2 class="text-xl font-black text-amber-400 mb-2"><i class="fa-solid fa-fire mr-2"></i>今日の不足分をどうやって埋める？</h2>
+          <p class="text-xs text-slate-400">本日の目標に対して「あといくら粗利が必要か」を入力し、何を売れば達成できるかをシミュレーションします。</p>
+        </div>
+
+        <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 mb-8 shadow-inner flex flex-col sm:flex-row justify-between items-center gap-4">
+           <div>
+             <p class="text-sm font-bold text-slate-300">本日の残り達成目標 (必要粗利額)</p>
+             <p class="text-[10px] text-slate-500 mt-1">※現時点での推測値。今後予実管理データと自動連動予定。</p>
+           </div>
+           <div class="flex items-end gap-2">
+             <input type="text" id="actionTargetMargin" value="50,000" oninput="formatActionInt(this)" class="bg-slate-900 border-2 border-amber-500/50 text-white text-3xl font-black font-mono rounded-xl px-4 py-3 outline-none focus:border-amber-400 transition-colors w-48 text-right">
+             <span class="text-sm text-slate-400 font-bold mb-3">円</span>
+           </div>
+        </div>
+
+        <div class="space-y-6">
+           <div class="bg-slate-900 p-5 rounded-xl border border-slate-700">
+             <div class="flex justify-between items-center mb-4">
+               <h3 class="font-bold text-sky-400 text-sm"><i class="fa-solid fa-box-open mr-1"></i>オリパ販売</h3>
+               <div class="flex items-center gap-2">
+                 <span class="text-[10px] text-slate-400">1口あたりの想定粗利:</span>
+                 <input type="number" id="actionOripaUnit" value="500" oninput="calcAction()" class="input-action text-xs py-1"> <span class="text-[10px] text-slate-400">円</span>
+               </div>
+             </div>
+             <div class="flex items-center gap-4">
+                <input type="range" id="actionOripaRange" min="0" max="200" value="0" oninput="syncActionInput('Oripa')" class="flex-grow accent-sky-500">
+                <input type="number" id="actionOripaInput" value="0" oninput="syncActionRange('Oripa')" class="input-action text-sky-400">
+                <span class="text-xs font-bold text-slate-400 w-8">口</span>
+             </div>
+           </div>
+
+           <div class="bg-slate-900 p-5 rounded-xl border border-slate-700">
+             <div class="flex justify-between items-center mb-4">
+               <h3 class="font-bold text-emerald-400 text-sm"><i class="fa-regular fa-clone mr-1"></i>シングルカード販売</h3>
+               <div class="flex items-center gap-2">
+                 <span class="text-[10px] text-slate-400">1枚あたりの想定粗利:</span>
+                 <input type="number" id="actionSingleUnit" value="2000" oninput="calcAction()" class="input-action text-xs py-1"> <span class="text-[10px] text-slate-400">円</span>
+               </div>
+             </div>
+             <div class="flex items-center gap-4">
+                <input type="range" id="actionSingleRange" min="0" max="100" value="0" oninput="syncActionInput('Single')" class="flex-grow accent-emerald-500">
+                <input type="number" id="actionSingleInput" value="0" oninput="syncActionRange('Single')" class="input-action text-emerald-400">
+                <span class="text-xs font-bold text-slate-400 w-8">枚</span>
+             </div>
+           </div>
+
+           <div class="bg-slate-900 p-5 rounded-xl border border-slate-700">
+             <div class="flex justify-between items-center mb-4">
+               <h3 class="font-bold text-rose-400 text-sm"><i class="fa-solid fa-box mr-1"></i>サプライ・未開封BOX販売</h3>
+               <div class="flex items-center gap-2">
+                 <span class="text-[10px] text-slate-400">1点あたりの想定粗利:</span>
+                 <input type="number" id="actionSupplyUnit" value="300" oninput="calcAction()" class="input-action text-xs py-1"> <span class="text-[10px] text-slate-400">円</span>
+               </div>
+             </div>
+             <div class="flex items-center gap-4">
+                <input type="range" id="actionSupplyRange" min="0" max="50" value="0" oninput="syncActionInput('Supply')" class="flex-grow accent-rose-500">
+                <input type="number" id="actionSupplyInput" value="0" oninput="syncActionRange('Supply')" class="input-action text-rose-400">
+                <span class="text-xs font-bold text-slate-400 w-8">点</span>
+             </div>
+           </div>
+        </div>
+
+        <div class="mt-8 bg-slate-950 p-6 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
+           <p class="text-xs text-slate-400 font-bold mb-2">シミュレーション粗利 合計</p>
+           <div class="flex justify-center items-end gap-2 mb-4">
+              <span id="actionTotalGross" class="text-5xl font-black font-mono text-white transition-all duration-300">0</span>
+              <span class="text-sm font-bold text-slate-500 mb-1">円</span>
+           </div>
+           
+           <div class="w-full bg-slate-900 rounded-full h-4 border border-slate-700 overflow-hidden mb-2 relative">
+             <div id="actionProgressBar" class="h-full bg-slate-500 transition-all duration-300" style="width: 0%"></div>
+           </div>
+           
+           <p id="actionStatusText" class="text-xs font-bold text-slate-400 transition-colors">目標まであと <span id="actionRemain" class="font-mono">50,000</span> 円</p>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="view_shift" class="hidden flex-col gap-6 w-full">
+      <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-6">
+          <h2 class="font-bold text-white"><i class="fa-solid fa-users-gear text-emerald-400 mr-2"></i>店舗シフト・生産性シミュレータ</h2>
+          <select id="sim_branch" class="bg-slate-950 border border-slate-700 text-white font-bold rounded-lg px-3 py-1.5 outline-none cursor-pointer text-sm" onchange="loadBranchFixedCost()">
+            <option value="">店舗を選択してください</option>
+          </select>
+        </div>
+
+        <div class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">1日の営業時間 (準備片付含む / h)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_open_hours" value="11" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">h</span>
+              </div>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">月の営業日数 (日)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_work_days" value="30" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">日</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <label class="text-xs text-slate-400 font-bold mb-2 block">常時必要な最低人数 (ワンオペ回避等 / 名)</label>
+            <div class="flex items-center gap-2">
+              <input type="text" id="sim_base_staff" value="2" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+              <span class="text-xs text-slate-500 font-bold w-4">名</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-800 pt-6">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">1日の混雑ピーク (h)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_peak_hours" value="4" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">h</span>
+              </div>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">ピーク時追加人数 (名)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_peak_staff" value="1" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">名</span>
+              </div>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">ピーク発生日数 (日/月)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_peak_days" value="10" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">日</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-800 pt-6">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="text-xs text-slate-400 font-bold mb-2 block">月間のバックヤード作業時間 (品出し等 / h)</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_backyard_hours" value="60" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-slate-500 font-bold w-4">h</span>
+              </div>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-rose-900/30">
+              <label class="text-xs text-rose-400 font-bold mb-2 block">対象店舗の月間固定費・販管費 (円) ※自動取得</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="sim_fixed_cost_shop" value="2,500,000" class="w-full bg-rose-950/30 border border-rose-900 text-rose-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-rose-500" oninput="formatShiftInt(this)">
+                <span class="text-xs text-rose-400 font-bold w-4">円</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-6">
+        <h3 class="font-bold text-white border-b border-slate-800 pb-2"><i class="fa-solid fa-calculator text-emerald-400 mr-2"></i>算出結果</h3>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+            <p class="text-[10px] text-slate-400 font-bold mb-1">月間基本運営時間</p>
+            <p class="text-xl font-mono font-bold text-slate-300"><span id="res_base_time">0</span> <span class="text-xs font-sans">h</span></p>
+          </div>
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+            <p class="text-[10px] text-slate-400 font-bold mb-1">月間ピーク追加時間</p>
+            <p class="text-xl font-mono font-bold text-amber-400"><span id="res_peak_time">0</span> <span class="text-xs font-sans">h</span></p>
+          </div>
+        </div>
+
+        <div class="bg-emerald-950/30 p-5 rounded-2xl border border-emerald-900/50 shadow-inner text-center">
+          <p class="text-xs text-emerald-400 font-bold mb-1">【確定基準値】 適正月間総労働時間</p>
+          <p class="text-5xl font-mono font-black text-white mb-4"><span id="res_total_time">0</span> <span class="text-base font-sans text-emerald-400">h / 月</span></p>
+          
+          <div class="inline-block bg-slate-950 border border-slate-800 rounded-xl p-3 text-left w-full max-w-sm">
+            <p class="text-[10px] text-slate-400 font-bold mb-1">自動算出された 損益分岐点人時生産性</p>
+            <p class="text-2xl font-mono font-black text-sky-400 text-center"><span id="res_breakeven">0</span> <span class="text-xs font-sans text-slate-500">円 / h</span></p>
+          </div>
+        </div>
+
+        <div class="flex justify-end mt-2">
+          <button onclick="saveShiftPlan()" id="btnSaveShift" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl shadow-lg transition-all flex items-center gap-2">
+            <i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="view_admin" class="hidden flex-col gap-8 w-full">
+      
+      <div class="bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl w-full">
+         <h2 class="text-lg font-black text-sky-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-wrench mr-2"></i>① 店舗別・固定費マスタ管理 (赤字ラインの定義)</h2>
+         <p class="text-[10px] text-slate-400 mb-4 leading-relaxed">各店舗の「直接固定費」と全社費を入力すると、直接比率に応じて本部経費と<strong class="text-rose-400">月間返済額</strong>を自動按分し、店舗が最低限稼ぐべき必須キャッシュ水準（赤字ボーダー）を算出します。</p>
+         
+         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+               <label class="text-[10px] font-bold text-sky-300 block mb-1">月間 本部販管費 (※スタッフ非公開)</label>
+               <div class="flex items-center gap-2">
+                 <input type="text" id="mgmtSgaHead" value="1,500" oninput="formatFCInput(this); recalcMgmtFixedCosts();" class="bg-slate-900 border border-slate-700 text-sky-400 text-right text-base font-mono font-bold rounded p-2 w-full outline-none focus:border-sky-400 transition-colors">
+                 <span class="text-xs text-slate-400 font-bold whitespace-nowrap">万円 / 月</span>
+               </div>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+               <label class="text-[10px] font-bold text-rose-300 block mb-1">月間 全社返済額 (※店舗へ自動按分)</label>
+               <div class="flex items-center gap-2">
+                 <input type="text" id="mgmtRepayTotal" value="600" oninput="formatFCInput(this); recalcMgmtFixedCosts();" class="bg-slate-900 border border-slate-700 text-rose-400 text-right text-base font-mono font-bold rounded p-2 w-full outline-none focus:border-rose-400 transition-colors">
+                 <span class="text-xs text-slate-400 font-bold whitespace-nowrap">万円 / 月</span>
+               </div>
+             </div>
+         </div>
+
+         <div class="grid grid-cols-[minmax(80px,1fr)_120px_60px_90px_90px_100px] gap-2 text-[9px] text-slate-500 font-bold px-3 mb-2 border-b border-slate-800 pb-2">
+           <div>店舗名</div>
+           <div class="text-right">直接費(年/万)</div>
+           <div class="text-center">比率</div>
+           <div class="text-right">本部配賦</div>
+           <div class="text-right">返済配賦</div>
+           <div class="text-right text-white" title="直接＋本部＋返済。この数値が赤字ボーダーになります">赤字ボーダー</div>
+         </div>
+         
+         <div id="fixedCostInputsContainer" class="space-y-2"></div>
+
+         <div class="flex justify-end pt-6 mt-4 border-t border-slate-800">
+           <button id="btnSaveFixedCosts" onclick="saveFixedCostsMaster()" class="bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 text-xs py-3 px-8 rounded-xl font-bold transition-all shadow-lg flex items-center gap-2"><i class="fa-solid fa-save"></i> 固定費マスタを保存・同期する</button>
+         </div>
+         <div id="fixedCostSaveMsg" class="text-right text-xs font-bold mt-2 hidden"></div>
+      </div>
+
+      <div class="bg-slate-900 p-6 sm:p-8 rounded-3xl border border-fuchsia-900/50 shadow-xl w-full">
+         <div class="flex justify-between items-start border-b border-fuchsia-900/50 pb-4 mb-6">
+            <div>
+              <h2 class="font-bold text-white text-lg"><i class="fa-solid fa-sitemap text-fuchsia-400 mr-2"></i>② 月次予算マスタへの分配＆一括適用</h2>
+              <p class="text-[10px] text-slate-400 mt-1">「年次経営計画」タブでシミュレーションした「全社目標（CF・在庫）」を店舗と月に分配し、新・月次テーブルに独立した絶対額として一括保存します。</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-[10px] text-fuchsia-300 font-bold">適用年度</label>
+              <select id="applyTargetYear" class="bg-slate-950 border border-fuchsia-900/50 text-white font-bold rounded-lg px-3 py-1.5 outline-none cursor-pointer" onchange="loadTargetBudgetMaster()">
+                <option value="2026">2026年度</option>
+                <option value="2027">2027年度</option>
+                <option value="2028">2028年度</option>
+              </select>
+            </div>
+         </div>
+
+         <div class="mb-10">
+           <div class="flex justify-between items-end mb-4 border-b border-slate-800 pb-2">
+              <h3 class="font-bold text-emerald-400 text-sm"><i class="fa-solid fa-chart-pie mr-2"></i>A. 店舗への目標分配率</h3>
+              <div class="flex gap-2">
+                <span class="text-[10px] font-bold text-emerald-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-700" id="distCashTotalLabel">現金: <span id="distCashTotal">0</span>%</span>
+                <span class="text-[10px] font-bold text-amber-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-700" id="distInvTotalLabel">在庫: <span id="distInvTotal">0</span>%</span>
+              </div>
+           </div>
+           
+           <div class="grid grid-cols-[minmax(80px,1fr)_100px_100px_100px_110px_90px_40px] gap-2 text-[9px] text-slate-500 font-bold px-3 mb-2 border-b border-slate-800 pb-2">
+             <div>店舗</div>
+             <div class="text-center">粗利目標</div>
+             <div class="text-center">現金配分</div>
+             <div class="text-center">在庫配分</div>
+             <div class="text-right">現金化額</div>
+             <div class="text-right">在庫額</div>
+             <div class="text-center">判定</div>
+           </div>
+           
+           <div id="branchDistInputs" class="space-y-2"></div>
+         </div>
+
+         <div class="mb-8">
+           <div class="flex justify-between items-end mb-4 border-b border-slate-800 pb-2">
+             <h3 class="font-bold text-fuchsia-400 text-sm"><i class="fa-solid fa-calendar-days mr-2"></i>B. 全社共通 季節指数（月ごとの配分%）</h3>
+             <div id="weightTotalDisplay" class="text-sm font-black font-mono px-2 py-0.5 rounded text-white bg-slate-950 border border-slate-700">合計: <span id="weightTotalValue">100.0</span>%</div>
+           </div>
+           
+           <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3" id="monthlyWeightInputs">
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">03月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="03" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">04月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="04" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">05月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="05" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">06月 (閑散期)</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="06" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">07月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="07" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">08月 (繁忙期)</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-amber-300 font-bold outline-none border-b border-amber-900 focus:border-fuchsia-400" data-month="08" value="8.7" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">09月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="09" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">10月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="10" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">11月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="11" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">12月 (繁忙期)</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-amber-300 font-bold outline-none border-b border-amber-900 focus:border-fuchsia-400" data-month="12" value="8.7" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">01月</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="01" value="8.3" oninput="calcWeightTotal()"></div>
+             <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center"><label class="text-[10px] text-slate-500 font-bold block mb-1">02月 (決算月)</label><input type="number" step="0.1" class="weight-input w-full bg-transparent text-center font-mono text-white font-bold outline-none border-b border-slate-700 focus:border-fuchsia-400" data-month="02" value="8.3" oninput="calcWeightTotal()"></div>
+           </div>
+         </div>
+
+         <button id="btnExecuteApply" onclick="executeApplyMaster()" class="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-5 rounded-2xl shadow-[0_0_20px_rgba(192,38,211,0.4)] transition-all text-lg cursor-pointer flex items-center justify-center gap-2">
+           <i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用
+         </button>
+
+      </div>
+    </div>
+
+  </main>
+
+  <div id="historyModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md hidden flex-col justify-center items-center z-50 p-4 transition-all">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[80vh]">
+      <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <h3 class="text-xl font-black"><i class="fa-solid fa-clock-rotate-left text-sky-400 mr-2"></i>保存された経営計画の履歴</h3>
+        <div class="flex gap-4 items-center">
+          <select id="historyBranchFilter" onchange="renderHistoryTable()" class="bg-slate-900 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-3 py-2 outline-none focus:border-sky-500 hidden cursor-pointer">
+            <option value="all">すべての店舗・作成者</option>
+          </select>
+          <button onclick="closeHistory()" class="text-slate-500 hover:text-white transition-all ml-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
+        </div>
+      </div>
+
+      <div class="p-6 overflow-y-auto flex-grow"><table class="w-full text-left text-xs whitespace-nowrap">
+        <thead>
+          <tr class="border-b border-slate-800 text-slate-400 font-bold">
+            <th class="pb-3 px-2">保存日時</th>
+            <th class="pb-3 px-2 text-indigo-400">作成者</th>
+            <th class="text-right">売上(万円)</th>
+            <th class="text-right">粗利率</th>
+            <th class="text-right text-indigo-300">C/L率</th>
+            <th class="text-right text-rose-300">C/L決済費</th>
+            <th class="text-right">月間総販管費</th>
+            <th class="text-right text-amber-500">年間在庫増</th>
+            <th class="text-right text-white">最終手残り</th>
+            <th class="text-right text-emerald-400">1日現金目標</th>
+            <th class="text-center pb-3 px-2 text-sky-400">操作</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody" class="divide-y divide-slate-800/50"></tbody>
+      </table></div>
+      <div class="p-4 bg-slate-950 text-right"><button onclick="closeHistory()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black transition-all">閉じる</button></div>
+    </div>
+  </div>
+
+  <script>
+    // ★Supabase接続設定
+    const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let appUrl = "?p=portal", currentCalcData = {}, latestHistoryList = [];
+    let currentUser = null;
+    let globalBranches = []; 
+    let branchFixedCostsMap = {}; 
+    let totalBranchFixedCostYearly = 0; 
+    
+    // マスタ保存用バリデーションフラグ
+    let isDistValid = true;
+    let isWeightValid = true;
+
+    function toHalfWidth(str) {
+        return str.replace(/[０-９]/g, function(s) {
+            return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+        });
+    }
+
+    function cleanShopName(x) {
+        let name = String(x || "").replace(/Bee本舗/gi, '').trim();
+        if (name.includes('秋葉原')) return '秋葉原店';
+        if (name.includes('福岡') || name.includes('天神')) return '福岡天神店';
+        if (name.includes('名古屋') || name.includes('大須')) return '名古屋大須店';
+        if (name.includes('バトルタワー') || name.includes('BT')) return 'バトルタワー店'; 
+        if (name.includes('大阪') || name.includes('本店')) return '大阪本店'; 
+        if (name.includes('池袋')) return '池袋店';
+        if (!name.endsWith('店') && name !== "" && name !== "全店舗") return name + '店'; 
+        return name;
+    }
+
+    /**
+     * 画面起動時の初期化処理
+     * @returns {Promise<void>}
+     */
+    window.onload = async () => {
+      try {
+        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      } catch(e) { console.warn("GAS環境外での実行:", e); }
+
+      const userStr = sessionStorage.getItem('finUser');
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      
+      currentUser = JSON.parse(userStr);
+
+      try {
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+      } catch (authErr) {
+        console.error("セッションの復元に失敗しました:", authErr);
+      }
+
+      currentUser.branch = cleanShopName(currentUser.branch);
+      document.getElementById('userNameHeader').innerText = currentUser.name;
+
+      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      try {
+          const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+          if (bErr) throw bErr;
+          if (bData && bData.length > 0) {
+              globalBranches = bData.map(b => b.name);
+          } else {
+              globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+          }
+      } catch (err) {
+          console.error("店舗マスタ取得エラー:", err);
+          globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
+      }
+
+      // ★修正: 動的取得した店舗リストでプルダウンを生成
+      const sel = document.getElementById('simBranchSelector');
+      sel.innerHTML = '<option value="全店舗">全社合計</option>';
+      globalBranches.forEach(b => {
+          const opt = document.createElement('option'); opt.value = b; opt.text = b; sel.appendChild(opt);
+      });
+      
+      if (currentUser.roleId !== 'role_admin' && !currentUser.permissions.editAll) {
+          sel.value = currentUser.branch;
+          sel.disabled = true;
+      } else {
+          document.getElementById('simBranchWrapper').classList.remove('hidden');
+      }
+
+      if (currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
+          document.getElementById('tab_admin').classList.remove('hidden');
+          document.getElementById('msgGotoAdmin').classList.remove('hidden');
+      }
+      
+      try {
+          const { data: globalData, error: globalErr } = await db.from('fin_global_settings').select('*');
+          if (globalErr) throw globalErr;
+
+          if (currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
+              let sgaHead = 0, repayTot = 0;
+              if (globalData) {
+                  const s1 = globalData.find(d => d.key === 'sgaHead');
+                  if (s1) sgaHead = s1.value;
+                  const s2 = globalData.find(d => d.key === 'repayTotalMonthly');
+                  if (s2) repayTot = s2.value;
+              }
+              document.getElementById('mgmtSgaHead').value = sgaHead.toLocaleString();
+              document.getElementById('mgmtRepayTotal').value = repayTot.toLocaleString();
+          }
+          
+          const { data: branchData, error: branchErr } = await db.from('fin_branch_fixed_costs').select('*');
+          if (branchErr) throw branchErr;
+
+          branchFixedCostsMap = {};
+          if (branchData && branchData.length > 0) {
+              branchData.forEach(r => {
+                  branchFixedCostsMap[r.branch] = { 
+                      totalSga: r.total_sga, 
+                      directSga: r.direct_sga, 
+                      allocatedRepay: r.allocated_repay,
+                      targetHours: r.target_hours || 0
+                  };
+              });
+          }
+          
+          recalcBranchFixedTotal();
+          
+          document.getElementById('loading').classList.add('hidden'); 
+          document.getElementById('content').classList.remove('hidden'); 
+          calc(); 
+          calcAction();
+      } catch (err) {
+          console.error("マスタデータの取得に失敗しました:", err);
+          document.getElementById('loading').classList.add('hidden'); 
+          document.getElementById('content').classList.remove('hidden'); 
+          calc(); calcAction();
+      }
+    };
+
+    function recalcBranchFixedTotal() {
+        totalBranchFixedCostYearly = 0;
+        for (let branch in branchFixedCostsMap) {
+            totalBranchFixedCostYearly += (branchFixedCostsMap[branch].totalSga || 0);
+        }
+        const sgaTotalMonthly = Math.round(totalBranchFixedCostYearly / 12);
+        const lblSga = document.getElementById('lblSgaTotal');
+        if(lblSga) lblSga.innerText = sgaTotalMonthly.toLocaleString();
+    }
+
+    function goHome() { 
+      if (appUrl && appUrl !== "?p=portal") {
+        window.open(appUrl + "?p=portal", "_top"); 
+      } else {
+        window.history.back();
+      }
+    }
+    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
+
+    function switchSimTab(tab) {
+      ['annual', 'daily', 'shift', 'admin'].forEach(t => {
+          const btn = document.getElementById('tab_' + t);
+          const view = document.getElementById('view_' + t);
+          if(btn) {
+              btn.classList.remove('active', 'border-b-2', 'text-sky-400', 'border-sky-400', 'text-amber-400', 'border-amber-400', 'text-emerald-400', 'border-emerald-400', 'text-fuchsia-400', 'border-fuchsia-400');
+              btn.classList.add('text-slate-500');
+          }
+          if(view) {
+              view.classList.add('hidden');
+              view.classList.remove('flex', 'grid');
+          }
+      });
+
+      const activeBtn = document.getElementById('tab_' + tab);
+      const activeView = document.getElementById('view_' + tab);
+
+      if(activeBtn) activeBtn.classList.remove('text-slate-500');
+      
+      if (tab === 'annual') {
+          if(activeBtn) activeBtn.classList.add('active', 'text-sky-400', 'border-b-2', 'border-sky-400');
+          if(activeView) activeView.classList.add('grid');
+      } else if (tab === 'daily') {
+          if(activeBtn) activeBtn.classList.add('active', 'text-amber-400', 'border-b-2', 'border-amber-400');
+          if(activeView) activeView.classList.add('flex');
+      } else if (tab === 'shift') {
+          if(activeBtn) activeBtn.classList.add('active', 'text-emerald-400', 'border-b-2', 'border-emerald-400');
+          if(activeView) activeView.classList.add('flex');
+          const shiftSel = document.getElementById('sim_branch');
+          if (shiftSel.options.length <= 1) {
+              globalBranches.forEach(b => {
+                  shiftSel.innerHTML += `<option value="${b}">${b}</option>`;
+              });
+              if (currentUser.branch !== "全店舗") {
+                  shiftSel.value = currentUser.branch;
+                  loadBranchFixedCost();
+              }
+          }
+      } else if (tab === 'admin') {
+          if(activeBtn) activeBtn.classList.add('active', 'text-fuchsia-400', 'border-b-2', 'border-fuchsia-400');
+          if(activeView) activeView.classList.add('flex');
+          
+          renderFixedCostInputs();
+          renderBranchDistInputs();
+          
+          if (!document.getElementById('weightTotalValue').getAttribute('data-loaded')) {
+              loadTargetBudgetMaster();
+          } else {
+              calcWeightTotal();
+          }
+      }
+      if(activeView) activeView.classList.remove('hidden');
+    }
+    
+    function formatIntAndCalc(el) { 
+      let v = toHalfWidth(el.value).replace(/,/g, '').replace(/[^\d]/g, ''); 
+      el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
+      calc(); 
+    }
+    function formatFloatAndCalc(el) {
+      let v = toHalfWidth(el.value).replace(/[^\d.]/g, ''); 
+      el.value = v; 
+      calc(); 
+    }
+    function getNum(id) { 
+      let el = document.getElementById(id);
+      if(!el) return 0;
+      let val = el.value || el.innerText;
+      return parseFloat(toHalfWidth(val).replace(/,/g, '')) || 0; 
+    }
+    
+    // --- ①年次シミュレータ計算 ---
+    function calc() {
+      const selEl = document.getElementById('simBranchSelector');
+      const simBranch = selEl && !selEl.disabled ? cleanShopName(selEl.value) : currentUser.branch;
+
+      let sgaYearly = 0;
+      let repayYearly = 0;
+
+      if (simBranch === "全店舗") {
+        for (let b in branchFixedCostsMap) {
+            sgaYearly += (branchFixedCostsMap[b].totalSga || 0);
+            repayYearly += (branchFixedCostsMap[b].allocatedRepay || 0);
+        }
+      } else if (branchFixedCostsMap[simBranch]) {
+        sgaYearly = branchFixedCostsMap[simBranch].totalSga || 0;
+        repayYearly = branchFixedCostsMap[simBranch].allocatedRepay || 0;
+      }
+
+      const sgaMonthly = Math.round(sgaYearly / 12);
+      const repayMonthly = Math.round(repayYearly / 12);
+
+      const lblSgaTotal = document.getElementById('lblSgaTotal');
+      const lblRepayment = document.getElementById('lblRepayment');
+      if(lblSgaTotal) lblSgaTotal.innerText = sgaMonthly.toLocaleString();
+      if(lblRepayment) lblRepayment.innerText = repayMonthly.toLocaleString();
+
+      const sales = getNum('inpSales'), margin = getNum('inpMargin')/100;
+      const corpRate = getNum('inpCorpTaxRate')/100, taxRatio = getNum('inpTaxableFixed')/100;
+      const invInc = getNum('inpInvIncrease'), target = getNum('inpTargetCash');
+      const cashlessRatio = getNum('inpCashlessRatio') / 100;
+      const cashlessFeeRate = getNum('inpCashlessFeeRate') / 100;
+      
+      const gross = sales * margin;
+      const cashlessSales = sales * cashlessRatio;
+      const cashlessFee = cashlessSales * cashlessFeeRate;
+      
+      const preTax = gross - sgaYearly - cashlessFee;
+      const corpTax = preTax > 0 ? preTax * corpRate : 0;
+      let consTax = Math.max(0, (gross - (sgaYearly * taxRatio)) * 0.1); 
+      
+      const netProfit = preTax - corpTax - consTax;
+      const finalCash = netProfit - repayYearly - invInc, cashDiff = finalCash - target;
+      
+      const fieldCashTarget = gross - cashlessFee - invInc;
+      
+      const dailySales = sales / 365;
+      const dailyGross = gross / 365;
+      const dailyCash = fieldCashTarget / 365; 
+      const dailyPurchase = dailySales - dailyCash;
+      
+      currentCalcData = { 
+        sales, marginRate:margin, sga:sgaMonthly, repayment:repayMonthly, invIncrease:invInc, targetCash:target, 
+        netProfit:Math.round(netProfit), finalCash:Math.round(finalCash), dailyCash:Number(dailyCash.toFixed(1)),
+        cashlessRatio: cashlessRatio, cashlessFeeRate: cashlessFeeRate, cashlessFee: Math.round(cashlessFee),
+        corpTaxRate: corpRate, taxableFixed: taxRatio,
+        rawMarginPercent: getNum('inpMargin'),
+        fieldCashTarget: Math.round(fieldCashTarget) 
+      };
+      
+      ['resGross', 'resCashlessFee', 'resPreTax', 'resCorpTax', 'resConsTax', 'resNetProfit', 'resRepayTotal', 'resInvDeduct'].forEach(id => {
+         const el = document.getElementById(id);
+         if(el) {
+           let val = 0;
+           if(id==='resGross') val = Math.round(gross);
+           else if(id==='resCashlessFee') val = Math.round(cashlessFee);
+           else if(id==='resPreTax') val = Math.round(preTax);
+           else if(id==='resCorpTax') val = Math.round(corpTax);
+           else if(id==='resConsTax') val = Math.round(consTax);
+           else if(id==='resNetProfit') val = Math.round(netProfit);
+           else if(id==='resRepayTotal') val = repayYearly;
+           else if(id==='resInvDeduct') val = invInc;
+           el.innerText = val.toLocaleString() + (id==='resCashlessFee' || id==='resRepayTotal' || id==='resInvDeduct' ? '' : ' 万円');
+         }
+      });
+      
+      const fcEl = document.getElementById('resFinalCash');
+      if(fcEl) {
+         fcEl.innerText = Math.round(finalCash).toLocaleString() + ' 万円';
+         fcEl.className = finalCash < 0 ? "text-4xl font-black text-rose-500" : "text-4xl font-black text-white";
+      }
+      
+      const dEl = document.getElementById('resCashDiff'); 
+      if(dEl) {
+         dEl.innerText = (cashDiff >= 0 ? "+" : "") + Math.round(cashDiff).toLocaleString() + ' 万円';
+         dEl.className = "text-xs font-bold px-2 py-1 rounded " + (cashDiff >= 0 ? "bg-emerald-950/50 text-emerald-400" : "bg-rose-950/50 text-rose-400");
+      }
+      
+      ['resDailySales', 'resDailyGross', 'resDailyCash', 'resDailyPurchase'].forEach(id => {
+         const el = document.getElementById(id);
+         if(el) {
+           let val = 0;
+           if(id==='resDailySales') val = dailySales;
+           else if(id==='resDailyGross') val = dailyGross;
+           else if(id==='resDailyCash') val = dailyCash;
+           else if(id==='resDailyPurchase') val = dailyPurchase;
+           el.innerText = val.toFixed(1) + ' 万円';
+         }
+      });
+      
+      if(!document.getElementById('view_admin').classList.contains('hidden')) {
+         calcDistTotal();
+      }
+    }
+    
+    async function saveData() {
+      const b = document.getElementById('saveBtn'), m = document.getElementById('saveMsg');
+      b.disabled = true; b.innerHTML = '保存中...';
+      
+      try {
+        const { error } = await db.from('fin_plan_history').insert({
+          author: currentUser.name,
+          sales_target: currentCalcData.sales,
+          margin_rate: currentCalcData.marginRate * 100,
+          cashless_ratio: currentCalcData.cashlessRatio * 100,
+          cashless_fee_rate: currentCalcData.cashlessFeeRate * 100,
+          sga_monthly: currentCalcData.sga,
+          repayment_monthly: currentCalcData.repayment,
+          inv_increase_yearly: currentCalcData.invIncrease,
+          target_cash: currentCalcData.targetCash,
+          net_profit: currentCalcData.netProfit,
+          final_cash: currentCalcData.finalCash,
+          daily_cash: currentCalcData.dailyCash,
+          corp_tax_rate: currentCalcData.corpTaxRate * 100,
+          taxable_fixed_ratio: currentCalcData.taxableFixed * 100,
+          field_cash_target: currentCalcData.fieldCashTarget
+        });
+
+        if (error) throw new Error(error.message);
+
+        b.disabled = false; b.innerHTML = '<i class="fa-regular fa-folder-open"></i> シミュレーション履歴を保存';
+        m.innerText = "履歴を保存しました"; 
+        m.classList.remove('hidden'); 
+        m.className = "text-center text-sm font-bold mt-2 text-emerald-400";
+        setTimeout(() => m.classList.add('hidden'), 3000);
+
+      } catch (err) {
+        b.disabled = false; b.innerHTML = '<i class="fa-regular fa-folder-open"></i> シミュレーション履歴を保存';
+        m.innerText = "保存エラー: " + err.message; 
+        m.classList.remove('hidden'); 
+        m.className = "text-center text-sm font-bold mt-2 text-rose-400";
+      }
+    }
+
+    function renderFixedCostInputs() {
+       const container = document.getElementById('fixedCostInputsContainer');
+       if(!container) return;
+       container.innerHTML = "";
+       globalBranches.forEach(b => {
+          const val = branchFixedCostsMap[b] ? branchFixedCostsMap[b].directSga : 0;
+          container.innerHTML += `
+            <div class="grid grid-cols-[minmax(80px,1fr)_120px_60px_90px_90px_100px] gap-2 items-center bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+              <span class="text-xs text-white font-bold truncate">${b}</span>
+              <input type="text" class="direct-cost-input bg-slate-950 border border-slate-700 text-sky-300 text-right text-sm font-mono rounded px-2 py-1 w-full outline-none focus:border-sky-400 transition-colors" data-branch="${b}" id="directCost_${b}" value="${val.toLocaleString()}" oninput="formatFCInput(this); recalcMgmtFixedCosts();">
+              <span class="text-xs font-mono text-slate-400 text-center" id="lblDirectRatio_${b}">0.0%</span>
+              <span class="text-xs font-mono text-rose-400 text-right" id="lblHeadAlloc_${b}">0</span>
+              <span class="text-xs font-mono text-rose-500 text-right" id="lblRepayAlloc_${b}">0</span>
+              <span class="text-sm font-mono font-black text-white text-right" id="lblBorder_${b}">0</span>
+            </div>
+          `;
+       });
+       recalcMgmtFixedCosts();
+    }
+
+    function formatFCInput(el) {
+       let v = toHalfWidth(el.value).replace(/,/g, '').replace(/[^\d]/g, ''); 
+       el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
+    }
+
+    function recalcMgmtFixedCosts() {
+       let totalDirect = 0;
+       const sgaHeadMonthly = getNum('mgmtSgaHead');
+       const sgaHeadYearly = sgaHeadMonthly * 12; 
+       
+       const repayMonthly = getNum('mgmtRepayTotal');
+       const repayYearly = repayMonthly * 12;
+       
+       globalBranches.forEach(b => {
+          const el = document.getElementById(`directCost_${b}`);
+          if(el) totalDirect += (parseInt(el.value.replace(/,/g, ''), 10) || 0);
+       });
+       
+       globalBranches.forEach(b => {
+          const el = document.getElementById(`directCost_${b}`);
+          if(!el) return;
+          const directVal = parseInt(el.value.replace(/,/g, ''), 10) || 0;
+          
+          let ratio = totalDirect > 0 ? (directVal / totalDirect) : 0;
+          let allocatedHeadYearly = Math.round(sgaHeadYearly * ratio);
+          let allocatedRepayYearly = Math.round(repayYearly * ratio);
+          let borderLineYearly = directVal + allocatedHeadYearly + allocatedRepayYearly;
+          
+          const lblRatio = document.getElementById(`lblDirectRatio_${b}`);
+          const lblHeadAlloc = document.getElementById(`lblHeadAlloc_${b}`);
+          const lblRepayAlloc = document.getElementById(`lblRepayAlloc_${b}`);
+          const lblBorder = document.getElementById(`lblBorder_${b}`);
+          
+          if(lblRatio) lblRatio.innerText = (ratio * 100).toFixed(1) + "%";
+          if(lblHeadAlloc) lblHeadAlloc.innerText = allocatedHeadYearly.toLocaleString();
+          if(lblRepayAlloc) lblRepayAlloc.innerText = allocatedRepayYearly.toLocaleString();
+          if(lblBorder) lblBorder.innerText = borderLineYearly.toLocaleString();
+       });
+    }
+
+    async function saveFixedCostsMaster() {
+       const btn = document.getElementById('btnSaveFixedCosts');
+       const msg = document.getElementById('fixedCostSaveMsg');
+       btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>保存中...';
+       
+       const sgaHead = getNum('mgmtSgaHead');
+       const repayTotalMonthly = getNum('mgmtRepayTotal');
+       let totalDirect = 0;
+       
+       document.querySelectorAll('.direct-cost-input').forEach(inp => {
+           totalDirect += (parseInt(inp.value.replace(/,/g, ''), 10) || 0);
+       });
+
+       let newCostsMap = {};
+       let upsertData = [];
+
+       globalBranches.forEach(b => {
+          const el = document.getElementById(`directCost_${b}`);
+          const directVal = el ? (parseInt(el.value.replace(/,/g, ''), 10) || 0) : 0;
+          const ratio = totalDirect > 0 ? (directVal / totalDirect) : 0;
+          const allocatedHead = Math.round(sgaHead * 12 * ratio);
+          const allocatedRepay = Math.round(repayTotalMonthly * 12 * ratio);
+          const totalSga = directVal + allocatedHead;
+          const targetHours = branchFixedCostsMap[b] ? (branchFixedCostsMap[b].targetHours || 0) : 0;
+          
+          newCostsMap[b] = { totalSga: totalSga, directSga: directVal, allocatedRepay: allocatedRepay, targetHours: targetHours };
+          upsertData.push({
+            branch: b,
+            total_sga: totalSga,
+            direct_sga: directVal,
+            allocated_repay: allocatedRepay,
+            target_hours: targetHours
+          });
+       });
+
+       try {
+         await db.from('fin_global_settings').upsert([
+           { key: 'sgaHead', value: sgaHead },
+           { key: 'repayTotalMonthly', value: repayTotalMonthly }
+         ]);
+         
+         const { error } = await db.from('fin_branch_fixed_costs').upsert(upsertData, { onConflict: 'branch' });
+         if (error) throw new Error(error.message);
+
+         branchFixedCostsMap = newCostsMap;
+         calc(); 
+         
+         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> 固定費マスタを保存・同期する';
+         msg.innerText = "固定費マスタを保存・同期しました";
+         msg.className = "text-right text-xs font-bold mt-2 text-emerald-400 block";
+         setTimeout(() => msg.classList.add('hidden'), 5000);
+
+       } catch (err) {
+         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> 固定費マスタを保存・同期する';
+         msg.innerText = "エラー: " + err.message;
+         msg.className = "text-right text-xs font-bold mt-2 text-rose-400 block";
+         setTimeout(() => msg.classList.add('hidden'), 5000);
+       }
+    }
+
+    function checkAdminSaveButton() {
+       const btn = document.getElementById('btnExecuteApply');
+       if(!btn) return;
+       if(isDistValid && isWeightValid) {
+           btn.disabled = false;
+           btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用';
+           btn.className = "w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-5 rounded-2xl shadow-[0_0_20px_rgba(192,38,211,0.4)] transition-all text-lg cursor-pointer flex items-center justify-center gap-2";
+       } else {
+           btn.disabled = true;
+           btn.innerHTML = '<i class="fa-solid fa-lock"></i> 各合計を100.0%に調整してください';
+           btn.className = "w-full bg-slate-800 text-slate-500 font-black py-5 rounded-2xl border border-slate-700 transition-all text-lg cursor-not-allowed flex items-center justify-center gap-2";
+       }
+    }
+
+    function renderBranchDistInputs() {
+       const container = document.getElementById('branchDistInputs');
+       if(!container) return;
+       container.innerHTML = "";
+       const defaultPct = globalBranches.length > 0 ? (100 / globalBranches.length).toFixed(1) : 0;
+       
+       const tCash = currentCalcData.fieldCashTarget || 0;
+       const tInv = currentCalcData.invIncrease || 0;
+       const dMargin = currentCalcData.rawMarginPercent || 0;
+       
+       globalBranches.forEach(b => {
+          const cVal = Math.round(tCash * (defaultPct / 100));
+          const iVal = Math.round(tInv * (defaultPct / 100));
+
+          container.innerHTML += `
+            <div class="grid grid-cols-[minmax(80px,1fr)_100px_100px_100px_110px_90px_40px] gap-2 items-center bg-slate-950 p-3 rounded-xl border border-slate-800 dist-row" data-branch="${b}">
+              <span class="text-xs text-white font-bold truncate" title="${b}">${b}</span>
+              
+              <div class="flex items-center justify-center">
+                <input type="number" step="0.1" class="dist-margin-input bg-slate-900 border border-slate-700 text-emerald-400 text-right text-sm font-mono font-bold rounded px-1.5 py-1 w-full outline-none focus:border-emerald-400 transition-colors" id="distMargin_${b}" value="${dMargin}">
+                <span class="text-[9px] text-slate-500 ml-0.5">%</span>
+              </div>
+
+              <div class="flex items-center justify-center">
+                <input type="number" step="0.1" class="dist-cash-pct bg-slate-900 border border-slate-700 text-sky-300 text-right text-sm font-mono font-bold rounded px-1.5 py-1 w-full outline-none focus:border-sky-400 transition-colors" data-branch="${b}" id="distCashPct_${b}" value="${defaultPct}" oninput="calcDistTotal()">
+                <span class="text-[9px] text-slate-500 ml-0.5">%</span>
+              </div>
+
+              <div class="flex items-center justify-center">
+                <input type="number" step="0.1" class="dist-inv-pct bg-slate-900 border border-slate-700 text-amber-300 text-right text-sm font-mono font-bold rounded px-1.5 py-1 w-full outline-none focus:border-amber-400 transition-colors" data-branch="${b}" id="distInvPct_${b}" value="${defaultPct}" oninput="calcDistTotal()">
+                <span class="text-[9px] text-slate-500 ml-0.5">%</span>
+              </div>
+              
+              <span class="text-sm font-mono font-black text-sky-400 text-right" id="resDistCash_${b}">${cVal.toLocaleString()}</span>
+              <span class="text-sm font-mono font-black text-slate-400 text-right" id="resDistInv_${b}">${iVal.toLocaleString()}</span>
+              
+              <div class="text-center flex justify-center" id="alert_${b}"></div>
+            </div>
+          `;
+       });
+       calcDistTotal();
+    }
+
+    function calcDistTotal() {
+       let totalCashPct = 0;
+       let totalInvPct = 0;
+       
+       const tCash = currentCalcData.fieldCashTarget || 0;
+       const tInv = currentCalcData.invIncrease || 0;
+       
+       let totalDirectAll = 0;
+       for(let key in branchFixedCostsMap) {
+           totalDirectAll += (branchFixedCostsMap[key].directSga || 0);
+       }
+       const repayYearly = getNum('mgmtRepayTotal') * 12;
+
+       document.querySelectorAll('.dist-row').forEach(row => {
+           const b = row.getAttribute('data-branch');
+           const cashPct = parseFloat(document.getElementById(`distCashPct_${b}`).value) || 0;
+           const invPct = parseFloat(document.getElementById(`distInvPct_${b}`).value) || 0;
+           
+           totalCashPct += cashPct;
+           totalInvPct += invPct;
+
+           const cVal = Math.round(tCash * (cashPct / 100));
+           const iVal = Math.round(tInv * (invPct / 100));
+           
+           document.getElementById(`resDistCash_${b}`).innerText = cVal.toLocaleString();
+           document.getElementById(`resDistInv_${b}`).innerText = iVal.toLocaleString();
+
+           const fixedSga = branchFixedCostsMap[b] ? branchFixedCostsMap[b].totalSga : 0; 
+           const directVal = branchFixedCostsMap[b] ? branchFixedCostsMap[b].directSga : 0;
+           
+           let ratio = totalDirectAll > 0 ? (directVal / totalDirectAll) : 0;
+           const allocatedRepay = Math.round(repayYearly * ratio);
+           
+           const borderLine = fixedSga + allocatedRepay; 
+           
+           const alertDiv = document.getElementById(`alert_${b}`);
+           
+           if (borderLine > 0 && cVal < borderLine) {
+               row.classList.add('warning-bg');
+               alertDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-500" title="目標現金化額(${cVal}万)が、店舗の必須キャッシュ水準(${borderLine}万)を下回る赤字計画です"></i>`;
+           } else {
+               row.classList.remove('warning-bg');
+               alertDiv.innerHTML = `<i class="fa-solid fa-check text-emerald-500 opacity-50"></i>`;
+           }
+       });
+       
+       const strCash = totalCashPct.toFixed(1);
+       const strInv = totalInvPct.toFixed(1);
+       
+       document.getElementById('distCashTotal').innerText = strCash;
+       document.getElementById('distInvTotal').innerText = strInv;
+       
+       const lblCash = document.getElementById('distCashTotalLabel');
+       const lblInv = document.getElementById('distInvTotalLabel');
+       
+       const okCash = (strCash === "100.0");
+       const okInv = (strInv === "100.0");
+
+       lblCash.className = okCash 
+         ? "text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500" 
+         : "text-[10px] font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-500";
+         
+       lblInv.className = okInv 
+         ? "text-[10px] font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-500" 
+         : "text-[10px] font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-500";
+       
+       isDistValid = (okCash && okInv);
+       checkAdminSaveButton();
+    }
+
+    function calcWeightTotal() {
+       let total = 0;
+       document.querySelectorAll('.weight-input').forEach(input => { total += (parseFloat(input.value) || 0); });
+       const totalStr = total.toFixed(1);
+       const disp = document.getElementById('weightTotalValue');
+       if(!disp) return;
+       disp.innerText = totalStr;
+
+       if (totalStr === "100.0") {
+           disp.parentElement.className = "text-sm font-black font-mono px-2 py-0.5 rounded text-emerald-400 bg-emerald-950 border border-emerald-500";
+           isWeightValid = true;
+       } else {
+           disp.parentElement.className = "text-sm font-black font-mono px-2 py-0.5 rounded text-rose-400 bg-rose-950 border border-rose-500";
+           isWeightValid = false;
+       }
+       checkAdminSaveButton();
+    }
+
+    // ★修正: 過去のウェイトを新テーブルではなく、旧テーブルの退避先から取得する
+    async function loadTargetBudgetMaster() {
+       const year = document.getElementById('applyTargetYear').value;
+       document.getElementById('loadingText').innerText = year + "年度のマスタを読み込み中...";
+       document.getElementById('loading').classList.remove('hidden');
+
+       try {
+          const { data, error } = await db.from('zzz_old_fin_target_budget_master')
+                                        .select('*')
+                                        .eq('target_year', year)
+                                        .limit(1);
+
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('weightTotalValue').setAttribute('data-loaded', 'true');
+
+          if (data && data.length > 0) {
+              const r = data[0];
+              const wMap = {
+                '01': r.weight_01, '02': r.weight_02, '03': r.weight_03, '04': r.weight_04,
+                '05': r.weight_05, '06': r.weight_06, '07': r.weight_07, '08': r.weight_08,
+                '09': r.weight_09, '10': r.weight_10, '11': r.weight_11, '12': r.weight_12
+              };
+              document.querySelectorAll('.weight-input').forEach(input => {
+                  const m = input.getAttribute('data-month');
+                  if(wMap[m] !== undefined) input.value = wMap[m];
+              });
+          }
+          calcWeightTotal();
+       } catch (err) {
+          document.getElementById('loading').classList.add('hidden');
+          console.error("マスタ読込エラー:", err);
+       }
+    }
+
+    // ★大改修: 年次目標とウェイトを元に、12ヶ月分の月次絶対額を計算してUPSERTする
+    // ★機能進化: 過去月を保護し、指定した未来の月以降のみを一括適用するロジック
+    async function executeApplyMaster() {
+       const year = document.getElementById('applyTargetYear').value;
+       
+       // ユーザーに適用を開始する月を選択させる（過去の上書きを防ぐ）
+       const startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
+       if (!startMonthInput) return;
+       
+       const hasWarning = document.querySelectorAll('.warning-bg').length > 0;
+       let confirmMsg = `⚠️選択された ${startMonthInput} 以降の月に対して、シミュレーション結果を反映します。\nそれより前の過去月の目標は上書きされず保持されます。よろしいですか？`;
+       
+       if (hasWarning) {
+           confirmMsg = `⚠️【警告】赤字計画の店舗が含まれていますが、${startMonthInput} 以降の月へ強制反映しますか？`;
+       }
+       if (!confirm(confirmMsg)) return;
+
+       const tCash = currentCalcData.fieldCashTarget || 0;
+       const tInv = currentCalcData.invIncrease || 0;
+       const tSales = currentCalcData.sales || 0;
+
+       let upserts = [];
+       const months = [
+           { m: '03', w: parseFloat(document.querySelector('[data-month="03"]').value) || 0 },
+           { m: '04', w: parseFloat(document.querySelector('[data-month="04"]').value) || 0 },
+           { m: '05', w: parseFloat(document.querySelector('[data-month="05"]').value) || 0 },
+           { m: '06', w: parseFloat(document.querySelector('[data-month="06"]').value) || 0 },
+           { m: '07', w: parseFloat(document.querySelector('[data-month="07"]').value) || 0 },
+           { m: '08', w: parseFloat(document.querySelector('[data-month="08"]').value) || 0 },
+           { m: '09', w: parseFloat(document.querySelector('[data-month="09"]').value) || 0 },
+           { m: '10', w: parseFloat(document.querySelector('[data-month="10"]').value) || 0 },
+           { m: '11', w: parseFloat(document.querySelector('[data-month="11"]').value) || 0 },
+           { m: '12', w: parseFloat(document.querySelector('[data-month="12"]').value) || 0 },
+           { m: '01', w: parseFloat(document.querySelector('[data-month="01"]').value) || 0, isNextYear: true },
+           { m: '02', w: parseFloat(document.querySelector('[data-month="02"]').value) || 0, isNextYear: true }
+       ];
+
+       document.querySelectorAll('.dist-row').forEach(row => {
+           const b = row.getAttribute('data-branch');
+           const marginVal = parseFloat(document.getElementById(`distMargin_${b}`).value) || 0;
+           const cashPct = parseFloat(document.getElementById(`distCashPct_${b}`).value) || 0;
+           const invPct = parseFloat(document.getElementById(`distInvPct_${b}`).value) || 0;
+           
+           const cValTotal = Math.round(tCash * (cashPct / 100)) * 10000;
+           const iValTotal = Math.round(tInv * (invPct / 100)) * 10000;
+           const sValTotal = Math.round(tSales * (cashPct / 100)) * 10000;
+
+           months.forEach(monthObj => {
+               const targetYear = monthObj.isNextYear ? String(parseInt(year, 10) + 1) : year;
+               const targetMonthStr = `${targetYear}-${monthObj.m}`;
+               
+               // ★判定: ユーザーが指定した適用開始月より前の月は配列に追加せずスキップ（保護）
+               if (targetMonthStr < startMonthInput) {
+                   return; 
+               }
+
+               const recordId = `${targetMonthStr}_${b}`;
+               const w = monthObj.w / 100;
+
+               upserts.push({
+                   id: recordId,
+                   target_month: targetMonthStr,
+                   branch: b,
+                   target_sales: Math.round(sValTotal * w),
+                   target_cash: Math.round(cValTotal * w),
+                   target_inv_limit: Math.round(iValTotal * w),
+                   margin_rate: marginVal,
+                   updated_at: new Date().toISOString()
+               });
+           });
+       });
+
+       if (upserts.length === 0) {
+           alert("適用対象となる月がありません。処理を中断しました。");
+           return;
+       }
+
+       document.getElementById('loadingText').innerText = "本番マスタへ未来月予算を反映中...";
+       document.getElementById('loading').classList.remove('hidden');
+
+       try {
+          const { error } = await db.from('fin_monthly_targets').upsert(upserts, { onConflict: 'target_month, branch' });
+          document.getElementById('loading').classList.add('hidden');
+          if (error) throw new Error(error.message);
+          alert(`✅ ${startMonthInput} 以降の月次予算マスタへの反映が完了しました！\n（それ以前の過去月は無傷で保護されました）`);
+       } catch (err) {
+          document.getElementById('loading').classList.add('hidden');
+          alert("通信エラー: " + err.message);
+       }
+    }
+    
+    async function openHistory() {
+      const t = document.getElementById('historyTableBody');
+      const filterSelect = document.getElementById('historyBranchFilter');
+      document.getElementById('historyModal').classList.replace('hidden', 'flex');
+      t.innerHTML = '<tr><td colspan="11" class="text-center py-10">履歴を取得中...</td></tr>';
+      filterSelect.classList.add('hidden'); 
+      
+      try {
+        const { data, error } = await db.from('fin_plan_history')
+                                        .select('*')
+                                        .order('created_at', { ascending: false })
+                                        .limit(100);
+        if (error) throw new Error(error.message);
+
+        if (!data || data.length === 0) { 
+            t.innerHTML = '<tr><td colspan="11" class="text-center py-10 text-slate-500 font-bold">表示できる履歴がありません。</td></tr>'; 
+            return; 
+        }
+        
+        latestHistoryList = data.map(r => ({
+          '保存日時': new Date(r.created_at).toLocaleString('ja-JP'),
+          '作成者': r.author,
+          '年間売上目標(円)': r.sales_target * 10000,
+          '想定粗利率(%)': r.margin_rate,
+          'C/L比率(%)': r.cashless_ratio,
+          'C/L決済手数料率(%)': r.cashless_fee_rate,
+          '月間販管費(円)': r.sga_monthly * 10000,
+          '月間返済額(円)': r.repayment_monthly * 10000,
+          '年間在庫増加額(円)': r.inv_increase_yearly * 10000,
+          '目標手残り現金(円)': r.target_cash * 10000,
+          '法人税等実効税率(%)': r.corp_tax_rate,
+          '消費税課税割合(%)': r.taxable_fixed_ratio
+        }));
+
+        const authors = [...new Set(latestHistoryList.map(r => r['作成者'] || '--'))];
+        if (authors.length > 1) {
+            let options = '<option value="all">すべての店舗・作成者</option>';
+            authors.forEach(a => { options += `<option value="${a}">${a}</option>`; });
+            filterSelect.innerHTML = options; filterSelect.value = "all"; filterSelect.classList.remove('hidden');
+        } else {
+            filterSelect.classList.add('hidden');
+        }
+        renderHistoryTable();
+
+      } catch (err) {
+        t.innerHTML = `<tr><td colspan="11" class="text-center py-10 text-rose-400 font-bold">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderHistoryTable() {
+      const t = document.getElementById('historyTableBody');
+      const filterValue = document.getElementById('historyBranchFilter').value;
+      
+      let filteredList = latestHistoryList;
+      if (filterValue !== "all") {
+          filteredList = latestHistoryList.filter(r => (r['作成者'] || '--') === filterValue);
+      }
+      if (filteredList.length === 0) {
+          t.innerHTML = '<tr><td colspan="11" class="text-center py-10 text-slate-500 font-bold">該当する履歴がありません。</td></tr>'; return;
+      }
+
+      t.innerHTML = filteredList.map(r => {
+        const originalIndex = latestHistoryList.findIndex(item => item === r);
+        let author = r['作成者'] || '--';
+        let s = Math.round(Number(r['年間売上目標(円)']) / 10000) || 0;
+        let margin = r['想定粗利率(%)'] || 0;
+        let clRatio = r['C/L比率(%)'] || 0;
+        let clFeeRate = r['C/L決済手数料率(%)'] || 0;
+        let clFeeAmount = Math.round((s * 10000 * (clRatio / 100) * (clFeeRate / 100)) / 10000) || 0;
+
+        let sgaTotal = Math.round(Number(r['月間販管費(円)']) / 10000) || 0;
+        let rep = Math.round(Number(r['月間返済額(円)']) / 10000) || 0;
+        let inv = Math.round(Number(r['年間在庫増加額(円)']) / 10000) || 0;
+        let targetCash = Math.round(Number(r['目標手残り現金(円)']) / 10000) || 0;
+        
+        let gross = s * 10000 * (margin / 100);
+        let dailyCash = (gross - (inv * 10000) - (clFeeAmount * 10000)) / 365 / 10000;
+        
+        return `<tr>
+          <td class="py-3 px-2">${r['保存日時'] || '--'}</td>
+          <td class="py-3 px-2 font-bold text-indigo-400">${author}</td>
+          <td class="text-right font-mono text-sky-400">${s.toLocaleString()}</td>
+          <td class="text-right">${margin}%</td>
+          <td class="text-right text-indigo-300">${clRatio}%</td>
+          <td class="text-right font-mono text-rose-300">${clFeeAmount.toLocaleString()}</td>
+          <td class="text-right font-mono">${sgaTotal.toLocaleString()}</td>
+          <td class="text-right font-mono text-amber-500">${inv.toLocaleString()}</td>
+          <td class="text-right font-mono font-bold text-white">${targetCash.toLocaleString()}</td>
+          <td class="text-right font-mono text-emerald-400">${dailyCash.toFixed(1)}</td>
+          <td class="text-center px-2 py-1"><button onclick="loadHistoryPlan(${originalIndex})" class="bg-sky-600 hover:bg-sky-500 text-slate-950 font-black px-3 py-1 rounded-lg text-xs transition-all shadow-md">呼出</button></td>
+        </tr>`;
+      }).join('');
+    }
+    
+    function loadHistoryPlan(index) {
+      const r = latestHistoryList[index];
+      if (!r) return;
+      document.getElementById('inpSales').value = (Math.round(Number(r['年間売上目標(円)']) / 10000) || 0).toLocaleString();
+      document.getElementById('inpMargin').value = r['想定粗利率(%)'] || 0;
+      
+      document.getElementById('inpCashlessRatio').value = r['C/L比率(%)'] !== undefined ? r['C/L比率(%)'] : 50;
+      document.getElementById('inpCashlessFeeRate').value = r['C/L決済手数料率(%)'] !== undefined ? r['C/L決済手数料率(%)'] : 3.2;
+      document.getElementById('inpCorpTaxRate').value = r['法人税等実効税率(%)'] !== undefined ? r['法人税等実効税率(%)'] : 30;
+      document.getElementById('inpTaxableFixed').value = r['消費税課税割合(%)'] !== undefined ? r['消費税課税割合(%)'] : 42;
+      
+      document.getElementById('inpInvIncrease').value = (Math.round(Number(r['年間在庫増加額(円)']) / 10000) || 0).toLocaleString();
+      document.getElementById('inpTargetCash').value = (Math.round(Number(r['目標手残り現金(円)']) / 10000) || 0).toLocaleString();
+      
+      ['inpSales', 'inpMargin', 'inpInvIncrease', 'inpTargetCash', 'inpCashlessRatio', 'inpCashlessFeeRate'].forEach(id => {
+          let el = document.getElementById(id);
+          if (id === 'inpCashlessFeeRate') formatFloatAndCalc(el);
+          else formatIntAndCalc(el);
+      });
+      closeHistory();
+    }
+    
+    function closeHistory() { document.getElementById('historyModal').classList.replace('flex', 'hidden'); }
+
+    function formatActionInt(el) {
+      let v = toHalfWidth(el.value).replace(/,/g, '').replace(/[^\d]/g, ''); 
+      el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
+      calcAction();
+    }
+
+    function syncActionInput(type) {
+      const rangeVal = document.getElementById('action' + type + 'Range').value;
+      document.getElementById('action' + type + 'Input').value = rangeVal;
+      calcAction();
+    }
+
+    function syncActionRange(type) {
+      let inputVal = parseInt(document.getElementById('action' + type + 'Input').value, 10) || 0;
+      const maxVal = parseInt(document.getElementById('action' + type + 'Range').max, 10);
+      if (inputVal > maxVal) inputVal = maxVal; 
+      document.getElementById('action' + type + 'Range').value = inputVal;
+      calcAction();
+    }
+
+    function calcAction() {
+      const targetStr = document.getElementById('actionTargetMargin').value.replace(/,/g, '');
+      const targetMargin = parseInt(targetStr, 10) || 0;
+
+      const oripaUnit = parseInt(document.getElementById('actionOripaUnit').value, 10) || 0;
+      const oripaQty = parseInt(document.getElementById('actionOripaInput').value, 10) || 0;
+      const oripaGross = oripaUnit * oripaQty;
+
+      const singleUnit = parseInt(document.getElementById('actionSingleUnit').value, 10) || 0;
+      const singleQty = parseInt(document.getElementById('actionSingleInput').value, 10) || 0;
+      const singleGross = singleUnit * singleQty;
+
+      const supplyUnit = parseInt(document.getElementById('actionSupplyUnit').value, 10) || 0;
+      const supplyQty = parseInt(document.getElementById('actionSupplyInput').value, 10) || 0;
+      const supplyGross = supplyUnit * supplyQty;
+
+      const totalGross = oripaGross + singleGross + supplyGross;
+      const remain = targetMargin - totalGross;
+      const progressPercent = targetMargin > 0 ? (totalGross / targetMargin) * 100 : 100;
+
+      document.getElementById('actionTotalGross').innerText = totalGross.toLocaleString();
+      const bar = document.getElementById('actionProgressBar');
+      const statusText = document.getElementById('actionStatusText');
+
+      bar.style.width = Math.min(progressPercent, 100) + "%";
+
+      if (remain <= 0) {
+         bar.className = "h-full bg-amber-500 transition-all duration-300 shadow-[0_0_15px_rgba(245,158,11,0.8)]";
+         statusText.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-crown mr-1"></i>目標達成！このアクションを実行しましょう！</span>`;
+      } else {
+         bar.className = "h-full bg-slate-500 transition-all duration-300";
+         statusText.innerHTML = `目標まであと <span id="actionRemain" class="font-mono text-white">${remain.toLocaleString()}</span> 円`;
+      }
+    }
+
+    function formatShiftInt(el) {
+      let v = toHalfWidth(el.value).replace(/,/g, '').replace(/[^\d]/g, ''); 
+      el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
+      calcShiftPlan();
+    }
+
+    function loadBranchFixedCost() {
+      const branch = document.getElementById('sim_branch').value;
+      if (!branch) return;
+      
+      const found = branchFixedCostsMap[branch];
+      if (found) {
+        const monthlyCost = Math.round((found.totalSga * 10000) / 12);
+        document.getElementById('sim_fixed_cost_shop').value = monthlyCost.toLocaleString();
+      } else {
+        document.getElementById('sim_fixed_cost_shop').value = (2500000).toLocaleString();
+      }
+      calcShiftPlan();
+    }
+
+    function calcShiftPlan() {
+      const getVal = (id) => parseInt((document.getElementById(id).value || "0").replace(/,/g, ''), 10) || 0;
+      
+      const openHours = getVal('sim_open_hours');
+      const workDays = getVal('sim_work_days');
+      const baseStaff = getVal('sim_base_staff');
+      const peakHours = getVal('sim_peak_hours');
+      const peakStaff = getVal('sim_peak_staff');
+      const peakDays = getVal('sim_peak_days');
+      const backyardHours = getVal('sim_backyard_hours');
+      const fixedCost = getVal('sim_fixed_cost_shop');
+
+      const baseTime = openHours * workDays * baseStaff;
+      const peakTime = peakHours * peakDays * peakStaff;
+      const totalTime = baseTime + peakTime + backyardHours;
+      const breakeven = totalTime > 0 ? fixedCost / totalTime : 0;
+
+      document.getElementById('res_base_time').innerText = Math.round(baseTime).toLocaleString();
+      document.getElementById('res_peak_time').innerText = Math.round(peakTime).toLocaleString();
+      document.getElementById('res_total_time').innerText = Math.round(totalTime).toLocaleString();
+      document.getElementById('res_breakeven').innerText = Math.round(breakeven).toLocaleString();
+    }
+
+    async function saveShiftPlan() {
+      const branch = document.getElementById('sim_branch').value;
+      if (!branch) { alert("店舗を選択してください。"); return; }
+      
+      const targetHours = parseInt(document.getElementById('res_total_time').innerText.replace(/,/g, ''), 10);
+      if (targetHours <= 0) { alert("適正労働時間が計算されていません。"); return; }
+
+      if(!confirm(`${branch} の適正月間総労働時間を【 ${targetHours} h 】として固定費マスタへ保存しますか？\n（スコアリングの人時生産性の基準値となります）`)) return;
+      
+      const btn = document.getElementById('btnSaveShift');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>保存中...';
+
+      try {
+        const { error } = await db.from('fin_branch_fixed_costs')
+                                  .update({ target_hours: targetHours })
+                                  .eq('branch', branch);
+        
+        if (error) throw new Error(error.message);
+
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存';
+        
+        if (!branchFixedCostsMap[branch]) branchFixedCostsMap[branch] = {};
+        branchFixedCostsMap[branch].targetHours = targetHours;
+        
+        alert("正常にマスタへ保存されました！");
+      } catch (err) {
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存';
+        alert("エラーが発生しました: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
