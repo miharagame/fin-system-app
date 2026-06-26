@@ -352,13 +352,9 @@
       todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
       currentMonthStr = todayStr.substring(0, 7);
       
-      // tasks.html用の初期化（inpDateがないことへのエラー回避）
-      const inpDateEl = document.getElementById('inpDate');
-      if (inpDateEl) inpDateEl.value = todayStr.replace(/-/g, '/');
-      document.getElementById('taskTargetDate').value = todayStr;
-      
-      const tlMonthEl = document.getElementById('tlMonth');
-      if (tlMonthEl) tlMonthEl.value = currentMonthStr;
+      // ★修正: 正しいID（targetDate）に修正し、存在しないIDへのアクセスを削除
+      const targetDateEl = document.getElementById('targetDate');
+      if (targetDateEl) targetDateEl.value = todayStr;
 
       // 1. ユーザーログイン情報の確認
       const userStr = sessionStorage.getItem('finUser');
@@ -398,7 +394,7 @@
           }
       }
 
-      // 4. 初期店舗の設定とプルダウン生成 (★「全店」を撤廃)
+      // 4. 初期店舗の設定とプルダウン生成 (全店を除外)
       targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
       
       const sel = document.getElementById('branchSelector');
