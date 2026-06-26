@@ -240,7 +240,6 @@
     </div>
 
   </main>
-
   <script>
     // ★Supabase接続設定
     const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
@@ -258,7 +257,7 @@
       currentShopName: "",
       currentShopDf: [], 
       filteredDf: [],
-      definedShops: [] // ★修正: 直書きを撤廃して空にする
+      definedShops: [] 
     };
 
     let renderTimer = null;
@@ -267,7 +266,7 @@
     let currentUser = null;
 
     window.onload = async () => {
-      google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
+      // ★修正: GAS独自の初期化やセッション取得を撤廃しブラウザ標準に
       const userStr = sessionStorage.getItem('finUser');
       if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインしてください。</h1>"; return; }
       
@@ -275,13 +274,22 @@
       if(!currentUser.permissions.canInventory) {
         document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
       }
+
+      try {
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+      } catch (authErr) {
+        console.error("セッションの復元に失敗しました:", authErr);
+      }
       
-      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      // Supabaseから店舗マスタを動的取得
       try {
           const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
           if (bErr) throw bErr;
           if (bData && bData.length > 0) {
-              // 取得した店舗リストをHQモードの取得対象(definedShops)にセット
               AppState.definedShops = bData.map(b => b.name);
           } else {
               AppState.definedShops = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
@@ -313,9 +321,9 @@
       }
     }
 
+    // ★修正: 直接ポータルへ遷移
     function goHome() {
-      try { google.script.run.withSuccessHandler(url => { if(url) window.open(url + "?p=portal", "_top"); }).getAppUrl(); } 
-      catch(e) { window.history.back(); }
+      window.location.href = "portal.html";
     }
 
     function showError(msg) {
@@ -434,7 +442,6 @@
       return new TextDecoder('shift-jis').decode(buffer);
     }
 
-    // ★修正部分：1000件の制限を突破するループ処理を実装
     async function loadFromCloud(target) {
       document.getElementById('errorAlert').classList.add('hidden');
       const monthStr = document.getElementById(target + 'MonthSelector').value;
@@ -480,7 +487,6 @@
             allData = allData.concat(data);
             startIndex += PAGE_SIZE;
             
-            // 取得件数がPAGE_SIZE未満なら最後と判断
             if (data.length < PAGE_SIZE) {
               isFetching = false;
             }
@@ -582,7 +588,6 @@
             ranksSummary.total += r.totalVal;
           });
 
-          // 1. 在庫サマリー（inventory_summaries）の更新
           const { error: summaryErr } = await db.from('inventory_summaries').upsert({
             target_month: targetMonth,
             branch: shop,
@@ -595,15 +600,12 @@
           }, { onConflict: 'target_month, branch' });
           if (summaryErr) throw new Error("サマリーの保存に失敗: " + summaryErr.message);
 
-          // ★追加: 2. 月次確定データ（fin_monthly_stats）の current_inv も連動して自動更新する
-          // これにより、HQ入力ツールで手入力しなくても在庫額が自動反映されます
           const { error: statsUpdErr } = await db.from('fin_monthly_stats')
             .update({ current_inv: ranksSummary.total, updated_at: new Date().toISOString() })
             .eq('target_month', targetMonth)
             .eq('branch', shop);
           if (statsUpdErr) console.warn("月次確定データの在庫更新をスキップしました (レコード未作成の可能性):", statsUpdErr);
 
-          // 3. 既存の在庫明細（inventory_details）を削除してから一括登録
           const { error: deleteErr } = await db.from('inventory_details')
             .delete()
             .eq('target_month', targetMonth)
@@ -859,5 +861,4 @@
       a.href = url; a.download = `${stagnantOnly?'要注意商品':'全件'}_${AppState.currentShopName}.csv`; a.click(); URL.revokeObjectURL(url);
     }
   </script>
-</body>
 </html>
