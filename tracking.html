@@ -426,7 +426,6 @@
     </div>
 
   </main>
-
   <script>
     // ==========================================
     // 1. Supabaseの初期設定
@@ -435,7 +434,7 @@
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "?p=portal", allTrackingData = [], trackingData = [], chartObj = null, currentUser = null;
+    let allTrackingData = [], trackingData = [], chartObj = null, currentUser = null;
     let storeTarget = { margin: 0, cash: 0, invLimit: 0 };
     let todayStr = "", currentMonthStr = "", targetBranch = ""; 
     let analysisMode = "progress"; 
@@ -446,8 +445,8 @@
     
     let calcSumSales = 0, calcSumCash = 0, calcSumPurchase = 0, calcSumDiscount = 0, calcSumCashless = 0, calcSumCashlessFee = 0;
     let confirmedStats = null;
-    let globalBranches = []; // ★修正: 直書きを撤廃して空にする 
-    let userRoleConfig = null; // ログインユーザーの権限マスタデータ保持用
+    let globalBranches = []; 
+    let userRoleConfig = null; 
 
     function getRoleId() { return currentUser ? (currentUser.roleId || currentUser.role_id) : null; }
 
@@ -476,17 +475,24 @@
     };
 
     window.onload = async () => {
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch(e) { console.warn("GAS外"); }
-
+      // ★修正: GAS独自のURLパラメータやセッションをブラウザ標準に書き換え
       const userStr = sessionStorage.getItem('finUser');
-      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインしてください。</h1>"; return; }
       
       currentUser = JSON.parse(userStr);
       currentUser.branch = cleanShopName(currentUser.branch);
 
-      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      try {
+          const accToken = sessionStorage.getItem('sb_access');
+          const refToken = sessionStorage.getItem('sb_refresh');
+          if (accToken && refToken) {
+              await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+          }
+      } catch (authErr) {
+          console.error("セッションの復元に失敗しました:", authErr);
+      }
+
+      // Supabaseから店舗マスタを動的取得
       try {
           const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
           if (bErr) throw bErr;
@@ -499,7 +505,6 @@
       }
 
       const savedBranch = sessionStorage.getItem('finTrackingBranch');
-      // ★修正: フォールバック店舗を秋葉原店固定から、動的取得した先頭の店舗にする
       targetBranch = savedBranch ? cleanShopName(savedBranch) : (currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch);
       document.getElementById('userNameHeader').innerText = currentUser.name + " (" + currentUser.branch + ")";
       
@@ -514,15 +519,13 @@
       document.getElementById('tlDateTo').value = todayStr;
       document.getElementById('monthSelector').value = currentMonthStr;
 
-      // 店舗セレクタの初期化（動的取得したglobalBranchesを使う）
       const sel = document.getElementById('branchSelector');
-      sel.innerHTML = ""; // 一旦クリア
+      sel.innerHTML = ""; 
       globalBranches.forEach(b => {
         const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-900 text-white";
         if(b === targetBranch) opt.selected = true; sel.appendChild(opt);
       });
 
-      // 同期読み込みを開始
       await loadData();
       loadTimeline(); 
       
@@ -531,6 +534,18 @@
         if (el) el.addEventListener('input', updatePreview);
       });
     };
+
+    // ★修正: ポータル画面への遷移をVercelのルート構造に合わせる
+    function goHome() { 
+      window.location.href = "portal.html"; 
+    }
+    
+    function logout() { 
+      sessionStorage.removeItem('finUser'); 
+      sessionStorage.removeItem('sb_access');
+      sessionStorage.removeItem('sb_refresh');
+      goHome(); 
+    }
 
     async function changeTrackingMonth() {
       const selectedMonth = document.getElementById('monthSelector').value;
@@ -550,11 +565,9 @@
          document.getElementById('inpDate').value = `${selectedMonth}-01`;
       }
       
-      // ★修正: await を追加してデータの取得完了を完全に待つ
       await loadData();
       loadTimeline(); 
       
-      // 月次振り返りタブが開かれている場合はデータを再読込
       if(document.getElementById('tab_main_monthly').classList.contains('active')) {
           loadMonthlyApplicationData();
       }
@@ -567,36 +580,29 @@
       const tlSel = document.getElementById('tlBranch');
       if(tlSel) tlSel.value = targetBranch;
 
-      // ★修正: await を追加してデータの取得完了を完全に待つ
       await loadData(); 
       loadTimeline();
       
-      // 月次振り返りタブが開かれている場合はデータを再読込
       if(document.getElementById('tab_main_monthly').classList.contains('active')) {
           loadMonthlyApplicationData();
       }
     }
 
     function switchMainTab(tab) {
-      // すべてのタブボタンから active クラス（オレンジの下線）を一旦消す
       document.getElementById('tab_main_dashboard').classList.remove('active');
       document.getElementById('tab_main_timeline').classList.remove('active');
-      document.getElementById('tab_main_monthly').classList.remove('active'); // ★追加
+      document.getElementById('tab_main_monthly').classList.remove('active'); 
 
-      // すべての画面ブロックを一旦非表示（hidden）にする
       document.getElementById('view_dashboard').classList.add('hidden');
       document.getElementById('view_timeline').classList.add('hidden');
-      document.getElementById('view_monthly').classList.add('hidden'); // ★追加
+      document.getElementById('view_monthly').classList.add('hidden'); 
 
-      // 現在選択されたタブボタンと画面ブロックだけを活性化・表示する
       document.getElementById('tab_main_' + tab).classList.add('active');
       document.getElementById('view_' + tab).classList.remove('hidden');
       document.getElementById('view_' + tab).classList.add(tab === 'dashboard' ? 'grid' : 'flex');
       
-      // 画面のスクロール位置を最上部にリセット
       window.scrollTo(0, 0);
 
-      // ★追加: 「月次振り返り」タブが開かれたときだけ、自動で当月のサマリーと提出データをSupabaseから読み込む
       if (tab === 'monthly') {
           loadMonthlyApplicationData();
       }
@@ -606,7 +612,6 @@
       const dateVal = document.getElementById('inpDate').value;
       if (!dateVal) return;
       
-      // 日付の「月」が右上のカレンダーとズレている場合は自動同期して再判定
       const selectedMonth = dateVal.substring(0, 7);
       if (selectedMonth !== currentMonthStr) {
         document.getElementById('monthSelector').value = selectedMonth;
@@ -614,7 +619,6 @@
         return; 
       }
       
-      // ★修正: trackingRecords ではなく、定義済みの正確な変数 trackingData から検索
       const record = trackingData.find(r => r.date === dateVal && r.branch === targetBranch);
       
       if (record) {
@@ -647,13 +651,12 @@
           .from('roles')
           .select('*')
           .eq('id', getRoleId())
-          .single();
+          .maybeSingle();
           
         if (!rErr && rData) {
             userRoleConfig = rData;
         }
 
-        // 1. 日報データの取得
         const { data: sbData, error: recordErr } = await db
           .from('daily_records')
           .select('*')
@@ -685,11 +688,10 @@
 
         trackingData = allTrackingData.filter(r => r.date && r.date.startsWith(currentMonthStr) && r.branch === targetBranch);
 
-        // ★大改修: 2. Supabaseの新・月次予算マスタからの目標値取得
         const { data: budgetData, error: budgetErr } = await db
           .from('fin_monthly_targets')
           .select('*')
-          .eq('target_month', currentMonthStr) // <- ここで月を直接指定
+          .eq('target_month', currentMonthStr)
           .eq('branch', targetBranch);
           
         if (budgetErr) throw budgetErr;
@@ -709,7 +711,6 @@
         document.getElementById('dispObjCash').innerText = storeTarget.cash ? storeTarget.cash.toLocaleString() + " 円" : "-- 円";
         document.getElementById('dispObjInvLimit').innerText = storeTarget.invLimit ? storeTarget.invLimit.toLocaleString() + " 円" : "-- 円";
 
-        // 3. Supabaseから直接、確定データを取得する
         const { data: statsData, error: statsErr } = await db
             .from('fin_monthly_stats')
             .select('*')
@@ -724,7 +725,7 @@
                 totalPurchase: Number(statsData.total_purchase) || 0,
                 cogs: Number(statsData.cogs) || 0,
                 grossProfit: Number(statsData.gross_profit) || 0,
-                totalWorkHours: Number(statsData.total_work_hours) || 0 // ★追加
+                totalWorkHours: Number(statsData.total_work_hours) || 0
             };
         } else {
             confirmedStats = null;
@@ -871,20 +872,16 @@
       }
     }
 
-    // ★大改修：アカウント権限マスタ（roles）の edit_scope に完全準拠する判定
     function applyPermissions() {
       let isEditable = false;
       
       if (userRoleConfig) {
-          // そもそもマスタで予実トラッカーが「不可」なら一律編集不可
           if (userRoleConfig.can_tracking === '不可') {
               isEditable = false;
           } else {
-              // 編集スコープのチェック
               if (userRoleConfig.edit_scope === '全店舗') {
                   isEditable = true;
               } else if (userRoleConfig.edit_scope === '所属店舗のみ') {
-                  // ログインしている人の所属店舗と、現在選択されている店舗が一致している場合のみ可能
                   isEditable = (currentUser.branch === targetBranch);
               } else {
                   isEditable = false;
@@ -948,7 +945,6 @@
       }
 
       const grossProfit = s * (m / 100);
-      // 対象日の生産性計算（現在入力中の値 w を使用）
       const laborProd = w > 0 ? grossProfit / w : 0;
       const cashProd = w > 0 ? cash / w : 0;
 
@@ -977,7 +973,6 @@
           sumGrossProfit += net * (Number(r.grossProfitRate) / 100);
           sumCashFlow += r.cashFlow;
           
-          // ★重要：CSV等で上書きされた正確な労働時間があればそれを使用する
           sumW += Number(r.workHours) || 0;
         }
       });
@@ -986,20 +981,17 @@
       let totalP = sumP + p;
       let totalGrossProfit = sumGrossProfit + grossProfit;
       let totalCashFlow = sumCashFlow + cash;
-      // ★重要：累計労働時間 ＝ 対象日以外の累計 ＋ 現在入力中の値
       let totalW = sumW + w;
       let totalInvVal = totalP - (totalS - totalGrossProfit);
 
       if (confirmedStats && currentMonthStr !== todayStr.substring(0, 7)) {
           totalGrossProfit = confirmedStats.grossProfit;
           totalInvVal = confirmedStats.totalPurchase - confirmedStats.cogs;
-          // ★重要：月次確定データに勤怠の確定総労働時間(totalWorkHours)があれば、それを使用する
           if (confirmedStats.totalWorkHours > 0) {
              totalW = confirmedStats.totalWorkHours;
           }
       }
       
-      // ★重要：再計算された精密な累計労働時間を使って「累計平均 生産性」を算出
       const totalLaborProd = totalW > 0 ? totalGrossProfit / totalW : 0;
       const totalCashProd = totalW > 0 ? totalCashFlow / totalW : 0;
 
@@ -1087,34 +1079,6 @@
         b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check mr-2"></i>保存する';
         alert("保存エラー: " + err.message);
       }
-    }
-
-    function downloadCSV() {
-      const btn = document.getElementById('btnDownloadCsv');
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 生成中...'; }
-      
-      google.script.run
-        .withSuccessHandler(res => {
-          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-csv mr-1"></i> CSV出力'; }
-          if (res.error) { alert(res.error); return; }
-          
-          const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-          const blob = new Blob([bom, res.csvData], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = res.fileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        })
-        .withFailureHandler(err => {
-           if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-csv mr-1"></i> CSV出力'; }
-           alert("ダウンロードエラー: " + err.message);
-        })
-        .getTrackingDataForCSV(currentUser, targetBranch, currentMonthStr);
     }
 
     function buildView() {
@@ -1390,10 +1354,10 @@
     }
 
     // ==========================================
-    // ★追加: 月次振り返り（チェック・月報提出）の処理
+    // 月次振り返り（チェック・月報提出）の処理
     // ==========================================
     function updateCheckButtonUI(field, isChecked) {
-       const prefix = field.split('_')[0]; // attendance, report, inventory
+       const prefix = field.split('_')[0]; 
        const btn = document.getElementById('btn_' + prefix + '_check');
        if(!btn) return;
        
@@ -1482,7 +1446,6 @@
             return;
         }
 
-        // ★不可逆の念押し警告ダイアログ
         let confirmMsg = "この項目を「完了」にすると、以降修正できなくなります。\n（どうしても修正が必要な場合は本部に連絡が必要です）\n\n本当に完了してよろしいですか？";
         if(!confirm(confirmMsg)) return;
 
@@ -1513,7 +1476,7 @@
                 payload.submitted_by = existing.submitted_by;
             }
 
-            payload[field] = true; // 完了(true)で強制上書き
+            payload[field] = true; 
 
             const { error } = await db.from('fin_monthly_applications').upsert(payload, { onConflict: 'target_month,branch' });
             if (error) throw error;
@@ -1577,9 +1540,5 @@
             alert("送信エラー: " + err.message);
         }
     }
-
-    function goHome() { if (appUrl && appUrl !== "?p=portal") { window.open(appUrl + "?p=portal", "_top"); } else { window.history.back(); } }
-    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
   </script>
-</body>
 </html>
