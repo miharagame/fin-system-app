@@ -382,7 +382,7 @@
       
       <div class="bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl w-full">
          <h2 class="text-lg font-black text-sky-400 mb-4 border-b border-slate-800 pb-2"><i class="fa-solid fa-wrench mr-2"></i>① 店舗別・固定費マスタ管理 (赤字ラインの定義)</h2>
-         <p class="text-[10px] text-slate-400 mb-4 leading-relaxed">各店舗の「直接固定費」と全社費を入力すると、直接比率に応じて本部経費と<strong class="text-rose-400">月間返済額</strong>を自動按分し、店舗が最低限稼ぐべき必須キャッシュ水準（赤字ボーダー）を算出します。</p>
+         <p class="text-[10px] text-slate-400 mb-4 leading-relaxed">各店舗の「直接固定費」と全社費を入力すると、直接比率に応じて本部経費と月間返済額を自動按分し、店舗が最低限稼ぐべき必須キャッシュ水準（赤字ボーダー）を算出します。</p>
          
          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
@@ -520,14 +520,13 @@
       <div class="p-4 bg-slate-950 text-right"><button onclick="closeHistory()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black transition-all">閉じる</button></div>
     </div>
   </div>
-
   <script>
     // ★Supabase接続設定
     const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "?p=portal", currentCalcData = {}, latestHistoryList = [];
+    let currentCalcData = {}, latestHistoryList = [];
     let currentUser = null;
     let globalBranches = []; 
     let branchFixedCostsMap = {}; 
@@ -560,10 +559,7 @@
      * @returns {Promise<void>}
      */
     window.onload = async () => {
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch(e) { console.warn("GAS環境外での実行:", e); }
-
+      // ★修正: GAS固有の初期化依存を排除
       const userStr = sessionStorage.getItem('finUser');
       if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
       
@@ -582,7 +578,7 @@
       currentUser.branch = cleanShopName(currentUser.branch);
       document.getElementById('userNameHeader').innerText = currentUser.name;
 
-      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
+      // Supabaseから店舗マスタを動的取得
       try {
           const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
           if (bErr) throw bErr;
@@ -596,7 +592,6 @@
           globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
       }
 
-      // ★修正: 動的取得した店舗リストでプルダウンを生成
       const sel = document.getElementById('simBranchSelector');
       sel.innerHTML = '<option value="全店舗">全社合計</option>';
       globalBranches.forEach(b => {
@@ -646,6 +641,11 @@
               });
           }
           
+          let totalDirectAll = 0;
+          for(let key in branchFixedCostsMap) {
+              totalDirectAll += (branchFixedCostsMap[key].directSga || 0);
+          }
+          
           recalcBranchFixedTotal();
           
           document.getElementById('loading').classList.add('hidden'); 
@@ -670,14 +670,19 @@
         if(lblSga) lblSga.innerText = sgaTotalMonthly.toLocaleString();
     }
 
+    // ★修正: GAS独自のURLパラメータを排除し、Vercelの静的ルーティングへ遷移
     function goHome() { 
-      if (appUrl && appUrl !== "?p=portal") {
-        window.open(appUrl + "?p=portal", "_top"); 
-      } else {
-        window.history.back();
-      }
+      document.getElementById('loadingText').innerText = "ポータルへ移動中...";
+      document.getElementById('loading').classList.remove('hidden');
+      window.location.href = "portal.html";
     }
-    function logout() { sessionStorage.removeItem('finUser'); goHome(); }
+    
+    function logout() { 
+      sessionStorage.removeItem('finUser'); 
+      sessionStorage.removeItem('sb_access');
+      sessionStorage.removeItem('sb_refresh');
+      goHome(); 
+    }
 
     function switchSimTab(tab) {
       ['annual', 'daily', 'shift', 'admin'].forEach(t => {
@@ -750,7 +755,6 @@
       return parseFloat(toHalfWidth(val).replace(/,/g, '')) || 0; 
     }
     
-    // --- ①年次シミュレータ計算 ---
     function calc() {
       const selEl = document.getElementById('simBranchSelector');
       const simBranch = selEl && !selEl.disabled ? cleanShopName(selEl.value) : currentUser.branch;
@@ -850,7 +854,7 @@
       });
       
       if(!document.getElementById('view_admin').classList.contains('hidden')) {
-         calcDistTotal();
+          calcDistTotal();
       }
     }
     
@@ -1158,7 +1162,6 @@
        checkAdminSaveButton();
     }
 
-    // ★修正: 過去のウェイトを新テーブルではなく、旧テーブルの退避先から取得する
     async function loadTargetBudgetMaster() {
        const year = document.getElementById('applyTargetYear').value;
        document.getElementById('loadingText').innerText = year + "年度のマスタを読み込み中...";
@@ -1166,9 +1169,9 @@
 
        try {
           const { data, error } = await db.from('zzz_old_fin_target_budget_master')
-                                        .select('*')
-                                        .eq('target_year', year)
-                                        .limit(1);
+                                         .select('*')
+                                         .eq('target_year', year)
+                                         .limit(1);
 
           document.getElementById('loading').classList.add('hidden');
           document.getElementById('weightTotalValue').setAttribute('data-loaded', 'true');
@@ -1192,12 +1195,9 @@
        }
     }
 
-    // ★大改修: 年次目標とウェイトを元に、12ヶ月分の月次絶対額を計算してUPSERTする
-    // ★機能進化: 過去月を保護し、指定した未来の月以降のみを一括適用するロジック
     async function executeApplyMaster() {
        const year = document.getElementById('applyTargetYear').value;
        
-       // ユーザーに適用を開始する月を選択させる（過去の上書きを防ぐ）
        const startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
        if (!startMonthInput) return;
        
@@ -1243,7 +1243,6 @@
                const targetYear = monthObj.isNextYear ? String(parseInt(year, 10) + 1) : year;
                const targetMonthStr = `${targetYear}-${monthObj.m}`;
                
-               // ★判定: ユーザーが指定した適用開始月より前の月は配列に追加せずスキップ（保護）
                if (targetMonthStr < startMonthInput) {
                    return; 
                }
@@ -1386,16 +1385,13 @@
       document.getElementById('inpCashlessRatio').value = r['C/L比率(%)'] !== undefined ? r['C/L比率(%)'] : 50;
       document.getElementById('inpCashlessFeeRate').value = r['C/L決済手数料率(%)'] !== undefined ? r['C/L決済手数料率(%)'] : 3.2;
       document.getElementById('inpCorpTaxRate').value = r['法人税等実効税率(%)'] !== undefined ? r['法人税等実効税率(%)'] : 30;
-      document.getElementById('inpTaxableFixed').value = r['消費税課税割合(%)'] !== undefined ? r['消費税課税割合(%)'] : 42;
+      document.getElementById('inpTaxableFixed').value = r['販管費の消費税 課税割合'] !== undefined ? r['販管費の消費税 課税割合'] : 42;
       
-      document.getElementById('inpInvIncrease').value = (Math.round(Number(r['年間在庫増加額(円)']) / 10000) || 0).toLocaleString();
-      document.getElementById('inpTargetCash').value = (Math.round(Number(r['目標手残り現金(円)']) / 10000) || 0).toLocaleString();
-      
-      ['inpSales', 'inpMargin', 'inpInvIncrease', 'inpTargetCash', 'inpCashlessRatio', 'inpCashlessFeeRate'].forEach(id => {
-          let el = document.getElementById(id);
-          if (id === 'inpCashlessFeeRate') formatFloatAndCalc(el);
-          else formatIntAndCalc(el);
-      });
+      document.getElementById('inpInvIncrease').value = Math.round(Number(r['年間在庫増額(円)']) / 10000 || 500).toLocaleString();
+      document.getElementById('inpTargetCash').value = Math.round(Number(r['目標最終手残り現金(円)']) / 10000 || 2000).toLocaleString();
+
+      formatFCInput(document.getElementById('inpSales'));
+      calc();
       closeHistory();
     }
     
