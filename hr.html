@@ -252,7 +252,6 @@
       </div>
     </div>
   </div>
-
   <script>
     // ★Supabase接続設定
     const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
@@ -311,11 +310,11 @@
       }
     ];
 
-    let appUrl = "", currentUser = null, evaluationsData = [], employeeList = [];
+    let currentUser = null, evaluationsData = [], employeeList = [];
     let reportsData = []; 
     let currentPeriod = "2026年_上半期", currentSheetId = null;
     let secKeyInput = "", isVerifying = false;
-    let globalBranches = []; // ★追加: 動的マスタ用のハコ
+    let globalBranches = []; 
     
     // ★権限判定ロジックの完全分離
     function getRoleId() { return currentUser ? (currentUser.roleId || currentUser.role_id) : null; }
@@ -325,7 +324,7 @@
     function isManagerUser() { return getRoleId() === 'role_general'; }
     function isEmployeeUser() { return getRoleId() === 'role_employee'; }
 
-    // ★安全なJSONBパーサー（空や不正なデータを防弾する）
+    // ★安全なJSONBパーサー
     function safeParseJsonb(val) {
         if (!val) return {};
         if (typeof val === 'string') {
@@ -387,11 +386,7 @@
     }
 
     window.onload = () => {
-      // ★不具合修正：ロック解除前（ログイン前）でもポータルに戻れるよう、起動時に最優先でGASのURLを取得する
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch(e) { console.warn("GAS環境外での実行:", e); }
-
+      // ★不具合修正：Vercel移行に伴い、GASへの依存を完全撤廃
       const userStr = sessionStorage.getItem('finUser');
       if (!userStr || userStr === "null" || userStr === "undefined") {
         document.body.innerHTML = "<h1 style='text-align:center;margin-top:20%'>不正アクセスです。ポータルからログインし直してください。</h1>";
@@ -421,7 +416,6 @@
       }
       currentUser = JSON.parse(userStr);
 
-      // ★完全脱却：ポータルから受け取った鍵（セッション）でデータベースのロックを解除する
       try {
         const accToken = sessionStorage.getItem('sb_access');
         const refToken = sessionStorage.getItem('sb_refresh');
@@ -435,7 +429,6 @@
       currentUser.branch = cleanShopName(currentUser.branch);
       document.getElementById('headerUserName').innerText = currentUser.name + " (" + currentUser.branch + ")";
 
-      // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
       try {
           const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
           if (bErr) throw bErr;
@@ -632,7 +625,6 @@
       
       if (isHQUser()) {
          branchContainer.classList.remove('hidden');
-         // ★修正: ユーザーから抽出するのではなく、マスタデータ(globalBranches)を利用して生成する
          let bHtml = '<option value="all">-- すべての店舗 --</option>';
          globalBranches.forEach(b => { bHtml += `<option value="${b}">${b}</option>`; });
          branchSel.innerHTML = bHtml;
@@ -1078,12 +1070,12 @@
            cat.items.forEach((item, itemIdx) => {
              html += `
                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                 <div class="p-4 cursor-pointer hover:bg-slate-50 flex justify-between items-center transition-colors" onclick="toggleMasterAccordion('m_acc_${catIdx}_${itemIdx}')">
+                 <div class="p-4 cursor-pointer hover:bg-slate-50 flex justify-between items-center transition-colors" onclick="toggleAccordion('m_acc_${catIdx}_${itemIdx}')">
                    <div>
                      <p class="font-bold text-slate-800 text-sm">${item.name}</p>
                      <p class="text-[11px] text-slate-500 mt-0.5">${item.desc}</p>
                    </div>
-                   <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200" id="m_icon_${catIdx}_${itemIdx}"></i>
+                   <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200" id="icon_m_acc_${catIdx}_${itemIdx}"></i>
                  </div>
                  <div id="m_acc_${catIdx}_${itemIdx}" class="hidden border-t border-slate-100 p-4 bg-slate-50 accordion-content text-xs">
                    <div class="mb-3">
@@ -1150,14 +1142,9 @@
     }
 
     function goHome() {
-      if (appUrl && appUrl.includes("script.google.com")) {
-        window.top.location.href = appUrl + "?p=portal";
-      } else {
-        window.top.location.href = "?p=portal";
-      }
+      window.location.href = "portal.html";
     }
     
     function logout() { sessionStorage.removeItem('finUser'); goHome(); }
   </script>
-</body>
 </html>
