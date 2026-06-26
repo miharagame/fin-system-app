@@ -530,7 +530,6 @@
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "?p=portal";
     let rawData = null; 
     let chartObj = null; 
     let sel = ["売上高", "営業利益"]; 
@@ -538,12 +537,12 @@
     let scoringData = [];
     let radarChartObj = null;
     let hqBaseData = { totalPurchase: 0, totalSales: 0 };
-    let globalBranches = []; // ★修正: 直書きを撤廃して空にする
+    let globalBranches = []; 
     
     let hrEvaluationsList = [];
     let hqReportsList = [];
     let adminUsersList = [];
-    let parsedAttendanceRows = []; // CSVインポートデータの一時保持用
+    let parsedAttendanceRows = []; 
 
     // 表記揺れを自動クレンジングしてマスタ名に変換
     function cleanShopName(x) {
@@ -562,6 +561,7 @@
     // 2. 画面起動処理
     // ==========================================
     window.onload = async () => {
+      // ★修正: GAS独自のURL取得処理を削除し、純粋なブラウザ上のセッションチェックのみに変更
       const userStr = sessionStorage.getItem('finUser');
       if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインしてください。</h1>"; return; }
       
@@ -590,7 +590,6 @@
             await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
         }
         
-        // ★追加: 画面起動の最初にSupabaseから店舗マスタを動的取得
         const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
         if (bErr) throw bErr;
         
@@ -607,16 +606,18 @@
       }
     };
 
+    // ★修正: google.script.run を撤廃し、Vercel上のポータル画面へ直接遷移
     function goHome() { 
       document.getElementById('loadingText').innerText = "ポータルへ移動中...";
       document.getElementById('loading').classList.remove('hidden');
-      google.script.run.withSuccessHandler(function(url) {
-        window.top.location.href = url + "?p=portal";
-      }).getAppUrl();
+      window.location.href = "portal.html";
     }
     
+    // ★修正: ログアウト時にSupabaseのセッショントークンも確実に破棄する
     function logout() { 
       sessionStorage.removeItem('finUser'); 
+      sessionStorage.removeItem('sb_access');
+      sessionStorage.removeItem('sb_refresh');
       goHome(); 
     }
 
@@ -825,7 +826,6 @@
       loadScoringData();
     }
 
-    // ★大改修: スコーアリングロジックを新しい月次目標マスタ(fin_monthly_targets)に対応させ、関数を一本化
     async function loadScoringData(isSilent = false) {
       if (!isSilent) showLoading("店舗データを集計中...");
       const periodMode = document.getElementById('scorePeriodMode').value;
@@ -888,7 +888,6 @@
         let startDateStr = firstM + "-01";
         let endDateStr = lastM + "-" + String(lastDayNum).padStart(2, '0');
 
-        // ★修正: fin_monthly_targets から対象月を一括取得する構造へ変更
         const [budgetRes, statsRes, dailyRes, fixedRes, invRes] = await Promise.all([
             db.from('fin_monthly_targets').select('*').in('target_month', targetMonthsList),
             db.from('fin_monthly_stats').select('*'),
@@ -903,12 +902,11 @@
         targetBranches.forEach(b => {
             branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0 };
             targetMonthsList.forEach(mStr => {
-                // ★修正: 新テーブル構造(target_month)でのマッチングと絶対額累計処理
                 let mData = budgetRes.data.find(d => d.target_month === mStr && d.branch === b);
                 if (mData) {
                     branchPeriodTargets[b].cash += Number(mData.target_cash) || 0;
                     branchPeriodTargets[b].invLimit += Number(mData.target_inv_limit) || 0;
-                    branchPeriodTargets[b].marginRate = Number(mData.margin_rate) || 0; // 最終月の設定値を採用
+                    branchPeriodTargets[b].marginRate = Number(mData.margin_rate) || 0; 
                 }
             });
         });
@@ -1340,7 +1338,6 @@
         let startDateStr = firstM + "-01";
         let endDateStr = lastM + "-" + String(lastDayNum).padStart(2, '0');
 
-        // ★修正: 日付型の変換ズレを吸収するため、全件取得してJS側で安全にマッチングさせる
         const [budgetRes, statsRes, dailyRes, fixedRes, invRes] = await Promise.all([
             db.from('fin_target_budget_master').select('*'),
             db.from('fin_monthly_stats').select('*'),
@@ -1498,6 +1495,43 @@
         });
 
         scoringData.sort((a, b) => b.totalScore - a.totalScore);
+        
+        let totalSgaHalfYearly = 0;
+        let totalRepayHalfYearly = 0;
+        if (fixedRes.data) {
+            fixedRes.data.forEach(r => {
+                totalSgaHalfYearly += (Number(r.total_sga || 0) * 10000 / 2); 
+                totalRepayHalfYearly += (Number(r.allocated_repay || 0) * 10000 / 2); 
+            });
+        }
+        const fixedInput = document.getElementById('sim_fixed_cost');
+        if (fixedInput && !fixedInput.value) fixedInput.value = totalSgaHalfYearly;
+        
+        const repayInput = document.getElementById('sim_repay');
+        if (repayInput && !repayInput.value) repayInput.value = totalRepayHalfYearly;
+
+        const lblEl = document.getElementById('scorePeriodDetailLabel');
+        if (lblEl) {
+            if (periodMode === 'semi') {
+                const mNum = parseInt(monthStr.substring(5, 7), 10);
+                const yStr = monthStr.substring(0, 4);
+                if (mNum >= 3 && mNum <= 8) {
+                    lblEl.innerText = `➔ 構成月: ${yStr}/03, 04, 05, 06, 07, 08 (上期)`;
+                } else {
+                    const bYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
+                    const nYear = String(parseInt(bYear, 10) + 1);
+                    lblEl.innerText = `➔ 構成月: ${bYear}/09, 10, 11, 12, ${nYear}/01, 02 (下期)`;
+                }
+            } else if (periodMode === 'annual') {
+                const mNum = parseInt(monthStr.substring(5, 7), 10);
+                const yStr = monthStr.substring(0, 4);
+                const bYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
+                const nYear = String(parseInt(bYear, 10) + 1);
+                lblEl.innerText = `➔ 構成月: ${bYear}/03 ～ ${nYear}/02 (通期12ヶ月)`;
+            } else {
+                lblEl.innerText = `➔ 構成月: ${monthStr.replace('-', '/')}`;
+            }
+        }
 
       } catch(e) {
         throw e;
@@ -1516,10 +1550,8 @@
         if (periodLabel) { periodLabel.innerText = hrPeriod; }
 
         try {
-            // ★修正: 統合した loadScoringData 関数をサイレントモード(true)で呼び出す
             await loadScoringData(true);
             
-            // ★修復: 消えてしまっていたデータ取得ロジックと閉じカッコを復活
             if (hrEvaluationsList.length === 0 || adminUsersList.length === 0) {
                 const [usersRes, hrRes, repRes] = await Promise.all([
                     db.from('system_users').select('*'),
@@ -1724,11 +1756,9 @@
     // ==========================================
     function initHqBranchSelect() {
       const sel = document.getElementById('hqBranch'); sel.innerHTML = "";
-      // ★修正: ハードコードを撤廃し、マスタデータの配列を使用してプルダウンを生成する
       globalBranches.forEach(b => { sel.innerHTML += `<option value="${b}">${b}</option>`; });
     }
 
-    // ★大改修：自動取得ロジック
     async function loadHqData() {
       const month = document.getElementById('hqMonth').value;
       const branch = document.getElementById('hqBranch').value;
@@ -1742,7 +1772,6 @@
 
           const lastDay = new Date(yyyy, mm, 0).getDate();
           
-          // ★修正: 日付型の変換ズレを吸収するため、全件取得してJS側で照合
           const [statsRes, invSummaryRes, dailyRes] = await Promise.all([
               db.from('fin_monthly_stats').select('*').eq('branch', branch),
               db.from('inventory_summaries').select('*').eq('branch', branch),
@@ -1764,7 +1793,6 @@
           document.getElementById('hqTotalPurchase').innerText = Math.round(hqBaseData.totalPurchase).toLocaleString();
           document.getElementById('hqTotalSales').innerText = Math.round(hqBaseData.totalSales).toLocaleString();
           
-          // ★修正: 文字列トリミングによる安全な前方一致
           const prevStatData = statsRes.data ? statsRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           const prevSummaryData = invSummaryRes.data ? invSummaryRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           let prevInvVal = "";
@@ -1812,13 +1840,11 @@
         text = new TextDecoder('shift-jis').decode(buffer);
       }
 
-      // ★追加: BOM（見えない制御文字）を強制除去してデータを綺麗にする
       text = text.replace(/^\uFEFF/, '');
 
       Papa.parse(text, {
         header: true,
         skipEmptyLines: true,
-        // ★追加: 列名の前後に紛れ込んだ見えない文字や空白も除去する
         transformHeader: function(h) {
           return h.trim().replace(/^\uFEFF/, '');
         },
@@ -1871,7 +1897,6 @@
       });
     }
 
-    // ★大改修：プレビュー計算も手動入力UIに対応
     function calcHqPreview() {
       const invInput = document.getElementById('hqCurrentInv');
       let vInv = invInput.value.replace(/,/g, '').replace(/[^\d]/g, ''); 
@@ -1902,7 +1927,6 @@
       elGross.innerText = Math.round(grossProfit).toLocaleString() + " 円";
     }
 
-    // ★大改修：保存処理のエラーチェックを強化（updated_atエラー修正版）
     async function saveHqData() {
       const month = document.getElementById('hqMonth').value; 
       const branch = document.getElementById('hqBranch').value; 
@@ -1939,7 +1963,6 @@
                       .eq('branch', row.branch)
                       .maybeSingle();
 
-                  // ★修正: 存在しない「updated_at」を送信しないように削除
                   let upsertPayload = {
                       target_date: row.date,
                       branch: row.branch,
@@ -1969,7 +1992,7 @@
               cogs: cogs,
               gross_profit: grossProfit,
               updated_by: currentUser.name,
-              updated_at: new Date().toISOString() // 月次テーブル側には列が存在するのでそのまま
+              updated_at: new Date().toISOString()
           };
 
           const { error: statsErr } = await db.from('fin_monthly_stats').upsert(payload, { onConflict: 'target_month, branch' });
@@ -1995,5 +2018,5 @@
           alert("データ上書き確定エラー: " + e.message);
       }
     }
-  </script>
+</script>
 </html>
