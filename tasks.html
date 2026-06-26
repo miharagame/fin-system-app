@@ -291,7 +291,6 @@
     </div>
   </div>
 
-  <!-- ★追加: タスク詳細・メモ用モーダル -->
   <div id="taskDetailModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-[50] p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl max-h-[85vh] flex flex-col">
       <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950 shrink-0">
@@ -326,23 +325,19 @@
     </div>
   </div>
   <script>
+    // --- Supabaseの初期化 ---
     const SUPABASE_URL = 'https://deuxqfyxoojgdfwufslr.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "", currentUser = null, targetBranch = "", todayStr = "", currentMonthStr = "";
-    let tasksData = [];
-    let projectsData = [], subtasksData = [];
-    let routineMastersData = []; 
-    
-    let timerInterval = null, activeTimers = {}; 
-    let pollingInterval = null; 
-    let lastActionTime = 0; 
-    
-    let storeStaffs = [], currentTaskStaff = null, authTargetStaff = null, currentPinInput = ""; 
-    let taskFilterMode = 'all'; 
-    let selectedAssignees = []; 
-    let selectedSubAssignees = [];
+    let currentUser = null, targetBranch = "", todayStr = "", currentMonthStr = "";
+    let globalBranches = [];
+    let trackingRecords = [], storeTarget = { sales: 0, margin: 0, cash: 0 };
+    let tasksData = [], projectsData = [], subtasksData = [], storeStaffs = [], routineMastersData = []; 
+    let currentTaskStaff = null, authTargetStaff = null, currentPinInput = ""; 
+    let taskFilterMode = 'all', selectedAssignees = [], selectedSubAssignees = [];
+    let activeTimers = {}, timerInterval = null, pollingInterval = null;
+    let lastActionTime = 0;
 
     document.getElementById('newTaskType').addEventListener('change', function() {
        if (this.value === 'routine') {
@@ -353,98 +348,497 @@
     });
 
     window.onload = async () => {
-      google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      const userStr = sessionStorage.getItem('finUser');
-      if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
-      
-      currentUser = JSON.parse(userStr);
-      if(currentUser.permissions.canTasks === false) {
-          document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
-      }
-
-      // Supabaseの認証トークンを復元
-      const accToken = sessionStorage.getItem('sb_access');
-      const refToken = sessionStorage.getItem('sb_refresh');
-      if (accToken && refToken) {
-          await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
-      }
-
-      targetBranch = currentUser.branch === "全店舗" ? "秋覇原店" : currentUser.branch;
-      const sel = document.getElementById('branchSelector');
-      sel.innerHTML = "";
-      if (currentUser.permissions.viewAll) {
-          ["大阪本店", "バトルタワー店", "秋葉原店", "福岡天神店", "名古屋大須店", "池袋店"].forEach(b => {
-              const opt = document.createElement('option');
-              opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white";
-              if (b === targetBranch) opt.selected = true;
-              sel.appendChild(opt);
-          });
-      } else {
-          const opt = document.createElement('option');
-          opt.value = targetBranch; opt.text = targetBranch; opt.className = "bg-slate-950 text-white";
-          sel.appendChild(opt);
-          sel.disabled = true;
-      }
-
       const now = new Date(); const tzOffset = now.getTimezoneOffset() * 60000;
       todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
       currentMonthStr = todayStr.substring(0, 7);
-      document.getElementById('targetDate').value = todayStr;
       
-      // ★修正1: 共有PCでの運用を考慮し、ページ入り直しの際は必ずスタッフを「未設定」にリセットする
-      sessionStorage.removeItem('finTaskStaff');
-      currentTaskStaff = null;
-      updateStaffHeader();
+      document.getElementById('inpDate').value = todayStr.replace(/-/g, '/');
+      document.getElementById('taskTargetDate').value = todayStr;
+      document.getElementById('tlMonth').value = currentMonthStr;
 
-      loadTasks();
-      timerInterval = setInterval(updateActiveTimersUI, 1000);
-      pollingInterval = setInterval(silentPolling, 15000);
+      // ★修正: GAS独自のセッション取得を撤廃しブラウザ標準に
+      const userStr = sessionStorage.getItem('finUser');
+      if (userStr) { 
+        currentUser = JSON.parse(userStr);
+        if(currentUser.permissions.canTasks === false) {
+            document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
+        }
+
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+
+        try {
+            const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+            if (bErr) throw bErr;
+            if (bData && bData.length > 0) {
+                globalBranches = bData.map(b => b.name);
+            } else {
+                globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
+            }
+        } catch (err) {
+            console.error("店舗マスタ取得エラー:", err);
+            globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
+            if (err.message && (err.message.includes('JWT') || err.message.includes('Auth'))) {
+                logout();
+                return;
+            }
+        }
+
+        targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+        
+        const sel = document.getElementById('branchSelector');
+        if (sel) {
+            sel.innerHTML = "";
+            if (currentUser.permissions.viewAll) {
+                sel.innerHTML += '<option value="全店舗">全店</option>';
+                globalBranches.forEach(b => {
+                   sel.innerHTML += `<option value="${b}">${b}</option>`;
+                });
+            } else {
+                sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                sel.disabled = true;
+            }
+        }
+
+        showApp();
+      } else {
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('loginScreen').classList.add('flex');
+      }
     };
 
-    function goHome() { if (appUrl) { window.open(appUrl + "?p=portal", "_top"); } }
-    
-    function logout() { 
-        sessionStorage.removeItem('finUser'); 
-        sessionStorage.removeItem('finTaskStaff'); 
-        sessionStorage.removeItem('sb_access');
-        sessionStorage.removeItem('sb_refresh');
-        goHome(); 
+    // ★修正: 直接ポータルへ遷移
+    function goHome() { 
+      window.location.href = "portal.html";
     }
 
-    function switchBranch() { 
-        targetBranch = document.getElementById('branchSelector').value; 
-        currentTaskStaff = null; 
-        sessionStorage.removeItem('finTaskStaff');
-        storeStaffs = []; 
-        updateStaffHeader();
-        setTaskFilter('all'); 
-        loadTasks(); 
+    async function attemptLogin() {
+      const id = document.getElementById("userId").value;
+      const pass = document.getElementById("userPass").value;
+      const errEl = document.getElementById("loginError");
+      if(!id || !pass) { errEl.innerText = "IDとパスワードを入力してください"; errEl.classList.remove('hidden'); return; }
+
+      showLoading("認証中...");
+      try {
+        const dummyEmail = id + "@system.local";
+        const { data: authData, error: authErr } = await db.auth.signInWithPassword({ 
+            email: dummyEmail, 
+            password: pass 
+        });
+        if (authErr) throw new Error("IDまたはパスワードが違います。");
+
+        if (authData && authData.session) {
+            sessionStorage.setItem('sb_access', authData.session.access_token);
+            sessionStorage.setItem('sb_refresh', authData.session.refresh_token);
+        }
+
+        const { data: uData, error: uErr } = await db.from('system_users').select('*').eq('id', id).single();
+        if (uErr || !uData) throw new Error("ユーザー情報の取得に失敗しました。");
+
+        const { data: rData, error: rErr } = await db.from('roles').select('*').eq('id', uData.role_id).single();
+        if (rErr || !rData) throw new Error("権限情報の取得に失敗しました。");
+
+        currentUser = {
+          id: uData.id, name: uData.name, roleId: uData.role_id, branch: uData.branch, roleLevel: uData.role_level,
+          permissions: {
+            editAll: rData.edit_scope === '全店舗', viewAll: rData.view_scope === '全店舗', manageAccess: rData.manage_access === '可能',
+            canAnalytics: rData.can_analytics === '可能', canPlanning: rData.can_planning === '可能', canTracking: rData.can_tracking === '可能',
+            canInventory: rData.can_inventory === '可能', canTasks: rData.can_tasks !== '不可', canHr: rData.can_hr,
+            canNotice: rData.can_notice === '可能', canLog: rData.can_log === '可能', canReport: rData.can_report === '可能'
+          }
+        };
+
+        sessionStorage.setItem('finUser', JSON.stringify(currentUser));
+        db.from('operation_logs').insert([{
+          timestamp: new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().replace("T", " ").substring(0, 19),
+          user_id: currentUser.id, name: currentUser.name, branch: currentUser.branch,
+          category: "ログイン", details: "モバイル版からログイン"
+        }]).then();
+
+        hideLoading();
+        showApp();
+      } catch(e) {
+        hideLoading();
+        errEl.innerText = e.message; errEl.classList.remove('hidden');
+      }
+    }
+
+    function showApp() {
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('loginScreen').classList.remove('flex');
+      document.getElementById('mainApp').classList.remove('hidden');
+      document.getElementById('bottomNav').classList.remove('hidden');
+      document.getElementById('btnLogout').classList.remove('hidden');
+      document.getElementById('btnStaffAuth').classList.remove('hidden');
+      document.getElementById('headerBranch').innerText = currentUser.name + " (" + currentUser.branch + ")";
+      
+      targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      initBranchSelect('tlBranch');
+      
+      const savedStaff = sessionStorage.getItem('finTaskStaff');
+      if (savedStaff) {
+          currentTaskStaff = JSON.parse(savedStaff);
+      } else {
+          currentTaskStaff = null;
+      }
+      updateStaffHeader();
+      
+      loadDashboardData();
+      
+      if(currentUser.permissions.canTasks !== false) {
+          loadTasks();
+          timerInterval = setInterval(updateActiveTimersUI, 1000);
+          pollingInterval = setInterval(silentPolling, 15000);
+      }
+    }
+
+    function initBranchSelect(selId) {
+       const sel = document.getElementById(selId);
+       sel.innerHTML = "";
+       if (currentUser.permissions.viewAll) {
+          sel.innerHTML += '<option value="全店舗">全店</option>';
+          globalBranches.forEach(b => {
+              sel.innerHTML += `<option value="${b}">${b}</option>`;
+          });
+       } else {
+          sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+       }
+    }
+
+    function logout() {
+      sessionStorage.removeItem('finUser'); 
+      sessionStorage.removeItem('finTaskStaff');
+      sessionStorage.removeItem('sb_access');   
+      sessionStorage.removeItem('sb_refresh');  
+      clearInterval(pollingInterval); clearInterval(timerInterval);
+      document.getElementById('loginScreen').classList.remove('hidden');
+      document.getElementById('loginScreen').classList.add('flex');
+      document.getElementById('mainApp').classList.add('hidden');
+      document.getElementById('bottomNav').classList.add('hidden');
+      document.getElementById('btnLogout').classList.add('hidden');
+      document.getElementById('btnStaffAuth').classList.add('hidden');
+      document.getElementById('headerBranch').innerText = "未ログイン";
+      document.getElementById("userId").value = "";
+      document.getElementById("userPass").value = "";
     }
 
     function switchTab(tab) {
-      document.getElementById('tab_routine').classList.remove('active');
-      document.getElementById('tab_kanban').classList.remove('active');
-      document.getElementById('tab_project').classList.remove('active');
-      document.getElementById('tab_routineMaster').classList.remove('active');
-      
-      document.getElementById('view_routine').classList.add('hidden');
-      document.getElementById('view_kanban').classList.add('hidden');
-      document.getElementById('view_project').classList.add('hidden');
-      document.getElementById('view_routineMaster').classList.add('hidden');
+      ['input', 'timeline', 'tasks'].forEach(t => {
+        const tEl = document.getElementById('tab_' + t);
+        const nEl = document.getElementById('nav_' + t);
+        if(tEl) tEl.classList.add('hidden');
+        if(nEl) nEl.classList.remove('active');
+      });
+      document.getElementById('tab_' + tab).classList.remove('hidden');
+      document.getElementById('nav_' + tab).classList.add('active');
+      window.scrollTo(0, 0);
 
-      document.getElementById('tab_' + tab).classList.add('active');
+      if (tab === 'timeline') loadTimeline();
+      if (tab === 'tasks') silentPolling(); 
+    }
+
+    function switchTaskTab(tab) {
+      ['routine', 'kanban', 'project', 'routineMaster'].forEach(t => {
+        document.getElementById('mtab_' + t).classList.remove('active', 'text-indigo-400', 'border-indigo-400');
+        document.getElementById('mtab_' + t).classList.add('text-slate-400', 'border-transparent');
+        document.getElementById('view_' + t).classList.add('hidden');
+        document.getElementById('view_' + t).classList.remove('flex');
+      });
+      document.getElementById('mtab_' + tab).classList.add('active', 'text-indigo-400', 'border-indigo-400');
+      document.getElementById('mtab_' + tab).classList.remove('text-slate-400', 'border-transparent');
       document.getElementById('view_' + tab).classList.remove('hidden');
-      
-      if(tab === 'kanban') document.getElementById('view_kanban').classList.add('flex');
-      else if(tab === 'project') document.getElementById('view_project').classList.add('flex');
-      else if(tab === 'routineMaster') {
-          document.getElementById('view_routineMaster').classList.add('flex');
-          renderRoutineMasters();
-      }
-      else document.getElementById('view_routine').classList.add('flex');
+      document.getElementById('view_' + tab).classList.add('flex');
       
       if (tab === 'project') { renderProjects(); }
+      else if (tab === 'routineMaster') { renderRoutineMasters(); }
     }
+
+    function showLoading(msg) { document.getElementById('loadingText').innerText = msg; document.getElementById('loadingOverlay').classList.remove('hidden'); }
+    function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+
+    function formatNumber(el) { 
+      let v = el.value.replace(/,/g, '').replace(/[^\d]/g, ''); 
+      el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
+      updatePreview(); 
+    }
+    function unformatNumber(el) { el.value = el.value.replace(/,/g, ''); }
+    function getNum(id) { const el = document.getElementById(id); if (!el || el.value.trim() === "") return ""; const parsed = parseFloat(el.value.replace(/,/g, '')); return isNaN(parsed) ? 0 : parsed; }
+
+    function updatePreview() {
+      const s = Number(getNum('inpSales')) || 0; const p = Number(getNum('inpPurchase')) || 0; const cL = Number(getNum('inpCashless')) || 0;
+      const fee = cL * 0.03; const cash = s - p - fee;
+      const cEl = document.getElementById('previewCash');
+      const fEl = document.getElementById('previewFee');
+      cEl.innerText = Math.round(cash).toLocaleString() + ' 円';
+      fEl.innerText = `内 手数料: -${Math.round(fee).toLocaleString()}円`;
+      if (cash < 0) cEl.className = "text-3xl font-mono font-black text-rose-500 leading-tight"; 
+      else cEl.className = "text-3xl font-mono font-black text-emerald-400 leading-tight";
+    }
+
+    async function loadDashboardData() {
+      showLoading("データ同期中...");
+      const tBranch = currentUser.permissions.editAll ? "秋葉原店" : currentUser.branch;
+      
+      try {
+          const [yyyy, mm] = currentMonthStr.split('-');
+          const lastDay = new Date(yyyy, mm, 0).getDate();
+          
+          const { data: budgetData, error: budgetErr } = await db.from('fin_monthly_targets')
+              .select('*')
+              .eq('target_month', currentMonthStr)
+              .eq('branch', tBranch);
+              
+          if (budgetErr) throw budgetErr;
+
+          if (budgetData && budgetData.length > 0) {
+              storeTarget = {
+                  sales: Number(budgetData[0].target_sales) || 0,
+                  cash: Number(budgetData[0].target_cash) || 0,
+                  margin: Number(budgetData[0].margin_rate) || 0
+              };
+          } else {
+              storeTarget = { sales: 0, margin: 0, cash: 0 };
+          }
+
+          document.getElementById('dashMonthStr').innerText = currentMonthStr.replace("-", "/");
+
+          const { data, error } = await db.from('daily_records')
+              .select('*')
+              .gte('target_date', `${currentMonthStr}-01`)
+              .lte('target_date', `${currentMonthStr}-${lastDay}`)
+              .eq('branch', tBranch);
+              
+          if (error) throw error;
+
+          trackingRecords = data.map(r => ({
+              date: r.target_date.substring(0, 10),
+              sales: r.sales || "",
+              cashless: r.cashless || "",
+              discount: r.discount || "",
+              grossProfitRate: r.margin_rate || "",
+              purchase: r.purchase || "",
+              workHours: r.work_hours || "",
+              memoCount: r.memo_count || "",
+              memoSales: r.memo_sales || "",
+              memoPurchase: r.memo_purchase || "",
+              memoDaily: r.memo_daily || "",
+              cashFlow: r.cash_flow || 0
+          }));
+
+          let sumCash = 0; trackingRecords.forEach(r => { sumCash += r.cashFlow; });
+          const mTarget = storeTarget.cash || 0; const progRate = mTarget > 0 ? (sumCash / mTarget) * 100 : 0;
+          
+          document.getElementById('dashSumCash').innerText = Math.round(sumCash).toLocaleString() + " 円";
+          document.getElementById('dashTarget').innerText = Math.round(mTarget).toLocaleString() + " 円";
+          document.getElementById('dashProgRate').innerText = progRate.toFixed(1) + " %";
+          document.getElementById('dashProgRate').className = "text-2xl font-black " + (progRate >= 100 ? "text-emerald-400" : "text-white");
+          
+          const todayDate = new Date(todayStr); const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate(); 
+          const remainDays = daysInMonth - todayDate.getDate() + 1; const shortfall = mTarget - sumCash;
+          const runrate = remainDays > 0 ? shortfall / remainDays : 0;
+          
+          const rrEl = document.getElementById('dashRunrate');
+          if (mTarget === 0) rrEl.innerText = "-";
+          else if (runrate <= 0) { rrEl.innerText = "達成!"; rrEl.className = "font-mono font-black text-sm text-emerald-400"; }
+          else { rrEl.innerText = Math.round(runrate).toLocaleString() + " 円"; rrEl.className = "font-mono font-black text-sm text-sky-400"; }
+          
+          loadDataForSelectedDate();
+          hideLoading();
+      } catch(e) {
+          hideLoading();
+          alert("通信エラーが発生しました: " + e.message);
+          if (e.message && (e.message.includes('JWT') || e.message.includes('Auth'))) {
+              logout(); 
+          }
+      }
+    }
+
+    function loadDataForSelectedDate() {
+      const record = trackingRecords.find(r => r.date === todayStr);
+      if (record) {
+        document.getElementById('inpSales').value = (record.sales !== "") ? Number(record.sales).toLocaleString() : "";
+        document.getElementById('inpCashless').value = (record.cashless !== "") ? Number(record.cashless).toLocaleString() : "";
+        document.getElementById('inpDiscount').value = (record.discount !== "") ? Number(record.discount).toLocaleString() : "";
+        document.getElementById('inpMarginRate').value = (record.grossProfitRate !== "") ? record.grossProfitRate : "";
+        document.getElementById('inpPurchase').value = (record.purchase !== "") ? Number(record.purchase).toLocaleString() : "";
+        document.getElementById('inpWorkHours').value = (record.workHours !== "") ? record.workHours : "";
+        document.getElementById('inpCount').value = record.memoCount || ""; document.getElementById('inpMemoSales').value = record.memoSales || "";
+        document.getElementById('inpMemoPurchase').value = record.memoPurchase || ""; document.getElementById('inpMemoDaily').value = record.memoDaily || "";
+      } else {
+        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+      }
+      updatePreview();
+    }
+
+    async function saveRecord() {
+      const tBranch = currentUser.permissions.editAll ? "秋葉原店" : currentUser.branch;
+      const grossSalesNum = Number(getNum('inpSales')) || 0;
+      const discountNum = Number(getNum('inpDiscount')) || 0;
+      const purchaseNum = Number(getNum('inpPurchase')) || 0;
+      const marginRateNum = Number(getNum('inpMarginRate')) || 0;
+      const cashlessNum = Number(getNum('inpCashless')) || 0;
+      const workHoursNum = Number(getNum('inpWorkHours')) || 0;
+
+      const netSalesNum = grossSalesNum - discountNum;
+      const feeRate = 3.0; 
+      const cashlessFee = cashlessNum * (feeRate / 100);
+      const grossProfit = netSalesNum * (marginRateNum / 100);
+      const cashFlow = netSalesNum - purchaseNum - cashlessFee;
+      const cogs = netSalesNum - grossProfit; 
+      const invChange = purchaseNum - cogs;
+      const laborProd = workHoursNum > 0 ? grossProfit / workHoursNum : 0;
+
+      showLoading("保存中...");
+      try {
+        const { error } = await db.from('daily_records').upsert({
+            target_date: todayStr,
+            branch: tBranch,
+            author: currentUser.name,
+            sales: grossSalesNum,
+            cashless: cashlessNum,
+            discount: discountNum,
+            margin_rate: marginRateNum,
+            purchase: purchaseNum,
+            work_hours: workHoursNum,
+            memo_sales: document.getElementById('inpMemoSales').value || "",
+            memo_purchase: document.getElementById('inpMemoPurchase').value || "",
+            memo_daily: document.getElementById('inpMemoDaily').value || "",
+            memo_count: document.getElementById('inpCount').value || "",
+            gross_profit: grossProfit,
+            cogs: cogs,
+            cash_flow: cashFlow,
+            inv_change: invChange,
+            labor_prod: laborProd,
+            cashless_fee_rate: feeRate,
+            cashless_fee: cashlessFee
+        }, { onConflict: 'target_date,branch' });
+
+        if (error) throw error;
+        hideLoading();
+        alert("日次実績の保存が完了しました！");
+        loadDashboardData();
+      } catch(err) {
+        hideLoading();
+        alert("保存エラー: " + err.message);
+      }
+    }
+
+    async function loadTimeline() {
+      const container = document.getElementById('timelineContainer'); 
+      container.innerHTML = '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-amber-500"></i></div>';
+      
+      const mStr = document.getElementById('tlMonth').value; 
+      const bStr = document.getElementById('tlBranch').value || "全店舗";
+
+      try {
+          let query = db.from('daily_records').select('*');
+          if (mStr) {
+              const [yyyy, mm] = mStr.split('-');
+              const lastDay = new Date(yyyy, mm, 0).getDate();
+              query = query.gte('target_date', `${mStr}-01`).lte('target_date', `${mStr}-${lastDay}`);
+          }
+          if (bStr !== "全店舗") query = query.eq('branch', bStr);
+          query = query.order('target_date', { ascending: false });
+          
+          const { data: reports, error } = await query;
+          if (error) throw error;
+
+          if(!reports || reports.length === 0) { 
+              container.innerHTML = '<div class="bg-slate-900 p-6 text-center rounded-xl border border-slate-800"><p class="text-slate-500 font-bold text-xs">データがありません。</p></div>'; 
+              return; 
+          }
+
+          let html = "";
+          reports.forEach((r, i) => {
+            const cashColor = r.cash_flow >= 0 ? "text-emerald-400" : "text-rose-400"; 
+            const cashSign = r.cash_flow >= 0 ? "+" : "";
+            const feeLabel = r.cashless_fee > 0 ? `<div class="text-[9px] text-slate-500 mt-1 mb-2">内 決済手数料: -${Math.round(r.cashless_fee).toLocaleString()}円</div>` : "";
+            const block = (title, text) => { if (!text) return ""; return `<div class="mt-2"><p class="text-[10px] text-sky-400 font-bold mb-0.5">■ ${title}</p><p class="bg-slate-950 p-2 rounded-lg border border-slate-800 whitespace-pre-wrap text-slate-300 text-xs">${text}</p></div>`; };
+            const statsBlock = `<div class="grid grid-cols-2 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 mb-4 shadow-inner"><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">純売上高</p><p class="text-sm font-mono text-sky-400 font-bold">${r.sales != null ? Math.round(r.sales).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">買取高</p><p class="text-sm font-mono text-rose-400 font-bold">${r.purchase != null ? Math.round(r.purchase).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">ｷｬｯｼｭﾚｽ</p><p class="text-sm font-mono text-slate-300 font-bold">${r.cashless != null ? Math.round(r.cashless).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">粗利率</p><p class="text-sm font-mono text-emerald-400 font-bold">${r.margin_rate != null ? r.margin_rate : "-"}<span class="text-[10px] ml-0.5">%</span></p></div></div>`;
+            const reportId = 'mob_report_' + i;
+            
+            const cleanDateStr = r.target_date ? String(r.target_date).substring(0, 10).replace(/-/g, '/') : "";
+            const dObj = new Date(r.created_at);
+            const tsStr = `${String(dObj.getMonth() + 1).padStart(2, '0')}/${String(dObj.getDate()).padStart(2, '0')} ${String(dObj.getHours()).padStart(2, '0')}:${String(dObj.getMinutes()).padStart(2, '0')}`;
+
+            html += `<div class="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden transition-all"><div class="p-4 cursor-pointer" onclick="toggleTimeline('${reportId}')"><div class="flex justify-between items-start mb-2"><div><p class="font-black text-white text-sm">${r.branch} <span class="text-[10px] text-slate-400 font-normal ml-1">/ ${r.author}</span></p><p class="text-[9px] text-slate-500 font-mono mt-0.5">対象: ${cleanDateStr}</p></div><div class="text-right"><p class="text-[9px] text-slate-500 font-bold mb-0.5">現金増減</p><p class="${cashColor} font-mono font-bold text-sm">${cashSign}${Math.round(r.cash_flow).toLocaleString()}<span class="text-[9px]">円</span></p></div></div><div class="flex justify-between items-center text-[10px]"><div class="text-slate-400 font-mono">売: ${r.sales != null ? Math.round(r.sales).toLocaleString() : "-"}円 / 買: ${r.purchase != null ? Math.round(r.purchase).toLocaleString() : "-"}円</div><i class="fa-solid fa-chevron-down text-slate-600 transition-transform duration-300" id="icon_${reportId}"></i></div></div><div id="${reportId}" class="h-0 timeline-detail px-4 pb-0 bg-slate-900/50 border-t border-slate-800/0"><div class="pt-3 pb-4">${statsBlock}${feeLabel}${block("定量データ", r.memo_count)}${block("高額販売", r.memo_sales)}${block("高額買取", r.memo_purchase)}${block("業務報告・反省点", r.memo_daily)}<div class="text-right mt-2"><span class="text-[9px] text-slate-600 bg-slate-950 px-2 py-1 rounded">入力: ${tsStr}</span></div></div></div></div>`;
+          });
+          container.innerHTML = html;
+      } catch (err) {
+          container.innerHTML = `<p class="text-rose-400 text-center font-bold text-sm">通信エラー: ${err.message}</p>`;
+      }
+    }
+
+    function toggleTimeline(id) {
+      const el = document.getElementById(id); const icon = document.getElementById('icon_' + id);
+      if (el.classList.contains('h-0')) { el.classList.remove('h-0', 'pb-0', 'border-slate-800/0'); el.classList.add('h-auto', 'border-slate-800'); if (icon) icon.classList.add('rotate-180'); } 
+      else { el.classList.add('h-0', 'pb-0', 'border-slate-800/0'); el.classList.remove('h-auto', 'border-slate-800'); if (icon) icon.classList.remove('rotate-180'); }
+    }
+
+    function updateStaffHeader() {
+        const el = document.getElementById('currentStaffName');
+        const btn = document.getElementById('btnStaffAuth');
+        if (!el || !btn) return;
+        
+        if (currentTaskStaff) { 
+            let badge = currentTaskStaff.level === "店長・副店長" ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
+            el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
+            btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
+            
+            const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
+            const pjBtn = document.getElementById('btnCreateProject');
+            if (pjBtn) {
+                if (isManager && (targetBranch === currentUser.branch || currentUser.permissions.editAll)) pjBtn.classList.remove('hidden');
+                else pjBtn.classList.add('hidden');
+            }
+        } else { 
+            el.innerHTML = "未設定 (タップして認証)"; 
+            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse"; 
+            btn.innerHTML = `<i class="fa-solid fa-user-lock mr-1"></i>本人認証`; 
+            const pjBtn = document.getElementById('btnCreateProject');
+            if(pjBtn) pjBtn.classList.add('hidden');
+        }
+    }
+
+    async function openStaffAuthModal() {
+        if (!storeStaffs || storeStaffs.length === 0) { 
+            try {
+                showLoading("スタッフデータを取得中...");
+                const { data, error } = await db.from('store_staffs').select('*').eq('branch', currentUser.permissions.editAll ? targetBranch : currentUser.branch);
+                if (error) throw error;
+                storeStaffs = data || [];
+                hideLoading();
+            } catch(e) {
+                hideLoading();
+                alert("スタッフデータを取得できませんでした。"); return;
+            }
+        }
+        if (storeStaffs.length === 0) {
+            alert("登録されているスタッフがいません。管理画面からスタッフを登録してください。"); return;
+        }
+
+        const container = document.getElementById('staffListContainer'); container.innerHTML = "";
+        storeStaffs.forEach(s => {
+            const isManager = s.level === "店長・副店長"; const iconColor = isManager ? "text-amber-400" : "text-indigo-400"; const bgColor = isManager ? "bg-amber-500/20" : "bg-indigo-500/20"; const bdColor = isManager ? "border-amber-500/50" : "border-indigo-500/50";
+            container.innerHTML += `<button onclick="selectStaffForAuth('${s.name}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-4 rounded-2xl flex flex-col items-center gap-2 transition-all active:scale-95 shadow-md"><div class="${bgColor} w-12 h-12 rounded-full flex items-center justify-center ${iconColor} text-xl border ${bdColor}"><i class="fa-solid fa-user"></i></div><span class="text-white font-bold text-xs whitespace-nowrap">${s.name}</span></button>`;
+        });
+        document.getElementById('staffSelectStep').classList.remove('hidden'); document.getElementById('pinInputStep').classList.add('hidden'); document.getElementById('staffAuthModal').classList.replace('hidden', 'flex');
+    }
+    
+    function closeStaffAuthModal() { document.getElementById('staffAuthModal').classList.replace('flex', 'hidden'); clearPin(); }
+    function selectStaffForAuth(name) { authTargetStaff = storeStaffs.find(s => s.name === name); if (!authTargetStaff) return; if (!authTargetStaff.pin) { completeAuth(); return; } document.getElementById('pinTargetName').innerText = `${name} さんの認証`; document.getElementById('staffSelectStep').classList.add('hidden'); document.getElementById('pinInputStep').classList.remove('hidden'); clearPin(); }
+    function backToStaffSelect() { document.getElementById('pinInputStep').classList.add('hidden'); document.getElementById('staffSelectStep').classList.remove('hidden'); clearPin(); }
+    function inputPin(num) { if (currentPinInput.length >= 4) return; currentPinInput += num; updatePinDots(); if (currentPinInput.length === 4) { if (String(currentPinInput) === String(authTargetStaff.pin)) { completeAuth(); } else { const errMsg = document.getElementById('pinErrorMsg'); errMsg.style.opacity = '1'; setTimeout(() => { errMsg.style.opacity = '0'; clearPin(); }, 1000); } } }
+    function clearPin() { currentPinInput = ""; updatePinDots(); }
+    function updatePinDots() { for (let i = 1; i <= 4; i++) { const dot = document.getElementById('pinDot' + i); if (i <= currentPinInput.length) { dot.classList.add('filled'); } else { dot.classList.remove('filled'); } } }
+    
+    function completeAuth() { currentTaskStaff = authTargetStaff; sessionStorage.setItem('finTaskStaff', JSON.stringify(currentTaskStaff)); updateStaffHeader(); closeStaffAuthModal(); renderTasks(); renderProjects(); }
+    function requireStaffAuth() { if (!currentTaskStaff) { openStaffAuthModal(); return false; } return true; }
 
     function setTaskFilter(mode) {
       taskFilterMode = mode;
@@ -468,187 +862,52 @@
       renderProjects();
     }
 
-    function updateStaffHeader() {
-        const el = document.getElementById('currentStaffName');
-        if (currentTaskStaff) { 
-            let badge = currentTaskStaff.level === "店長・副店長" 
-              ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` 
-              : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
-            el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
-            el.className = "text-white font-black text-sm leading-none flex items-center"; 
-            
-            const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
-            if (isManager && (targetBranch === currentUser.branch || currentUser.permissions.editAll)) {
-                document.getElementById('btnCreateProject').classList.remove('hidden');
-            } else {
-                document.getElementById('btnCreateProject').classList.add('hidden');
-            }
-        } 
-        else { 
-            el.innerHTML = "未設定 (タップして認証)"; 
-            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse"; 
-            document.getElementById('btnCreateProject').classList.add('hidden');
-        }
-    }
-
-    function openStaffAuthModal() {
-        if (!storeStaffs || storeStaffs.length === 0) { 
-            alert("スタッフ情報を取得中です。数秒待ってから再度お試しください。"); 
-            return; 
-        }
-        const container = document.getElementById('staffListContainer'); container.innerHTML = "";
-        storeStaffs.forEach(s => {
-            const isManager = s.level === "店長・副店長";
-            const iconColor = isManager ? "text-amber-400" : "text-indigo-400";
-            const bgColor = isManager ? "bg-amber-500/20" : "bg-indigo-500/20";
-            const bdColor = isManager ? "border-amber-500/50" : "border-indigo-500/50";
-            
-            container.innerHTML += `<button onclick="selectStaffForAuth('${s.name}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-4 rounded-2xl flex flex-col items-center gap-2 transition-all active:scale-95 shadow-md"><div class="${bgColor} w-12 h-12 rounded-full flex items-center justify-center ${iconColor} text-xl border ${bdColor}"><i class="fa-solid fa-user"></i></div><span class="text-white font-bold text-xs whitespace-nowrap">${s.name}</span></button>`;
-        });
-        document.getElementById('staffSelectStep').classList.remove('hidden');
-        document.getElementById('pinInputStep').classList.add('hidden');
-        document.getElementById('staffAuthModal').classList.replace('hidden', 'flex');
-    }
-
-    function closeStaffAuthModal() { document.getElementById('staffAuthModal').classList.replace('flex', 'hidden'); clearPin(); }
-
-    function selectStaffForAuth(name) {
-        authTargetStaff = storeStaffs.find(s => s.name === name);
-        if (!authTargetStaff) return;
-        if (!authTargetStaff.pin || authTargetStaff.pin === "undefined" || authTargetStaff.pin === "") { completeAuth(); return; }
-        document.getElementById('pinTargetName').innerText = `${name} さんの認証`;
-        document.getElementById('staffSelectStep').classList.add('hidden');
-        document.getElementById('pinInputStep').classList.remove('hidden');
-        clearPin();
-    }
-
-    function backToStaffSelect() { document.getElementById('pinInputStep').classList.add('hidden'); document.getElementById('staffSelectStep').classList.remove('hidden'); clearPin(); }
-
-    function inputPin(num) {
-        if (currentPinInput.length >= 4) return;
-        currentPinInput += num; updatePinDots();
-        if (currentPinInput.length === 4) {
-            if (String(currentPinInput) === String(authTargetStaff.pin)) { completeAuth(); } 
-            else { const errMsg = document.getElementById('pinErrorMsg'); errMsg.style.opacity = '1'; setTimeout(() => { errMsg.style.opacity = '0'; clearPin(); }, 1000); }
-        }
-    }
-
-    function clearPin() { currentPinInput = ""; updatePinDots(); }
-    function updatePinDots() { for (let i = 1; i <= 4; i++) { const dot = document.getElementById('pinDot' + i); if (i <= currentPinInput.length) { dot.classList.add('filled'); } else { dot.classList.remove('filled'); } } }
-
-    function completeAuth() {
-        currentTaskStaff = authTargetStaff; sessionStorage.setItem('finTaskStaff', JSON.stringify(currentTaskStaff));
-        updateStaffHeader(); closeStaffAuthModal();
-        renderTasks(); 
-        renderProjects();
-    }
-
-    function requireStaffAuth() { if (!currentTaskStaff) { openStaffAuthModal(); return false; } return true; }
-
-    function openAddTaskModal() { 
-      if (!requireStaffAuth()) return; 
-      selectedAssignees = []; 
-      renderAssigneeButtons(); 
-      
-      const typeSelect = document.getElementById('newTaskType');
-      typeSelect.innerHTML = "";
-      
-      if (currentTaskStaff && currentTaskStaff.level !== "一般スタッフ") {
-          typeSelect.innerHTML += '<option value="routine">定期ルーティンとして登録</option>';
-          document.getElementById('routineDaysContainer').classList.remove('hidden');
-      } else {
-          document.getElementById('routineDaysContainer').classList.add('hidden');
-      }
-      typeSelect.innerHTML += '<option value="kanban">単発タスクとして登録</option>';
-      
-      document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
+    function formatTime(totalSeconds) { 
+        const h = Math.floor(totalSeconds / 3600); 
+        const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0'); 
+        const s = (totalSeconds % 60).toString().padStart(2, '0'); 
+        return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`; 
     }
     
-    function closeAddTaskModal() { document.getElementById('addTaskModal').classList.replace('flex', 'hidden'); }
-
-    function renderAssigneeButtons() {
-      const container = document.getElementById('assigneeButtonsContainer');
-      const msg = document.getElementById('assigneeLockMsg');
-      container.innerHTML = "";
-      
-      if (currentTaskStaff.level === "一般スタッフ") {
-          selectedAssignees = [currentTaskStaff.name];
-          container.innerHTML = `<button class="bg-indigo-600 text-white border-indigo-500 font-bold px-4 py-2 rounded-xl text-xs transition-all shadow-sm opacity-50 cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>${currentTaskStaff.name}</button>`;
-          msg.classList.remove('hidden');
-      } else {
-          msg.classList.add('hidden');
-          const isUndeclared = selectedAssignees.length === 0;
-          container.innerHTML += `<button onclick="toggleAssignee('未定')" class="${isUndeclared ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'} font-bold px-4 py-2 rounded-xl border text-xs transition-all shadow-sm">未定 (全員)</button>`;
-          storeStaffs.forEach(s => {
-              const isSelected = selectedAssignees.includes(s.name);
-              const colorClass = isSelected ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
-              const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : '';
-              container.innerHTML += `<button onclick="toggleAssignee('${s.name}')" class="${colorClass} font-bold px-4 py-2 rounded-xl border text-xs transition-all shadow-sm">${iconHtml}${s.name}</button>`;
-          });
-      }
+    function getCreatedAt(taskId) { 
+        if(!taskId || (!String(taskId).startsWith('T') && !String(taskId).startsWith('P') && !String(taskId).startsWith('S'))) return ""; 
+        const ts = parseInt(taskId.substring(1, 14)); 
+        if(isNaN(ts)) return ""; 
+        const d = new Date(ts); 
+        return `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; 
     }
-
-    function toggleAssignee(name) {
-      if (name === '未定') { selectedAssignees = []; } 
-      else {
-          if (selectedAssignees.includes(name)) selectedAssignees = selectedAssignees.filter(n => n !== name); 
-          else selectedAssignees.push(name); 
-      }
-      renderAssigneeButtons();
+    
+    function updateActiveTimersUI() { 
+        const nowMs = new Date().getTime(); 
+        for (const taskId in activeTimers) { 
+            const t = activeTimers[taskId]; 
+            if (!t.startTime || isNaN(t.startTime) || t.startTime <= 0) continue; 
+            const diffSec = Math.floor((nowMs - t.startTime) / 1000); 
+            let currentTotalSec = (parseInt(t.elapsedSeconds) || 0) + diffSec; 
+            if (currentTotalSec < 0) currentTotalSec = 0; 
+            const el = document.getElementById('timer_' + taskId); 
+            if (el) el.innerText = formatTime(currentTotalSec); 
+        } 
     }
-
-    function formatTime(totalSeconds) {
-      const h = Math.floor(totalSeconds / 3600); const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0'); const s = (totalSeconds % 60).toString().padStart(2, '0');
-      if (h > 0) return `${h}:${m}:${s}`; return `${m}:${s}`;
+    
+    function checkDeadlineAlert(dateStr, progress) { 
+        if (!dateStr || progress >= 100) return { alert: false, text: "", class: "border-slate-800" }; 
+        const now = new Date(); 
+        now.setHours(0,0,0,0); 
+        const due = new Date(dateStr); 
+        due.setHours(0,0,0,0); 
+        const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24)); 
+        if (diffDays < 0) return { alert: true, text: `期限超過 (${-diffDays}日)`, class: "border-rose-500 bg-rose-950/20 alert-card" }; 
+        else if (diffDays <= 3) return { alert: true, text: `あと ${diffDays} 日`, class: "border-amber-500" }; 
+        return { alert: false, text: "", class: "border-slate-800" }; 
     }
-
-    function getCreatedAt(taskId) {
-      if(!taskId || (!String(taskId).startsWith('T') && !String(taskId).startsWith('P') && !String(taskId).startsWith('S'))) return "";
-      const ts = parseInt(taskId.substring(1, 14));
-      if(isNaN(ts)) return "";
-      const d = new Date(ts);
-      return `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-    }
-
-    function updateActiveTimersUI() {
-      const nowMs = new Date().getTime();
-      for (const taskId in activeTimers) {
-        const t = activeTimers[taskId];
-        if (!t.startTime || isNaN(t.startTime) || t.startTime <= 0) continue; 
-        const diffSec = Math.floor((nowMs - t.startTime) / 1000);
-        let currentTotalSec = (parseInt(t.elapsedSeconds) || 0) + diffSec;
-        if (currentTotalSec < 0) currentTotalSec = 0;
-        const el = document.getElementById('timer_' + taskId);
-        if (el) el.innerText = formatTime(currentTotalSec);
-      }
-    }
-
-    style = "";
-    function checkDeadlineAlert(dateStr, progress) {
-        if (!dateStr || progress >= 100) return { alert: false, text: "", class: "border-slate-800" };
-        const now = new Date();
-        now.setHours(0,0,0,0);
-        const due = new Date(dateStr);
-        due.setHours(0,0,0,0);
-        const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
-        
-        if (diffDays < 0) {
-            return { alert: true, text: `期限超過 (${-diffDays}日)`, class: "border-rose-500 bg-rose-950/20 alert-card" };
-        } else if (diffDays <= 3) {
-            return { alert: true, text: `期限まであと ${diffDays} 日`, class: "border-amber-500" };
-        }
-        return { alert: false, text: "", class: "border-slate-800" };
-    }
-
-    function silentPolling() {
-      const modals = ['addTaskModal', 'addProjectModal', 'addSubTaskModal', 'staffAuthModal', 'taskDetailModal'];
-      let isAnyModalOpen = modals.some(id => {
-          const m = document.getElementById(id);
-          return m && !m.classList.contains('hidden');
-      });
-      if (isAnyModalOpen) return;
-      
-      if (currentUser) loadTasks(true);
+    
+    function silentPolling() { 
+        const modals = ['addTaskModal', 'addProjectModal', 'addSubTaskModal', 'staffAuthModal', 'taskDetailModal']; 
+        let isAnyModalOpen = modals.some(id => { const m = document.getElementById(id); return m && !m.classList.contains('hidden'); }); 
+        if (isAnyModalOpen) return; 
+        const isTasksTab = !document.getElementById('tab_tasks').classList.contains('hidden'); 
+        if (currentUser && isTasksTab) loadTasks(true); 
     }
 
     async function loadTasks(isSilent = false) {
@@ -669,6 +928,23 @@
           if (resProj.error) throw resProj.error;
           if (resRM.error) throw resRM.error;
 
+          // ★修正: GAS独自の処理を排除し、Supabase経由で取得済みの店舗マスタ(globalBranches)をセレクトボックスに適用
+          const sel = document.getElementById('branchSelector'); 
+          if (sel && sel.options.length <= 1 && globalBranches.length > 0) {
+              sel.innerHTML = "";
+              if (currentUser.permissions.viewAll) {
+                  sel.innerHTML += '<option value="全店舗">全店</option>';
+                  globalBranches.forEach(b => { 
+                      const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
+                      if(b === targetBranch) opt.selected = true; 
+                      sel.appendChild(opt); 
+                  });
+              } else {
+                  sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                  sel.disabled = true;
+              }
+          }
+
           const activeRoutineNames = resRM.data.map(rm => rm.name);
 
           const validTasks = resTasks.data.filter(t => {
@@ -687,10 +963,9 @@
 
           validTasks.forEach(t => {
               const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
-              // ★追加: DBから取得した時点で不正な文字列をサニタイズ（無害化）する
+              
               let st = t.start_time;
               if (st === "undefined" || st === "null" || st === "") st = null;
-              
               let ra = t.real_assignee;
               if (ra === "undefined" || ra === "null" || ra === "不明") ra = "";
 
@@ -753,7 +1028,6 @@
               const t = routineMapToday[rName];
               const isPastUnachieved = !!(pastUnachievedMap[rName] && t.status !== 'done');
               
-              // ★追加: ルーティンもサニタイズ
               let st = t.start_time;
               if (st === "undefined" || st === "null" || st === "") st = null;
               let ra = t.real_assignee;
@@ -782,22 +1056,6 @@
               id: rm.id, branch: rm.branch, name: rm.name, assignee: rm.assignee, days: rm.routine_days ? rm.routine_days.split(',') : []
           }));
 
-          google.script.run.withSuccessHandler(resGAS => {
-              if (resGAS.error) { console.error(resGAS.error); return; }
-              storeStaffs = resGAS.staffs || [];
-              
-              const sel = document.getElementById('branchSelector'); 
-              if (sel.options.length <= 1 && resGAS.branches) {
-                  sel.innerHTML = "";
-                  resGAS.branches.forEach(b => { 
-                      const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
-                      if(b === targetBranch) opt.selected = true; 
-                      sel.appendChild(opt); 
-                  });
-                  if(!currentUser.permissions.viewAll) sel.disabled = true;
-              }
-          }).getTasks(currentUser, targetBranch, tDate);
-
           renderTasks();
           renderProjects();
           if(!document.getElementById('view_routineMaster').classList.contains('hidden')) renderRoutineMasters();
@@ -822,6 +1080,7 @@
       container.innerHTML = "";
       
       const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
+      const canDelete = !isReadOnly && currentTaskStaff && (currentUser.permissions.editAll || currentTaskStaff.level === "店長・副店長");
       
       if (routineMastersData.length === 0) {
           container.innerHTML = '<p class="text-center text-xs text-slate-500 py-4 font-bold">登録されているルールはありません。</p>';
@@ -832,10 +1091,10 @@
 
       routineMastersData.forEach(rm => {
          let daysText = rm.days.length === 7 ? "毎日" : rm.days.map(d => dayMap[d]).join("・");
-         let deleteBtn = !isReadOnly ? `<button onclick="deleteRoutineMaster('${rm.id}')" class="text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors text-[10px] font-bold"><i class="fa-solid fa-trash mr-1"></i>設定削除</button>` : '';
+         let deleteBtn = canDelete ? `<button onclick="deleteRoutineMaster('${rm.id}')" class="text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors text-[10px] font-bold"><i class="fa-solid fa-trash mr-1"></i>設定削除</button>` : '';
          
          container.innerHTML += `
-           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center shadow-sm hover:border-slate-700 transition-colors">
+           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center shadow-sm hover:border-slate-700 transition-colors mb-3">
              <div>
                <div class="flex items-center gap-2 mb-1">
                  <span class="bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded text-[10px] font-bold"><i class="fa-solid fa-rotate mr-1"></i>${daysText}</span>
@@ -851,6 +1110,11 @@
 
     async function deleteRoutineMaster(masterId) {
       if (!requireStaffAuth()) return;
+      const level = currentTaskStaff.level || "一般スタッフ";
+      if (!currentUser.permissions.editAll && level !== "店長・副店長") {
+          alert("削除権限がありません。");
+          return;
+      }
       if (!confirm("このルーティン設定を削除しますか？\n（以降、自動生成されなくなります）")) return;
       
       lastActionTime = new Date().getTime(); 
@@ -863,7 +1127,93 @@
       }
     }
 
-    // ★大改修: すべてのカード操作をポップアップ詳細に一本化（競合を永久に根絶）
+    function openAddTaskModal() { 
+      if (!requireStaffAuth()) return; 
+      selectedAssignees = []; renderAssigneeButtons(); 
+      
+      const typeSelect = document.getElementById('newTaskType'); typeSelect.innerHTML = "";
+      
+      if (currentTaskStaff && currentTaskStaff.level !== "一般スタッフ") {
+          typeSelect.innerHTML += '<option value="routine">定期ルーティンとして登録</option>';
+          document.getElementById('routineDaysContainer').classList.remove('hidden');
+      } else {
+          document.getElementById('routineDaysContainer').classList.add('hidden');
+      }
+      typeSelect.innerHTML += '<option value="kanban">単発タスクとして登録</option>';
+      document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
+    }
+    
+    function closeAddTaskModal() { document.getElementById('addTaskModal').classList.replace('flex', 'hidden'); }
+
+    function renderAssigneeButtons() {
+      const container = document.getElementById('assigneeButtonsContainer'); const msg = document.getElementById('assigneeLockMsg'); container.innerHTML = "";
+      if (currentTaskStaff.level === "一般スタッフ") { selectedAssignees = [currentTaskStaff.name]; container.innerHTML = `<button class="bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm opacity-50 cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>${currentTaskStaff.name}</button>`; msg.classList.remove('hidden'); } 
+      else {
+          msg.classList.add('hidden'); const isUndeclared = selectedAssignees.length === 0;
+          container.innerHTML += `<button onclick="toggleAssignee('未定')" class="${isUndeclared ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">未定(全員)</button>`;
+          storeStaffs.forEach(s => { const isSelected = selectedAssignees.includes(s.name); const colorClass = isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'; const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : ''; container.innerHTML += `<button onclick="toggleAssignee('${s.name}')" class="${colorClass} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">${iconHtml}${s.name}</button>`; });
+      }
+    }
+    function toggleAssignee(name) { if (name === '未定') selectedAssignees = []; else { if (selectedAssignees.includes(name)) selectedAssignees = selectedAssignees.filter(n => n !== name); else selectedAssignees.push(name); } renderAssigneeButtons(); }
+
+    async function saveNewTask() {
+      if (!requireStaffAuth()) return;
+      const type = document.getElementById('newTaskType').value; 
+      const name = document.getElementById('newTaskName').value.trim(); 
+      const tDate = document.getElementById('taskTargetDate').value;
+      
+      let assigneeData = selectedAssignees.length > 0 ? selectedAssignees.join(', ') : "未定";
+
+      if (!name) { alert("タスク名を入力してください。"); return; }
+      
+      let routineDays = [];
+      if (type === 'routine') {
+          document.querySelectorAll('.day-chk:checked').forEach(cb => routineDays.push(parseInt(cb.value)));
+          if (routineDays.length === 0) { alert("実行する曜日を1つ以上選択してください。"); return; }
+      }
+      
+      lastActionTime = new Date().getTime(); 
+      const btn = document.getElementById('btnSaveTask'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      
+      try {
+          if (type === 'routine') {
+              const newRmId = "RM" + new Date().getTime() + Math.floor(Math.random()*1000);
+              const { error } = await db.from('routine_master').insert([{ 
+                  id: newRmId, branch: targetBranch, name: name, assignee: assigneeData, 
+                  routine_days: routineDays.join(','), status: 'active' 
+              }]);
+              if (error) throw error;
+          } else {
+              const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000);
+              const { error } = await db.from('tasks').insert([{ 
+                  id: newId, branch: targetBranch, target_date: tDate, type: type, name: name, 
+                  assignee: assigneeData, status: 'todo' 
+              }]);
+              if (error) throw error;
+          }
+          
+          btn.disabled = false; btn.innerHTML = '追加する'; 
+          document.getElementById('newTaskName').value = ""; closeAddTaskModal(); 
+          loadTasks(true); 
+      } catch(err) {
+          btn.disabled = false; btn.innerHTML = '追加する'; alert("保存エラー: " + err.message); 
+      }
+    }
+
+    async function deleteTask(taskId) {
+      if (!requireStaffAuth()) return;
+      if(!confirm("このタスクを削除しますか？\n（ルーティンの場合、本日の実行分のみスキップします）")) return;
+      
+      lastActionTime = new Date().getTime(); 
+      try {
+          const { error } = await db.from('tasks').update({ status: 'deleted' }).eq('id', taskId);
+          if (error) throw error;
+          loadTasks(true); 
+      } catch(err) {
+          alert("通信エラー: " + err.message); loadTasks(true);
+      }
+    }
+
     function renderTasks() {
       activeTimers = {};
       const routineContainer = document.getElementById('routineList'); const kanbanTodo = document.getElementById('kanbanTodo'); const kanbanDoing = document.getElementById('kanbanDoing'); const kanbanDone = document.getElementById('kanbanDone');
@@ -894,7 +1244,6 @@
         if (task.status === "todo") {
             displayAssigneeHtml = `<span class="text-[10px] font-bold bg-slate-900 border border-slate-700 text-slate-400 px-2 py-1 rounded"><i class="fa-solid fa-users mr-1"></i>${task.assignee || '未定'}</span>`;
         } else {
-            // 安全な空文字チェックを実装
             const doerName = task.realAssignee ? task.realAssignee : "不明";
             displayAssigneeHtml = `<span class="text-[10px] font-bold bg-indigo-900/50 border border-indigo-500 text-indigo-300 px-2 py-1 rounded"><i class="fa-solid fa-user-check mr-1"></i>${doerName} が対応</span>`;
         }
@@ -980,7 +1329,6 @@
           
           let createdStr = getCreatedAt(task.id);
           
-          // ★修正3: 看板タスクもボタン操作をすべて排除し、ルーティンと同じすっきりしたデザインの詳細モーダル起動に変更
           let cardHtml = `
             <div class="${cardBgClass} p-4 rounded-2xl border ${cardBorderClass} shadow-lg task-card flex flex-col relative group cursor-pointer" ${clickAction}>
               ${deleteBtn}
@@ -1008,9 +1356,6 @@
       document.getElementById('cntTodo').innerText = cTodo; document.getElementById('cntDoing').innerText = cDoing; document.getElementById('cntDone').innerText = cDone;
     }
 
-    // ==========================================
-    // ★追加: PC版 タスク詳細ポップアップ用関数群
-    // ==========================================
     let currentDetailTask = null;
 
     function openTaskDetailModal(taskId) {
@@ -1057,7 +1402,6 @@
       statusEl.innerHTML = statusHtml;
       actionContainer.innerHTML = actionHtml;
 
-      // メモの編集権限を厳密にチェック（店長以上、または着手スタッフ本人）
       const isManager = (currentUser.permissions.editAll) || (currentTaskStaff && currentTaskStaff.level === "店長・副店長");
       const isRealAssignee = task.realAssignee && currentTaskStaff && task.realAssignee === currentTaskStaff.name;
       const canEditMemo = isManager || isRealAssignee;
@@ -1091,7 +1435,6 @@
       const taskId = currentDetailTask.id;
       const targetStatus = newStatus || currentDetailTask.status; 
       
-      // 変更前の状態を記憶
       const originalStatus = currentDetailTask.status; 
       
       if (newStatus && targetStatus !== originalStatus && !requireStaffAuth()) return;
@@ -1106,7 +1449,6 @@
 
       let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
 
-      // タイマーの加算計算
       if (originalStatus === 'doing' && targetStatus !== 'doing') {
           let st = currentDetailTask.startTime;
           if (st && !isNaN(st) && st > 0) {
@@ -1117,7 +1459,6 @@
           upd.elapsed_seconds = currentTotalSec;
       }
 
-      // 「変更前の状態(originalStatus)」と比較して名前と時間をセットする
       if (targetStatus === "doing" && originalStatus !== 'doing') {
           if (!currentTaskStaff || !currentTaskStaff.name) {
               alert("スタッフの認証が切れています。右上のボタンから再度ご自身の名前を選択してください。");
@@ -1136,7 +1477,6 @@
           upd.start_time = null;
       }
 
-      // すべての判定が終わった後に状態を最新化する
       currentDetailTask.status = targetStatus;
       currentDetailTask.memo = memo;
 
@@ -1154,67 +1494,6 @@
           alert("通信エラー: " + err.message); 
           closeTaskDetailModal();
           loadTasks(true);
-      }
-    }
-
-    // 既存の旧式の単発関数(changeStatus)は使われなくなりましたが、後方互換性とエラー防止のためガワだけ残します
-    async function changeStatus(taskId, newStatus, btnEl) { openTaskDetailModal(taskId); }
-
-    async function saveNewTask() {
-      if (!requireStaffAuth()) return;
-      const type = document.getElementById('newTaskType').value; 
-      const name = document.getElementById('newTaskName').value.trim(); 
-      const tDate = document.getElementById('targetDate').value;
-      
-      let assigneeData = selectedAssignees.length > 0 ? selectedAssignees.join(', ') : "未定";
-
-      if (!name) { alert("タスク名を入力してください。"); return; }
-      
-      let routineDays = [];
-      if (type === 'routine') {
-          document.querySelectorAll('.day-chk:checked').forEach(cb => routineDays.push(parseInt(cb.value)));
-          if (routineDays.length === 0) { alert("実行する曜日を1つ以上選択してください。"); return; }
-      }
-      
-      lastActionTime = new Date().getTime(); 
-      const btn = document.getElementById('btnSaveTask'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-      
-      try {
-          if (type === 'routine') {
-              const newRmId = "RM" + new Date().getTime() + Math.floor(Math.random()*1000);
-              const { error } = await db.from('routine_master').insert([{ 
-                  id: newRmId, branch: targetBranch, name: name, assignee: assigneeData, 
-                  routine_days: routineDays.join(','), status: 'active' 
-              }]);
-              if (error) throw error;
-          } else {
-              const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000);
-              const { error } = await db.from('tasks').insert([{ 
-                  id: newId, branch: targetBranch, target_date: tDate, type: type, name: name, 
-                  assignee: assigneeData, status: 'todo' 
-              }]);
-              if (error) throw error;
-          }
-          
-          btn.disabled = false; btn.innerHTML = '追加する'; 
-          document.getElementById('newTaskName').value = ""; closeAddTaskModal(); 
-          loadTasks(true); 
-      } catch(err) {
-          btn.disabled = false; btn.innerHTML = '追加する'; alert("保存エラー: " + err.message); 
-      }
-    }
-
-    async function deleteTask(taskId) {
-      if (!requireStaffAuth()) return;
-      if(!confirm("このタスクを削除しますか？\n（ルーティンの場合、本日の実行分のみスキップします）")) return;
-      
-      lastActionTime = new Date().getTime(); 
-      try {
-          const { error } = await db.from('tasks').update({ status: 'deleted' }).eq('id', taskId);
-          if (error) throw error;
-          loadTasks(true); 
-      } catch(err) {
-          alert("通信エラー: " + err.message); loadTasks(true);
       }
     }
 
