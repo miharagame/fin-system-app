@@ -371,7 +371,7 @@
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "", currentUser = null, targetBranch = "", todayStr = "", currentMonthStr = "";
+    let currentUser = null, targetBranch = "", todayStr = "", currentMonthStr = "";
     let globalBranches = [];
     let trackingRecords = [], storeTarget = { sales: 0, margin: 0, cash: 0 };
     let tasksData = [], projectsData = [], subtasksData = [], storeStaffs = [], routineMastersData = []; 
@@ -389,10 +389,6 @@
     });
 
     window.onload = async () => {
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch(e) { console.warn("GAS外"); }
-
       const now = new Date(); const tzOffset = now.getTimezoneOffset() * 60000;
       todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
       currentMonthStr = todayStr.substring(0, 7);
@@ -401,6 +397,7 @@
       document.getElementById('taskTargetDate').value = todayStr;
       document.getElementById('tlMonth').value = currentMonthStr;
 
+      // ★修正: GAS独自の初期化を撤廃
       const userStr = sessionStorage.getItem('finUser');
       if (userStr) { 
         currentUser = JSON.parse(userStr);
@@ -454,8 +451,9 @@
       }
     };
 
+    // ★修正: 直接ポータルへ遷移
     function goHome() { 
-      if (currentUser) switchTab('input'); 
+      window.location.href = "portal.html";
     }
 
     async function attemptLogin() {
@@ -544,7 +542,7 @@
        if (currentUser.permissions.viewAll) {
           sel.innerHTML += '<option value="全店舗">全店</option>';
           globalBranches.forEach(b => {
-             sel.innerHTML += `<option value="${b}">${b}</option>`;
+              sel.innerHTML += `<option value="${b}">${b}</option>`;
           });
        } else {
           sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
@@ -905,7 +903,7 @@
       renderProjects();
     }
 
-    // ★追加した必須ユーティリティ関数群（これを消してしまったのがエラーの原因です）
+    // ★重要: タスクのタイマー処理に必要なユーティリティ
     function formatTime(totalSeconds) { 
         const h = Math.floor(totalSeconds / 3600); 
         const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0'); 
@@ -1176,7 +1174,6 @@
         currentDetailTask = null;
     }
 
-    // ★完璧に修正済みの状態更新ロジック
     async function updateTaskDetail(newStatus = null) {
       if (!currentDetailTask) return;
       
@@ -1259,6 +1256,18 @@
 
           storeStaffs = resStaffs.data || [];
 
+          // ★修正: GAS独自のDOM操作関数を取り除き、Supabaseの取得データだけを適用
+          const sel = document.getElementById('branchSelector'); 
+          if (sel && sel.options.length <= 1 && globalBranches.length > 0) {
+              sel.innerHTML = "";
+              globalBranches.forEach(b => { 
+                  const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
+                  if(b === targetBranch) opt.selected = true; 
+                  sel.appendChild(opt); 
+              });
+              if(!currentUser.permissions.viewAll) sel.disabled = true;
+          }
+
           const activeRoutineNames = resRM.data.map(rm => rm.name);
           
           const validTasks = resTasks.data.filter(t => {
@@ -1278,7 +1287,6 @@
           validTasks.forEach(t => {
               const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
               
-              // ★追加: 取得時のデータサニタイズ（PC版と共通）
               let st = t.start_time;
               if (st === "undefined" || st === "null" || st === "") st = null;
               let ra = t.real_assignee;
@@ -1370,22 +1378,6 @@
           routineMastersData = resRM.data.map(rm => ({
               id: rm.id, branch: rm.branch, name: rm.name, assignee: rm.assignee, days: rm.routine_days ? String(rm.routine_days).split(',') : []
           }));
-
-          google.script.run.withSuccessHandler(resGAS => {
-              if (resGAS.error) { console.error(resGAS.error); return; }
-              storeStaffs = resGAS.staffs || [];
-              
-              const sel = document.getElementById('branchSelector'); 
-              if (sel && sel.options.length <= 1 && resGAS.branches) {
-                  sel.innerHTML = "";
-                  resGAS.branches.forEach(b => { 
-                      const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
-                      if(b === targetBranch) opt.selected = true; 
-                      sel.appendChild(opt); 
-                  });
-                  if(!currentUser.permissions.viewAll) sel.disabled = true;
-              }
-          }).getTasks(currentUser, targetBranch, tDate);
 
           renderTasks();
           renderProjects();
@@ -1793,4 +1785,5 @@
       }
     }
   </script>
+</body>
 </html>
