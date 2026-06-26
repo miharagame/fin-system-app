@@ -352,7 +352,13 @@
       todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
       currentMonthStr = todayStr.substring(0, 7);
       
-      document.getElementById('targetDate').value = todayStr; // tasks.html用
+      // tasks.html用の初期化（inpDateがないことへのエラー回避）
+      const inpDateEl = document.getElementById('inpDate');
+      if (inpDateEl) inpDateEl.value = todayStr.replace(/-/g, '/');
+      document.getElementById('taskTargetDate').value = todayStr;
+      
+      const tlMonthEl = document.getElementById('tlMonth');
+      if (tlMonthEl) tlMonthEl.value = currentMonthStr;
 
       // 1. ユーザーログイン情報の確認
       const userStr = sessionStorage.getItem('finUser');
@@ -392,24 +398,23 @@
           }
       }
 
-      // 4. 初期店舗の設定とプルダウン生成
+      // 4. 初期店舗の設定とプルダウン生成 (★「全店」を撤廃)
       targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
       
       const sel = document.getElementById('branchSelector');
       if (sel) {
           sel.innerHTML = "";
           if (currentUser.permissions.viewAll) {
-              sel.innerHTML += '<option value="全店舗">全店</option>';
               globalBranches.forEach(b => {
-                 sel.innerHTML += `<option value="${b}">${b}</option>`;
+                 let selected = (b === targetBranch) ? "selected" : "";
+                 sel.innerHTML += `<option value="${b}" ${selected} class="bg-slate-950 text-white">${b}</option>`;
               });
           } else {
-              sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+              sel.innerHTML = `<option value="${currentUser.branch}" class="bg-slate-950 text-white">${currentUser.branch}</option>`;
               sel.disabled = true;
           }
       }
 
-      // 5. スタッフセッションの読み込み
       const savedStaffStr = sessionStorage.getItem('finTaskStaff');
       if (savedStaffStr) {
           try {
@@ -654,6 +659,24 @@
 
           storeStaffs = resStaffs.data || [];
 
+          // ★修正: 「全店」という文字列が残っていたらセレクトボックスを再構築して全店を消す
+          const sel = document.getElementById('branchSelector'); 
+          if (sel && globalBranches.length > 0) {
+              if (sel.options.length === 0 || sel.innerHTML.includes('全店')) {
+                  sel.innerHTML = "";
+                  if (currentUser.permissions.viewAll) {
+                      globalBranches.forEach(b => { 
+                          const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
+                          if(b === targetBranch) opt.selected = true; 
+                          sel.appendChild(opt); 
+                      });
+                  } else {
+                      sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                      sel.disabled = true;
+                  }
+              }
+          }
+
           const activeRoutineNames = resRM.data.map(rm => rm.name);
 
           const validTasks = resTasks.data.filter(t => {
@@ -672,7 +695,6 @@
 
           validTasks.forEach(t => {
               const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
-              
               let st = t.start_time;
               if (st === "undefined" || st === "null" || st === "") st = null;
               let ra = t.real_assignee;
