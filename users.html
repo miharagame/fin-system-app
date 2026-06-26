@@ -347,7 +347,6 @@
     </div>
 
   </main>
-
   <script>
     // ==========================================
     // Supabaseの初期設定
@@ -356,14 +355,11 @@
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "", currentUser = null;
+    let currentUser = null;
     let usersList = [], rolesList = [], branchesMasterList = [], branchList = [], staffsList = [];
 
     window.onload = async () => {
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch(e) { console.warn("GAS外での実行", e); }
-      
+      // ★修正: GAS独自のセッション取得を撤廃
       const userStr = sessionStorage.getItem('finUser');
       if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
       
@@ -373,12 +369,23 @@
         document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
       }
 
+      // セッショントークンの復元
+      try {
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+      } catch (authErr) {
+        console.error("セッションの復元に失敗しました:", authErr);
+      }
+
       let defaultTab = "";
       if (currentUser.permissions.canManageUsers) {
         document.getElementById("tab_users").classList.remove("hidden");
         if (currentUser.roleId === "role_admin") {
             document.getElementById("tab_roles").classList.remove("hidden");
-            document.getElementById("tab_branches").classList.remove("hidden"); // ★店舗マスタのタブを表示
+            document.getElementById("tab_branches").classList.remove("hidden"); 
         }
         defaultTab = "users";
       }
@@ -405,7 +412,7 @@
       if (currentUser.permissions.canManageUsers) {
         loadData();
         if (currentUser.roleId === "role_admin") {
-            loadBranchesMaster(); // ★店舗マスタを読み込み
+            loadBranchesMaster(); 
         }
       } else {
         document.getElementById('loading').classList.add('hidden');
@@ -489,9 +496,6 @@
       }
     }
 
-    // ==========================================
-    // ★追加: 店舗マスタ管理ロジック
-    // ==========================================
     async function loadBranchesMaster() {
       document.getElementById('branchTbody').innerHTML = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">読み込み中...</td></tr>`;
       try {
@@ -533,7 +537,7 @@
       const b = branchesMasterList.find(x => x.id === id);
       if(!b) return;
       document.getElementById('b_id').value = b.id; 
-      document.getElementById('b_id').disabled = true; // 作成後のID変更は不具合の元になるためロック
+      document.getElementById('b_id').disabled = true; 
       document.getElementById('b_name').value = b.name; 
       document.getElementById('b_sort').value = b.sort_order;
       document.getElementById('b_active').value = b.is_active ? "true" : "false";
@@ -681,7 +685,6 @@
     }
 
     function switchTab(tab) {
-      // ★branches タブを配列に追加
       ['users', 'roles', 'branches', 'staffs', 'logs', 'notices'].forEach(t => {
         const elTab = document.getElementById('tab_' + t);
         const elView = document.getElementById('view_' + t);
@@ -1041,7 +1044,7 @@
       }
     }
 
-    function goHome() { if (appUrl) window.open(appUrl + "?p=portal", "_top"); }
+    // ★修正: Vercelのルート構造に合わせて静的HTMLへ遷移
+    function goHome() { window.location.href = "portal.html"; }
   </script>
-</body>
 </html>
