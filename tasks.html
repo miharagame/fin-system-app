@@ -352,9 +352,7 @@
       todayStr = (new Date(now - tzOffset)).toISOString().split('T')[0];
       currentMonthStr = todayStr.substring(0, 7);
       
-      document.getElementById('inpDate').value = todayStr.replace(/-/g, '/');
-      document.getElementById('taskTargetDate').value = todayStr;
-      document.getElementById('tlMonth').value = currentMonthStr;
+      document.getElementById('targetDate').value = todayStr; // tasks.html用
 
       // 1. ユーザーログイン情報の確認
       const userStr = sessionStorage.getItem('finUser');
@@ -411,7 +409,7 @@
           }
       }
 
-      // ★重要修正: アプリ表示前に、保持されているスタッフセッションを正しく読み込む
+      // 5. スタッフセッションの読み込み
       const savedStaffStr = sessionStorage.getItem('finTaskStaff');
       if (savedStaffStr) {
           try {
@@ -423,10 +421,7 @@
           currentTaskStaff = null;
       }
       
-      // スタッフ名ヘッダーのUI更新
       updateStaffHeader();
-
-      // 5. アプリケーションの表示とデータロード
       showApp();
     };
 
@@ -434,23 +429,9 @@
       window.location.href = "portal.html";
     }
 
-    // attemptLogin はPC版 tasks.html では不要ですが、エラー回避のため空関数にしておきます
-    function attemptLogin() {}
-
     function showApp() {
-      // ログインスクリーン（PC版では存在しない要素）へのアクセスをエラー回避
-      const loginScreen = document.getElementById('loginScreen');
-      if(loginScreen) {
-        loginScreen.classList.add('hidden');
-        loginScreen.classList.remove('flex');
-      }
-      
       document.getElementById('content').classList.remove('hidden');
-      document.getElementById('headerBranch').innerText = currentUser.name + " (" + currentUser.branch + ")";
       
-      // PC版では不要なボトムナビゲーション操作を削除
-      
-      // タスクのロード開始
       if(currentUser.permissions.canTasks !== false) {
           loadTasks();
           timerInterval = setInterval(updateActiveTimersUI, 1000);
@@ -470,7 +451,6 @@
     function switchBranch() { 
       targetBranch = document.getElementById('branchSelector').value; 
       
-      // 店舗を変えたら、安全のため操作スタッフはいったんリセットする
       currentTaskStaff = null; 
       sessionStorage.removeItem('finTaskStaff');
       storeStaffs = []; 
@@ -487,7 +467,7 @@
         if(tBtn) tBtn.classList.remove('active');
         if(tView) {
             tView.classList.add('hidden');
-            tView.classList.remove('flex', 'md:flex-row'); // flex系のクラスを確実に消す
+            tView.classList.remove('flex', 'md:flex-row', 'flex-col');
         }
       });
       
@@ -497,7 +477,6 @@
       if(activeBtn) activeBtn.classList.add('active');
       if(activeView) {
           activeView.classList.remove('hidden');
-          // カンバンは横並びレイアウトが必要なため、特別なクラスを付与
           if(tab === 'kanban') {
               activeView.classList.add('flex', 'md:flex-row');
           } else {
@@ -509,20 +488,26 @@
       else if (tab === 'routineMaster') { renderRoutineMasters(); }
     }
 
-    function showLoading(msg) { document.getElementById('loadingText').innerText = msg; document.getElementById('loading').classList.remove('hidden'); }
-    function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
-
-    // 以下、タスク関連のロジックは正常に動くようになっています
-    // ==========================================
+    // ★修正: HTMLに依存しない安全なローディング制御
+    function showLoading(msg) { 
+      const textEl = document.querySelector('#loading p');
+      if (textEl) textEl.innerText = msg;
+      document.getElementById('loading').classList.remove('hidden'); 
+    }
+    
+    function hideLoading() { 
+      document.getElementById('loading').classList.add('hidden'); 
+    }
 
     function updateStaffHeader() {
         const el = document.getElementById('currentStaffName');
-        const btn = document.getElementById('btnStaffAuth');
-        if (!el) return; // btn が無くても続行
+        const btn = document.getElementById('btnStaffAuth'); // btnは存在しない場合もあるのでチェック
+        if (!el) return;
         
         if (currentTaskStaff) { 
             let badge = currentTaskStaff.level === "店長・副店長" ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
             el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
+            el.className = "text-white font-black text-sm leading-none flex items-center"; 
             if(btn) btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
             
             const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
@@ -534,7 +519,7 @@
         } else { 
             el.innerHTML = "未設定 (タップして認証)"; 
             el.className = "text-rose-400 font-black text-sm leading-none animate-pulse cursor-pointer"; 
-            el.onclick = openStaffAuthModal; // テキスト自体をクリック可能にする
+            el.onclick = openStaffAuthModal;
             if(btn) btn.innerHTML = `<i class="fa-solid fa-user-lock mr-1"></i>本人認証`; 
             const pjBtn = document.getElementById('btnCreateProject');
             if(pjBtn) pjBtn.classList.add('hidden');
@@ -643,7 +628,6 @@
         let isAnyModalOpen = modals.some(id => { const m = document.getElementById(id); return m && !m.classList.contains('hidden'); }); 
         if (isAnyModalOpen) return; 
         
-        // PC版のタスク画面が開いているかをチェック
         const isTasksTab = !document.getElementById('content').classList.contains('hidden'); 
         if (currentUser && isTasksTab) loadTasks(true); 
     }
@@ -884,7 +868,7 @@
       if (!requireStaffAuth()) return;
       const type = document.getElementById('newTaskType').value; 
       const name = document.getElementById('newTaskName').value.trim(); 
-      const tDate = document.getElementById('taskTargetDate').value;
+      const tDate = document.getElementById('targetDate').value;
       
       let assigneeData = selectedAssignees.length > 0 ? selectedAssignees.join(', ') : "未定";
 
@@ -1159,7 +1143,6 @@
       const taskId = currentDetailTask.id;
       const targetStatus = newStatus || currentDetailTask.status; 
       
-      // 変更前の状態を記憶
       const originalStatus = currentDetailTask.status; 
       
       if (newStatus && targetStatus !== originalStatus && !requireStaffAuth()) return;
@@ -1174,7 +1157,6 @@
 
       let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
 
-      // タイマーの加算計算
       if (originalStatus === 'doing' && targetStatus !== 'doing') {
           let st = currentDetailTask.startTime;
           if (st && !isNaN(st) && st > 0) {
@@ -1185,7 +1167,6 @@
           upd.elapsed_seconds = currentTotalSec;
       }
 
-      // 「変更前の状態(originalStatus)」と比較して名前と時間をセットする
       if (targetStatus === "doing" && originalStatus !== 'doing') {
           if (!currentTaskStaff || !currentTaskStaff.name) {
               alert("スタッフの認証が切れています。右上のボタンから再度ご自身の名前を選択してください。");
@@ -1204,7 +1185,6 @@
           upd.start_time = null;
       }
 
-      // すべての判定が終わった後に状態を最新化する
       currentDetailTask.status = targetStatus;
       currentDetailTask.memo = memo;
 
