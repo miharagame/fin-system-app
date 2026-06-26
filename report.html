@@ -158,7 +158,7 @@
     const SUPABASE_KEY = 'sb_publishable_ezlhFGa3n5uxnA8jJC-t_g_F3Wzl0Lt';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let appUrl = "", currentUser = null, reportsData = [];
+    let currentUser = null, reportsData = [];
     let currentReport = null;
     
     function cleanShopName(x) {
@@ -174,12 +174,10 @@
     }
 
     window.onload = async () => {
-      try {
-        google.script.run.withSuccessHandler(url => { appUrl = url; }).getAppUrl();
-      } catch (e) { console.warn("GAS外"); }
+      // ★修正1: GAS独自のアプリURL取得処理を撤廃
 
       const userStr = sessionStorage.getItem('finUser');
-      if (!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
+      if (!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインし直してください。</h1>"; return; }
       
       currentUser = JSON.parse(userStr);
       currentUser.branch = cleanShopName(currentUser.branch);
@@ -190,40 +188,61 @@
       
       document.getElementById('userNameHeader').innerText = currentUser.name + " (" + currentUser.branch + ")";
 
+      // ★修正2: 過去に記述されていたダミーアカウントでの強制ログイン処理を撤廃し、既存セッションを正しく復元する
       try {
-        await db.auth.signInWithPassword({
-            email: 'mihara.game@gmail.com',
-            password: '1234567'
-        });
-      } catch (e) {
-        console.error("Supabase Auth Error", e);
+        const accToken = sessionStorage.getItem('sb_access');
+        const refToken = sessionStorage.getItem('sb_refresh');
+        if (accToken && refToken) {
+            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+        }
+      } catch (authErr) {
+        console.error("セッションの復元に失敗しました:", authErr);
       }
 
       const isHQ = ["role_admin", "role_honbu"].includes(currentUser.roleId);
       const isManager = ["role_general"].includes(currentUser.roleId);
       
-      // ★大改修: ログインアカウントの権限に応じたUI要素の出し分け制御
       if (isHQ || isManager) {
-        // 店長・管理者の場合は「一覧・査定機能」のみを表示（提出フォームは非表示）
         document.getElementById('submitSection').classList.add('hidden');
         document.getElementById('dashboardSection').classList.remove('hidden');
-        document.getElementById('roleNotice').classList.remove('hidden'); // 注意書きを表示
+        document.getElementById('roleNotice').classList.remove('hidden'); 
         
         const bFilter = document.getElementById('branchFilter');
         bFilter.innerHTML = "";
-        if (isHQ) {
-           bFilter.innerHTML += '<option value="all">全店舗</option>';
-           ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'].forEach(b => {
-             bFilter.innerHTML += `<option value="${b}">${b}</option>`;
-           });
-        } else {
-           bFilter.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-           bFilter.disabled = true;
-           bFilter.classList.add('opacity-50', 'cursor-not-allowed');
+        
+        // ★修正3: Supabaseからマスタを動的取得してリストを作る
+        try {
+            const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+            if (bErr) throw bErr;
+            if (bData && bData.length > 0) {
+                if (isHQ) {
+                    bFilter.innerHTML += '<option value="all">全店舗</option>';
+                    bData.forEach(b => {
+                        bFilter.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+                    });
+                } else {
+                    bFilter.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                    bFilter.disabled = true;
+                    bFilter.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            // フォールバック
+            if (isHQ) {
+                bFilter.innerHTML += '<option value="all">全店舗</option>';
+                ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'].forEach(b => {
+                  bFilter.innerHTML += `<option value="${b}">${b}</option>`;
+                });
+            } else {
+                bFilter.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                bFilter.disabled = true;
+                bFilter.classList.add('opacity-50', 'cursor-not-allowed');
+            }
         }
+        
         loadReports();
       } else {
-        // 一般スタッフ（個人評価用）の場合は「新規提出フォーム」のみを表示（一覧は非表示）
         document.getElementById('submitSection').classList.remove('hidden');
         document.getElementById('dashboardSection').classList.add('hidden');
         document.getElementById('roleNotice').classList.add('hidden');
@@ -454,7 +473,8 @@
       document.getElementById('detailModal').classList.replace('flex', 'hidden');
     }
 
-    function goHome() { if (appUrl && appUrl !== "?p=portal") { window.open(appUrl + "?p=portal", "_top"); } else { window.history.back(); } }
+    // ★修正4: Vercel構造に基づく直接遷移
+    function goHome() { window.location.href = "portal.html"; }
     function logout() { sessionStorage.removeItem('finUser'); goHome(); }
   </script>
 </body>
