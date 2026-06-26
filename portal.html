@@ -1215,49 +1215,86 @@
 
     function openMasterCriteriaModal() {
       const container = document.getElementById('masterCriteriaContent');
-      if (container.innerHTML.trim() === "") {
-         let html = "";
-         if(EVAL_CRITERIA.length === 0) {
-             html = "<p class='text-center text-slate-500 py-10'>評価マスタデータが設定されていません</p>";
-         } else {
-             EVAL_CRITERIA.forEach((cat, catIdx) => {
-               html += `<div class="mb-6"><h4 class="text-base font-black text-slate-200 mb-3 border-b border-slate-700 pb-1 inline-block">${cat.category} <span class="text-xs text-slate-500 font-normal ml-2">配点ウエイト: ${cat.weight}%</span></h4><div class="space-y-3">`;
-               cat.items.forEach((item, itemIdx) => {
-                 html += `
-                   <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                     <div class="p-4 cursor-pointer hover:bg-slate-800 flex justify-between items-center transition-colors" onclick="toggleMasterAccordion('m_acc_${catIdx}_${itemIdx}')">
-                       <div>
-                         <p class="font-bold text-white text-sm">${item.name}</p>
-                         <p class="text-[11px] text-slate-400 mt-0.5">${item.desc}</p>
-                       </div>
-                       <i class="fa-solid fa-chevron-down text-slate-500 text-xs transition-transform duration-200" id="m_icon_${catIdx}_${itemIdx}"></i>
-                     </div>
-                     <div id="m_acc_${catIdx}_${itemIdx}" class="hidden border-t border-slate-800 p-4 bg-slate-950 accordion-content text-xs">
-                       <div class="mb-3">
-                         <h5 class="font-black text-sky-400 mb-1"><i class="fa-solid fa-bullseye mr-1"></i>評価の目的</h5>
-                         <p class="text-slate-300 leading-relaxed">${item.purpose}</p>
-                       </div>
-                       <div class="space-y-1.5 font-mono text-[11px]">
-                         <h5 class="font-black text-sky-400 mb-1 font-sans"><i class="fa-solid fa-list-ol mr-1"></i>判定基準</h5>
-                         <div class="p-2 rounded border bg-emerald-950/40 border-emerald-900 text-emerald-400 flex gap-2"><b class="w-16 shrink-0 font-sans">20点</b><span>${item.criteria.p20}</span></div>
-                         <div class="p-2 rounded border bg-emerald-950/20 border-emerald-100/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">17～19点</b><span>${item.criteria.p17_19}</span></div>
-                         <div class="p-2 rounded border bg-blue-950/20 border-blue-900/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">14～16点</b><span>${item.criteria.p14_16}</span></div>
-                         <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">11～13点</b><span>${item.criteria.p11_13}</span></div>
-                         <div class="p-2 rounded border bg-amber-950/40 border-amber-900 text-amber-400 flex gap-2"><b class="w-16 shrink-0 font-sans">10点</b><span>${item.criteria.p10}</span></div>
-                         <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">7～9点</b><span>${item.criteria.p7_9}</span></div>
-                         <div class="p-2 rounded border bg-rose-950/20 border-rose-900/30 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">4～6点</b><span>${item.criteria.p4_6}</span></div>
-                         <div class="p-2 rounded border bg-rose-950/40 border-rose-900/50 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">1～3点</b><span>${item.criteria.p1_3}</span></div>
-                         <div class="p-2 rounded border bg-rose-900/20 border-rose-800 text-rose-400 flex gap-2"><b class="w-16 shrink-0 font-sans">0点</b><span>${item.criteria.p0}</span></div>
-                       </div>
-                     </div>
-                   </div>
-                 `;
-               });
-               html += `</div></div>`;
-             });
-         }
-         container.innerHTML = html;
-      }
+      
+      // ★修正: ポータル画面用にマスタデータを直接定義（絶対に空にならないようにする）
+      const CRITERIA_DATA = [
+        {
+          category: "実務・業務スキル", weight: 40,
+          items: [
+            { id: "s01", name: "業務遂行性", desc: "POSの操作・レジ精度・買取品解体等、対応可能な業務の量と質", purpose: "担当業務をどのレベルで、どれだけ安定して、ミスなく遂行できているかを測定する。", criteria: { p0: "ミス・確認漏れが非常に多く、改善の意思も見られない。", p1_3: "ミスが月3回以上。同じミスを繰り返す。", p4_6: "ミスが月2回以上。業務スピードが平均より遅い。", p7_9: "業務は遂行可能だがスピードがやや遅い。", p10: "基本業務を安定して遂行可能", p11_13: "業務のスピードが平均よりやや早く、ミスも少ない。", p14_16: "基本業務に加え、管理・特殊業務にも対応可能。", p17_19: "業務量が多く、安定して高精度。", p20: "明確に高生産性。店舗運営を支える中核人材。" }, max: 20 },
+            { id: "s02", name: "業務効率性", desc: "業務効率に対する意識、改善提案、実行", purpose: "業務効率に対する意識の高さ、業務の優先順位判断を測定する。", criteria: { p0: "作業が遅く、無駄・やり直しが多い。", p1_3: "作業が遅く非効率。優先順位の判断が弱い。", p4_6: "無駄な動きややり直しが散見される。", p7_9: "業務効率を意識しているが、タスク管理にやや課題あり。", p10: "優先順位を適切に判断しながらタスク管理ができる。", p11_13: "作業スピードが速く、正確性も高い。", p14_16: "無駄な工程に気づき、改善提案を行い実行できる。", p17_19: "改善を継続的に行い効率を向上させている。", p20: "周囲の業務効率まで引き上げるレベル。" }, max: 20 },
+            { id: "s03", name: "接客態度", desc: "接客時の声量・表情・言葉遣い・立ち振舞", purpose: "顧客に安心感と好印象を与えられているかを測定する。", criteria: { p0: "接客態度に重大な問題があり、クレームの原因となる。", p1_3: "声が小さい・無愛想。敬語が不十分。", p4_6: "基本的な接客はできるが、表情等に不安定さがある。", p7_9: "丁寧な接客を意識しているが、安定性にやや課題あり。", p10: "安定した丁寧な接客ができる。マナーを遵守できている。", p11_13: "明るく好印象な接客ができ、安心感を与えられる。", p14_16: "顧客ニーズを汲み取り、適切な提案ができる。", p17_19: "顧客から名指しで評価されることがある。", p20: "接客対応で売上・LTV向上に寄与している。" }, max: 20 },
+            { id: "s04", name: "報告連絡相談", desc: "業務上の情報共有量、相談、トラブル防止", purpose: "情報共有の適切さ、トラブルの未然防止への貢献度を測定する。", criteria: { p0: "トラブルを隠す・放置する。重大な報告漏れがある。", p1_3: "自己判断で抱え込み、報告が遅れることが多い。", p4_6: "報告はするが遅れがち。伝達ミスが発生することがある。", p7_9: "相談はできるが、タイミングや精度にやや課題あり。", p10: "必要な情報を適切なタイミングで報連相できる。", p11_13: "正確かつ簡潔に伝達でき、トラブル早期解決に貢献。", p14_16: "トラブルの未然防止につながる共有ができる。", p17_19: "他スタッフの報連相不足に気づき、フォローできる。", p20: "情報共有の文化を作り、店舗全体の報連相レベルを引き上げる。" }, max: 20 },
+            { id: "s05", name: "声掛け・提案", desc: "ニーズの確認、クロスセルアップセル", purpose: "顧客ニーズの確認力、提案力を測定する。", criteria: { p0: "声掛けをほとんど行わず、積極性が見られない。", p1_3: "必要なタイミングでの声掛けができていない。", p4_6: "声掛けはあるが形式的で売上に繋がっていない。", p7_9: "基本的な声掛けはできるが、提案の質に課題あり。", p10: "顧客ニーズを確認し、自然な提案ができる。", p11_13: "状況に応じた提案ができ、客単価向上に貢献。", p14_16: "適切なクロスセル・アップセルができる。", p17_19: "提案の成功率が高く、購買点数の向上に明確に貢献。", p20: "継続的に売上を押し上げる提案ができている。" }, max: 20 },
+            { id: "s06", name: "商品知識", desc: "新商品・制限改定の把握、商品特性の理解", purpose: "専門店としての信頼性への貢献度を測定する。", criteria: { p0: "商品知識が著しく不足している。誤情報を伝える。", p1_3: "新商品や制限改定を把握していない。", p4_6: "基本的な知識はあるが不十分。", p7_9: "基本情報は把握しているが、正確性にやや課題あり。", p10: "新商品・制限改定を正確に説明できる。", p11_13: "積極的に情報収集し、知識の幅を広げている。", p14_16: "相場や需要変動を理解し、販売・買取判断に反映できる。", p17_19: "レトロ品・海外版等の知識を持ち、適切な判断ができる。", p20: "豊富な商品知識を持ち、店舗の知識レベルを向上させている。" }, max: 20 },
+            { id: "s07", name: "PC操作", desc: "入力速度と精度、ITスキル", purpose: "事務作業品質・数値管理・業務スピードへの貢献度を測定する。", criteria: { p0: "PC操作に大きな支障があり、業務遂行が困難。", p1_3: "入力ミスが多く、タイピングが遅い。", p4_6: "基本操作は可能だが、正確性に課題があり非効率。", p7_9: "基本操作は問題ないが、応用力にやや課題あり。", p10: "入力速度・精度ともに問題なし。", p11_13: "複数のツールを使いこなし、効率的に業務処理ができる。", p14_16: "ショートカット活用などで作業効率を改善できる。", p17_19: "自動化・ツール活用により業務時間を削減できる。", p20: "店舗全体の事務処理フロー改善を実施している。" }, max: 20 },
+            { id: "s08", name: "店内整備業務", desc: "店内清掃、掲示物の確認、見栄え維持", purpose: "顧客の第一印象・購買意欲向上への貢献度を測定する。", criteria: { p0: "ゴミ・陳列の乱れに気が付かず放置。", p1_3: "清掃・整備は行うが、不十分であることが多い。", p4_6: "最低限の清掃整備は可能。細部への意識が低い。", p7_9: "基本的な清掃・整備はできるが、改善にやや課題あり。", p10: "見栄えの良い店内環境を維持できる。", p11_13: "常に売場の状態を意識し、良好な環境を維持できる。", p14_16: "見せ方を意識した陳列ができ、購買意欲を高められる。", p17_19: "レイアウト改善により明確に売上向上に貢献。", p20: "売れる売場を設計でき、店舗の見栄えレベルを引き上げている。" }, max: 20 }
+          ]
+        },
+        {
+          category: "課題対応・思考力", weight: 30,
+          items: [
+            { id: "c01", name: "クレーム一次対応", desc: "状況把握→事実確認→エスカレーション", purpose: "クレームの拡大防止・早期収束への貢献度を測定する。", criteria: { p0: "不適切な対応により、クレームを重大化させる。", p1_3: "自己判断で対応し、報告が遅れる。", p4_6: "基本対応はできるが、判断に不安がある。", p7_9: "顧客の話を聞けるが、対応の質にやや課題あり。", p10: "冷静にヒアリングし、適切な判断・報告ができる。", p11_13: "安定して適切な初動対応ができ、早期収束に貢献。", p14_16: "感情的な顧客にも冷静に対応し、拡大を防止できる。", p17_19: "クレームの原因を分析し、再発防止の提案ができる。", p20: "店舗全体のクレーム対応力を引き上げている。" }, max: 20 },
+            { id: "c02", name: "買取精度", desc: "状態確認の正確性と査定金額の妥当性", purpose: "店舗の利益確保・損失リスク低減への貢献度を測定する。", criteria: { p0: "査定ミスにより重大な損失・クレームを発生させる。", p1_3: "傷の見落としや相場乖離が多く、査定精度が低い。", p4_6: "基本査定は可能だが、精度にムラがある。", p7_9: "基本的な状態判断はできるが、精度にやや不安あり。", p10: "状態確認・相場理解ともに適切で、安定した査定ができる。", p11_13: "高額商品にも対応可能。大きなズレのない査定ができる。", p14_16: "相場を踏まえた適正査定ができ、利益確保に貢献。", p17_19: "在庫状況を考慮した戦略的査定ができる。", p20: "利益・成約率・在庫最適化を両立している。" }, max: 20 },
+            { id: "c03", name: "ストレス耐性", desc: "業務遂行における安定性", purpose: "高ストレス環境における感情の安定性を評価する。", criteria: { p0: "感情的な言動により現場を混乱させる。", p1_3: "感情的になりやすく、周囲に悪影響を与える。", p4_6: "基本対応は可能だが、ストレス下で対応にムラが出る。", p7_9: "感情コントロールはできるが、余裕のなさが出る。", p10: "感情を安定させ、トラブル時も冷静に対応できる。", p11_13: "安定して落ち着いた対応ができ、現場の混乱を防げる。", p14_16: "高ストレス下でも冷静に判断し、適切な指示ができる。", p17_19: "周囲の状況を見てフォローし、現場の安定に貢献できる。", p20: "現場全体の安定運営を支えている。" }, max: 20 },
+            { id: "c04", name: "主体的改善力", desc: "課題発見と改善実行力、行動力や企画力", purpose: "店舗改善への貢献度・将来的な管理職適性を測定する。", criteria: { p0: "指示待ちで主体性がない。課題に気がつかない。", p1_3: "課題に気づくことが少なく、改善提案がほとんどない。", p4_6: "課題認識はあるが、行動や継続に繋がらない。", p7_9: "指示があれば改善に取り組めるが、自発性にやや課題あり。", p10: "指示がなくても課題に気づき、改善行動ができる。", p11_13: "トラブル削減など、一定の改善成果を出せている。", p14_16: "PDCAを回し、継続的に改善を実行できる。", p17_19: "売上・生産性向上など、数値成果を出している。", p20: "改善行動を波及させ、店舗全体のレベルを引き上げている。" }, max: 20 },
+            { id: "c05", name: "成長意欲", desc: "自己研鑽を行っているか、向上心があるか", purpose: "将来の成長性・昇格適性を測定する。", criteria: { p0: "学習意欲がなく、成長が見られない。", p1_3: "新しいことを覚える姿勢が消極的。", p4_6: "学習はするが受動的。実務への活用が弱い。", p7_9: "必要に応じて学習するが、自発性にやや課題あり。", p10: "必要な知識・スキルを自発的に学び、業務に活かしている。", p11_13: "課題に対し、改善目的の学習と実行ができている。", p14_16: "学習内容を業務改善や成果に結びつけている。", p17_19: "学んだ内容を他スタッフへ共有・指導できる。", p20: "学習→改善→成果→展開まで行い組織成長に貢献している。" }, max: 20 },
+            { id: "c06", name: "数値管理", desc: "在庫管理、業績把握、利益に対する意識", purpose: "業績向上・損失防止への貢献度を測定する。", criteria: { p0: "数値に無関心。意識が見られない。", p1_3: "売上・在庫・利益を把握しておらず、目標意識がない。", p4_6: "数値を意識しているが、行動に繋がらない。", p7_9: "指示があれば数値是正の行動ができるが、自発性に課題あり。", p10: "数値を把握し、適切な是正行動ができる。", p11_13: "数値を基に継続的に改善行動ができている。", p14_16: "数値から課題を読み取り、改善策を立案・実行できる。", p17_19: "売上・在庫・利益のバランスを取りながら成果を出せる。", p20: "店舗全体の経営水準を引き上げている。" }, max: 20 },
+            { id: "c07", name: "状況把握力", desc: "視野の広さ、違和感の察知、先見性", purpose: "トラブル未然防止・機会損失回避への貢献度を測定する。", criteria: { p0: "異常に全く気づかず、損失やトラブルを発生させる。", p1_3: "違和感に気づくのが遅く、問題が顕在化してから対応する。", p4_6: "指摘されれば気づくが、自発的な察知が弱い。", p7_9: "異常に気づけるが、対応が遅れる場合がある。", p10: "問題が大きくなる前に気づき、適切に対応できる。", p11_13: "安定して異常を捉え、機会損失やトラブルを防げている。", p14_16: "問題発生前に兆候を察知し、先回り対応ができる。", p17_19: "リスクを最小化しつつ、販売機会も取りにいける。", p20: "店舗全体の検知力を底上げし、事故を未然に防いでいる。" }, max: 20 }
+          ]
+        },
+        {
+          category: "規律・マネジメント", weight: 30,
+          items: [
+            { id: "m01", name: "会社方針の理解度", desc: "会社が掲げる理念・ビジョンの理解と行動反映", purpose: "組織文化の体現度・方向性の一致度を測定する。", criteria: { p0: "方針と反する行動・判断を行い、悪影響を与えている。", p1_3: "方針理解が浅く、指示待ちで自発的判断ができない。", p4_6: "方針は理解しているが、行動に十分反映されていない。", p7_9: "方針に沿った行動はできるが、判断に一貫性がない。", p10: "方針に基づいた適切な行動・判断ができる。", p11_13: "店舗視点だけでなく、会社視点で安定した判断ができる。", p14_16: "方針を理解した上で自ら行動し業績に貢献できる。", p17_19: "周囲にも方針理解を浸透させられる。", p20: "方針を現場で再現できるレベルに落とし込んでいる。" }, max: 20 },
+            { id: "m02", name: "教育・指導", desc: "アルバイトや後輩を正しく指導できているか", purpose: "組織力の底上げ・次世代人材育成への貢献度を測定する。", criteria: { p0: "教育を行わず、現場が混乱・属人化している。", p1_3: "教える意識が低く、他のスタッフが何をすべきか分からない。", p4_6: "教えてはいるが、断続的で体系化されていない。", p7_9: "業務を教えられるが、教育の質にバラつきあり。", p10: "適切な指導ができ、一定の育成成果がある。", p11_13: "継続的な教育により店舗レベルの向上に寄与している。", p14_16: "教育スピードが速く、早期戦力化を実現できる。", p17_19: "教育内容を標準化し、誰でも育てられる状態を作れる。", p20: "人材育成を通じて後継人材を輩出している。" }, max: 20 },
+            { id: "m03", name: "秩序維持", desc: "会社の規律を守り、秩序維持に努めているか", purpose: "組織の安全性・信頼性への貢献度を測定する。", criteria: { p0: "重大な規律違反・不正・事故を引き起こすことがある。", p1_3: "規律意識が低く、指摘されても改善されない。", p4_6: "ルールは理解しているが、遵守が不安定。", p7_9: "基本的なルールは守れるが、意識にムラがある。", p10: "勤怠・金銭・情報管理などを確実に遵守している。", p11_13: "安定して規律を守り、リスクのある行動を取らない。", p14_16: "模範的な行動で周囲にも良い影響を与えている。", p17_19: "トラブルの兆候に気づき、未然防止ができる。", p20: "組織全体の安全性・信頼性を底上げしている。" }, max: 20 },
+            { id: "m04", name: "整理整頓", desc: "作業スペース等を常に整理された状態に保つ意識", purpose: "ミス・損害・事故の防止への貢献度を測定する。", criteria: { p0: "整理不備により紛失・事故など重大な問題を発生させている。", p1_3: "探し物・取り違えが頻発し、業務に支障が出ている。", p4_6: "基本的な整理はできているが、維持ができず乱れが発生する。", p7_9: "決められた配置は守れるが、改善意識は弱い。", p10: "整理状態を維持し、業務効率や安全性に問題がない。", p11_13: "周囲の乱れにも気づき、適切に是正できる。", p14_16: "配置の改善により、ミス・ロスを削減できる。", p17_19: "業務効率・安全性を高める仕組みを作れている。", p20: "店舗全体の整理水準を引き上げ構造的に防いでいる。" }, max: 20 },
+            { id: "m05", name: "協調性", desc: "周囲との人間関係構築力、チーム内での協力", purpose: "チーム全体の業務効率、職場環境の向上への貢献度を測定する。", criteria: { p0: "チームに悪影響を与え、対立を引き起こしている。", p1_3: "自己優先で連携が取れず、情報共有も不十分。", p4_6: "協力はするが受動的で、チーム貢献が限定的。", p7_9: "必要なコミュニケーション・情報共有はできる。", p10: "チーム内で円滑に連携し、業務に支障がない。", p11_13: "安定して協力行動ができ、チーム運営に貢献している。", p14_16: "周囲の状況を見て、先回りしたサポートができる。", p17_19: "チームの雰囲気を良くし、パフォーマンスを引き上げている。", p20: "チーム全体の連携力・生産性を底上げしている。" }, max: 20 }
+          ]
+        }
+      ];
+
+      // 毎回必ずHTMLを再構築する
+      container.innerHTML = "";
+      
+      let html = "";
+      CRITERIA_DATA.forEach((cat, catIdx) => {
+        html += `<div class="mb-6"><h4 class="text-base font-black text-slate-200 mb-3 border-b border-slate-700 pb-1 inline-block">${cat.category} <span class="text-xs text-slate-500 font-normal ml-2">配点ウエイト: ${cat.weight}%</span></h4><div class="space-y-3">`;
+        cat.items.forEach((item, itemIdx) => {
+          html += `
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+              <div class="p-4 cursor-pointer hover:bg-slate-800 flex justify-between items-center transition-colors" onclick="toggleMasterAccordion('m_acc_${catIdx}_${itemIdx}')">
+                <div>
+                  <p class="font-bold text-white text-sm">${item.name}</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">${item.desc}</p>
+                </div>
+                <i class="fa-solid fa-chevron-down text-slate-500 text-xs transition-transform duration-200" id="m_icon_${catIdx}_${itemIdx}"></i>
+              </div>
+              <div id="m_acc_${catIdx}_${itemIdx}" class="hidden border-t border-slate-800 p-4 bg-slate-950 accordion-content text-xs">
+                <div class="mb-3">
+                  <h5 class="font-black text-sky-400 mb-1"><i class="fa-solid fa-bullseye mr-1"></i>評価の目的</h5>
+                  <p class="text-slate-300 leading-relaxed">${item.purpose}</p>
+                </div>
+                <div class="space-y-1.5 font-mono text-[11px]">
+                  <h5 class="font-black text-sky-400 mb-1 font-sans"><i class="fa-solid fa-list-ol mr-1"></i>判定基準</h5>
+                  <div class="p-2 rounded border bg-emerald-950/40 border-emerald-900 text-emerald-400 flex gap-2"><b class="w-16 shrink-0 font-sans">20点</b><span>${item.criteria.p20}</span></div>
+                  <div class="p-2 rounded border bg-emerald-950/20 border-emerald-100/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">17～19点</b><span>${item.criteria.p17_19}</span></div>
+                  <div class="p-2 rounded border bg-blue-950/20 border-blue-900/30 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">14～16点</b><span>${item.criteria.p14_16}</span></div>
+                  <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">11～13点</b><span>${item.criteria.p11_13}</span></div>
+                  <div class="p-2 rounded border bg-amber-950/40 border-amber-900 text-amber-400 flex gap-2"><b class="w-16 shrink-0 font-sans">10点</b><span>${item.criteria.p10}</span></div>
+                  <div class="p-2 rounded border bg-slate-900 border-slate-800 text-slate-300 flex gap-2"><b class="w-16 shrink-0 font-sans">7～9点</b><span>${item.criteria.p7_9}</span></div>
+                  <div class="p-2 rounded border bg-rose-950/20 border-rose-900/30 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">4～6点</b><span>${item.criteria.p4_6}</span></div>
+                  <div class="p-2 rounded border bg-rose-950/40 border-rose-900/50 text-slate-400 flex gap-2"><b class="w-16 shrink-0 font-sans">1～3点</b><span>${item.criteria.p1_3}</span></div>
+                  <div class="p-2 rounded border bg-rose-900/20 border-rose-800 text-rose-400 flex gap-2"><b class="w-16 shrink-0 font-sans">0点</b><span>${item.criteria.p0}</span></div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div></div>`;
+      });
+      container.innerHTML = html;
       document.getElementById('masterCriteriaModal').classList.replace('hidden', 'flex');
     }
 
