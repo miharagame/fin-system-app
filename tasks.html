@@ -356,156 +356,106 @@
       document.getElementById('taskTargetDate').value = todayStr;
       document.getElementById('tlMonth').value = currentMonthStr;
 
-      // ★修正: GAS独自のセッション取得を撤廃しブラウザ標準に
+      // 1. ユーザーログイン情報の確認
       const userStr = sessionStorage.getItem('finUser');
-      if (userStr) { 
-        currentUser = JSON.parse(userStr);
-        if(currentUser.permissions.canTasks === false) {
-            document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
-        }
-
-        const accToken = sessionStorage.getItem('sb_access');
-        const refToken = sessionStorage.getItem('sb_refresh');
-        if (accToken && refToken) {
-            await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
-        }
-
-        try {
-            const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
-            if (bErr) throw bErr;
-            if (bData && bData.length > 0) {
-                globalBranches = bData.map(b => b.name);
-            } else {
-                globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
-            }
-        } catch (err) {
-            console.error("店舗マスタ取得エラー:", err);
-            globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
-            if (err.message && (err.message.includes('JWT') || err.message.includes('Auth'))) {
-                logout();
-                return;
-            }
-        }
-
-        targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
-        
-        const sel = document.getElementById('branchSelector');
-        if (sel) {
-            sel.innerHTML = "";
-            if (currentUser.permissions.viewAll) {
-                sel.innerHTML += '<option value="全店舗">全店</option>';
-                globalBranches.forEach(b => {
-                   sel.innerHTML += `<option value="${b}">${b}</option>`;
-                });
-            } else {
-                sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-                sel.disabled = true;
-            }
-        }
-
-        showApp();
-      } else {
-        document.getElementById('loginScreen').classList.remove('hidden');
-        document.getElementById('loginScreen').classList.add('flex');
+      if (!userStr) { 
+        document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。ログインしてください。</h1>"; 
+        return; 
       }
+      
+      currentUser = JSON.parse(userStr);
+      if(currentUser.permissions.canTasks === false) {
+          document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; 
+          return;
+      }
+
+      // 2. Supabaseセッションの復元
+      const accToken = sessionStorage.getItem('sb_access');
+      const refToken = sessionStorage.getItem('sb_refresh');
+      if (accToken && refToken) {
+          await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+      }
+
+      // 3. 店舗マスタの取得
+      try {
+          const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+          if (bErr) throw bErr;
+          if (bData && bData.length > 0) {
+              globalBranches = bData.map(b => b.name);
+          } else {
+              globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
+          }
+      } catch (err) {
+          console.error("店舗マスタ取得エラー:", err);
+          globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'];
+          if (err.message && (err.message.includes('JWT') || err.message.includes('Auth'))) {
+              logout();
+              return;
+          }
+      }
+
+      // 4. 初期店舗の設定とプルダウン生成
+      targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      
+      const sel = document.getElementById('branchSelector');
+      if (sel) {
+          sel.innerHTML = "";
+          if (currentUser.permissions.viewAll) {
+              sel.innerHTML += '<option value="全店舗">全店</option>';
+              globalBranches.forEach(b => {
+                 sel.innerHTML += `<option value="${b}">${b}</option>`;
+              });
+          } else {
+              sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+              sel.disabled = true;
+          }
+      }
+
+      // ★重要修正: アプリ表示前に、保持されているスタッフセッションを正しく読み込む
+      const savedStaffStr = sessionStorage.getItem('finTaskStaff');
+      if (savedStaffStr) {
+          try {
+              currentTaskStaff = JSON.parse(savedStaffStr);
+          } catch(e) {
+              currentTaskStaff = null;
+          }
+      } else {
+          currentTaskStaff = null;
+      }
+      
+      // スタッフ名ヘッダーのUI更新
+      updateStaffHeader();
+
+      // 5. アプリケーションの表示とデータロード
+      showApp();
     };
 
-    // ★修正: 直接ポータルへ遷移
     function goHome() { 
       window.location.href = "portal.html";
     }
 
-    async function attemptLogin() {
-      const id = document.getElementById("userId").value;
-      const pass = document.getElementById("userPass").value;
-      const errEl = document.getElementById("loginError");
-      if(!id || !pass) { errEl.innerText = "IDとパスワードを入力してください"; errEl.classList.remove('hidden'); return; }
-
-      showLoading("認証中...");
-      try {
-        const dummyEmail = id + "@system.local";
-        const { data: authData, error: authErr } = await db.auth.signInWithPassword({ 
-            email: dummyEmail, 
-            password: pass 
-        });
-        if (authErr) throw new Error("IDまたはパスワードが違います。");
-
-        if (authData && authData.session) {
-            sessionStorage.setItem('sb_access', authData.session.access_token);
-            sessionStorage.setItem('sb_refresh', authData.session.refresh_token);
-        }
-
-        const { data: uData, error: uErr } = await db.from('system_users').select('*').eq('id', id).single();
-        if (uErr || !uData) throw new Error("ユーザー情報の取得に失敗しました。");
-
-        const { data: rData, error: rErr } = await db.from('roles').select('*').eq('id', uData.role_id).single();
-        if (rErr || !rData) throw new Error("権限情報の取得に失敗しました。");
-
-        currentUser = {
-          id: uData.id, name: uData.name, roleId: uData.role_id, branch: uData.branch, roleLevel: uData.role_level,
-          permissions: {
-            editAll: rData.edit_scope === '全店舗', viewAll: rData.view_scope === '全店舗', manageAccess: rData.manage_access === '可能',
-            canAnalytics: rData.can_analytics === '可能', canPlanning: rData.can_planning === '可能', canTracking: rData.can_tracking === '可能',
-            canInventory: rData.can_inventory === '可能', canTasks: rData.can_tasks !== '不可', canHr: rData.can_hr,
-            canNotice: rData.can_notice === '可能', canLog: rData.can_log === '可能', canReport: rData.can_report === '可能'
-          }
-        };
-
-        sessionStorage.setItem('finUser', JSON.stringify(currentUser));
-        db.from('operation_logs').insert([{
-          timestamp: new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().replace("T", " ").substring(0, 19),
-          user_id: currentUser.id, name: currentUser.name, branch: currentUser.branch,
-          category: "ログイン", details: "モバイル版からログイン"
-        }]).then();
-
-        hideLoading();
-        showApp();
-      } catch(e) {
-        hideLoading();
-        errEl.innerText = e.message; errEl.classList.remove('hidden');
-      }
-    }
+    // attemptLogin はPC版 tasks.html では不要ですが、エラー回避のため空関数にしておきます
+    function attemptLogin() {}
 
     function showApp() {
-      document.getElementById('loginScreen').classList.add('hidden');
-      document.getElementById('loginScreen').classList.remove('flex');
-      document.getElementById('mainApp').classList.remove('hidden');
-      document.getElementById('bottomNav').classList.remove('hidden');
-      document.getElementById('btnLogout').classList.remove('hidden');
-      document.getElementById('btnStaffAuth').classList.remove('hidden');
+      // ログインスクリーン（PC版では存在しない要素）へのアクセスをエラー回避
+      const loginScreen = document.getElementById('loginScreen');
+      if(loginScreen) {
+        loginScreen.classList.add('hidden');
+        loginScreen.classList.remove('flex');
+      }
+      
+      document.getElementById('content').classList.remove('hidden');
       document.getElementById('headerBranch').innerText = currentUser.name + " (" + currentUser.branch + ")";
       
-      targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
-      initBranchSelect('tlBranch');
+      // PC版では不要なボトムナビゲーション操作を削除
       
-      const savedStaff = sessionStorage.getItem('finTaskStaff');
-      if (savedStaff) {
-          currentTaskStaff = JSON.parse(savedStaff);
-      } else {
-          currentTaskStaff = null;
-      }
-      updateStaffHeader();
-      
-      loadDashboardData();
-      
+      // タスクのロード開始
       if(currentUser.permissions.canTasks !== false) {
           loadTasks();
           timerInterval = setInterval(updateActiveTimersUI, 1000);
           pollingInterval = setInterval(silentPolling, 15000);
       }
-    }
-
-    function initBranchSelect(selId) {
-       const sel = document.getElementById(selId);
-       sel.innerHTML = "";
-       if (currentUser.permissions.viewAll) {
-          sel.innerHTML += '<option value="全店舗">全店</option>';
-          globalBranches.forEach(b => {
-              sel.innerHTML += `<option value="${b}">${b}</option>`;
-          });
-       } else {
-          sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-       }
     }
 
     function logout() {
@@ -514,281 +464,66 @@
       sessionStorage.removeItem('sb_access');   
       sessionStorage.removeItem('sb_refresh');  
       clearInterval(pollingInterval); clearInterval(timerInterval);
-      document.getElementById('loginScreen').classList.remove('hidden');
-      document.getElementById('loginScreen').classList.add('flex');
-      document.getElementById('mainApp').classList.add('hidden');
-      document.getElementById('bottomNav').classList.add('hidden');
-      document.getElementById('btnLogout').classList.add('hidden');
-      document.getElementById('btnStaffAuth').classList.add('hidden');
-      document.getElementById('headerBranch').innerText = "未ログイン";
-      document.getElementById("userId").value = "";
-      document.getElementById("userPass").value = "";
+      goHome();
+    }
+
+    function switchBranch() { 
+      targetBranch = document.getElementById('branchSelector').value; 
+      
+      // 店舗を変えたら、安全のため操作スタッフはいったんリセットする
+      currentTaskStaff = null; 
+      sessionStorage.removeItem('finTaskStaff');
+      storeStaffs = []; 
+      updateStaffHeader();
+      
+      setTaskFilter('all'); 
+      loadTasks(); 
     }
 
     function switchTab(tab) {
-      ['input', 'timeline', 'tasks'].forEach(t => {
-        const tEl = document.getElementById('tab_' + t);
-        const nEl = document.getElementById('nav_' + t);
-        if(tEl) tEl.classList.add('hidden');
-        if(nEl) nEl.classList.remove('active');
-      });
-      document.getElementById('tab_' + tab).classList.remove('hidden');
-      document.getElementById('nav_' + tab).classList.add('active');
-      window.scrollTo(0, 0);
-
-      if (tab === 'timeline') loadTimeline();
-      if (tab === 'tasks') silentPolling(); 
-    }
-
-    function switchTaskTab(tab) {
       ['routine', 'kanban', 'project', 'routineMaster'].forEach(t => {
-        document.getElementById('mtab_' + t).classList.remove('active', 'text-indigo-400', 'border-indigo-400');
-        document.getElementById('mtab_' + t).classList.add('text-slate-400', 'border-transparent');
-        document.getElementById('view_' + t).classList.add('hidden');
-        document.getElementById('view_' + t).classList.remove('flex');
+        const tBtn = document.getElementById('tab_' + t);
+        const tView = document.getElementById('view_' + t);
+        if(tBtn) tBtn.classList.remove('active');
+        if(tView) {
+            tView.classList.add('hidden');
+            tView.classList.remove('flex', 'md:flex-row'); // flex系のクラスを確実に消す
+        }
       });
-      document.getElementById('mtab_' + tab).classList.add('active', 'text-indigo-400', 'border-indigo-400');
-      document.getElementById('mtab_' + tab).classList.remove('text-slate-400', 'border-transparent');
-      document.getElementById('view_' + tab).classList.remove('hidden');
-      document.getElementById('view_' + tab).classList.add('flex');
+      
+      const activeBtn = document.getElementById('tab_' + tab);
+      const activeView = document.getElementById('view_' + tab);
+      
+      if(activeBtn) activeBtn.classList.add('active');
+      if(activeView) {
+          activeView.classList.remove('hidden');
+          // カンバンは横並びレイアウトが必要なため、特別なクラスを付与
+          if(tab === 'kanban') {
+              activeView.classList.add('flex', 'md:flex-row');
+          } else {
+              activeView.classList.add('flex', 'flex-col');
+          }
+      }
       
       if (tab === 'project') { renderProjects(); }
       else if (tab === 'routineMaster') { renderRoutineMasters(); }
     }
 
-    function showLoading(msg) { document.getElementById('loadingText').innerText = msg; document.getElementById('loadingOverlay').classList.remove('hidden'); }
-    function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+    function showLoading(msg) { document.getElementById('loadingText').innerText = msg; document.getElementById('loading').classList.remove('hidden'); }
+    function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
 
-    function formatNumber(el) { 
-      let v = el.value.replace(/,/g, '').replace(/[^\d]/g, ''); 
-      el.value = v !== '' ? parseInt(v, 10).toLocaleString() : ''; 
-      updatePreview(); 
-    }
-    function unformatNumber(el) { el.value = el.value.replace(/,/g, ''); }
-    function getNum(id) { const el = document.getElementById(id); if (!el || el.value.trim() === "") return ""; const parsed = parseFloat(el.value.replace(/,/g, '')); return isNaN(parsed) ? 0 : parsed; }
-
-    function updatePreview() {
-      const s = Number(getNum('inpSales')) || 0; const p = Number(getNum('inpPurchase')) || 0; const cL = Number(getNum('inpCashless')) || 0;
-      const fee = cL * 0.03; const cash = s - p - fee;
-      const cEl = document.getElementById('previewCash');
-      const fEl = document.getElementById('previewFee');
-      cEl.innerText = Math.round(cash).toLocaleString() + ' 円';
-      fEl.innerText = `内 手数料: -${Math.round(fee).toLocaleString()}円`;
-      if (cash < 0) cEl.className = "text-3xl font-mono font-black text-rose-500 leading-tight"; 
-      else cEl.className = "text-3xl font-mono font-black text-emerald-400 leading-tight";
-    }
-
-    async function loadDashboardData() {
-      showLoading("データ同期中...");
-      const tBranch = currentUser.permissions.editAll ? "秋葉原店" : currentUser.branch;
-      
-      try {
-          const [yyyy, mm] = currentMonthStr.split('-');
-          const lastDay = new Date(yyyy, mm, 0).getDate();
-          
-          const { data: budgetData, error: budgetErr } = await db.from('fin_monthly_targets')
-              .select('*')
-              .eq('target_month', currentMonthStr)
-              .eq('branch', tBranch);
-              
-          if (budgetErr) throw budgetErr;
-
-          if (budgetData && budgetData.length > 0) {
-              storeTarget = {
-                  sales: Number(budgetData[0].target_sales) || 0,
-                  cash: Number(budgetData[0].target_cash) || 0,
-                  margin: Number(budgetData[0].margin_rate) || 0
-              };
-          } else {
-              storeTarget = { sales: 0, margin: 0, cash: 0 };
-          }
-
-          document.getElementById('dashMonthStr').innerText = currentMonthStr.replace("-", "/");
-
-          const { data, error } = await db.from('daily_records')
-              .select('*')
-              .gte('target_date', `${currentMonthStr}-01`)
-              .lte('target_date', `${currentMonthStr}-${lastDay}`)
-              .eq('branch', tBranch);
-              
-          if (error) throw error;
-
-          trackingRecords = data.map(r => ({
-              date: r.target_date.substring(0, 10),
-              sales: r.sales || "",
-              cashless: r.cashless || "",
-              discount: r.discount || "",
-              grossProfitRate: r.margin_rate || "",
-              purchase: r.purchase || "",
-              workHours: r.work_hours || "",
-              memoCount: r.memo_count || "",
-              memoSales: r.memo_sales || "",
-              memoPurchase: r.memo_purchase || "",
-              memoDaily: r.memo_daily || "",
-              cashFlow: r.cash_flow || 0
-          }));
-
-          let sumCash = 0; trackingRecords.forEach(r => { sumCash += r.cashFlow; });
-          const mTarget = storeTarget.cash || 0; const progRate = mTarget > 0 ? (sumCash / mTarget) * 100 : 0;
-          
-          document.getElementById('dashSumCash').innerText = Math.round(sumCash).toLocaleString() + " 円";
-          document.getElementById('dashTarget').innerText = Math.round(mTarget).toLocaleString() + " 円";
-          document.getElementById('dashProgRate').innerText = progRate.toFixed(1) + " %";
-          document.getElementById('dashProgRate').className = "text-2xl font-black " + (progRate >= 100 ? "text-emerald-400" : "text-white");
-          
-          const todayDate = new Date(todayStr); const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate(); 
-          const remainDays = daysInMonth - todayDate.getDate() + 1; const shortfall = mTarget - sumCash;
-          const runrate = remainDays > 0 ? shortfall / remainDays : 0;
-          
-          const rrEl = document.getElementById('dashRunrate');
-          if (mTarget === 0) rrEl.innerText = "-";
-          else if (runrate <= 0) { rrEl.innerText = "達成!"; rrEl.className = "font-mono font-black text-sm text-emerald-400"; }
-          else { rrEl.innerText = Math.round(runrate).toLocaleString() + " 円"; rrEl.className = "font-mono font-black text-sm text-sky-400"; }
-          
-          loadDataForSelectedDate();
-          hideLoading();
-      } catch(e) {
-          hideLoading();
-          alert("通信エラーが発生しました: " + e.message);
-          if (e.message && (e.message.includes('JWT') || e.message.includes('Auth'))) {
-              logout(); 
-          }
-      }
-    }
-
-    function loadDataForSelectedDate() {
-      const record = trackingRecords.find(r => r.date === todayStr);
-      if (record) {
-        document.getElementById('inpSales').value = (record.sales !== "") ? Number(record.sales).toLocaleString() : "";
-        document.getElementById('inpCashless').value = (record.cashless !== "") ? Number(record.cashless).toLocaleString() : "";
-        document.getElementById('inpDiscount').value = (record.discount !== "") ? Number(record.discount).toLocaleString() : "";
-        document.getElementById('inpMarginRate').value = (record.grossProfitRate !== "") ? record.grossProfitRate : "";
-        document.getElementById('inpPurchase').value = (record.purchase !== "") ? Number(record.purchase).toLocaleString() : "";
-        document.getElementById('inpWorkHours').value = (record.workHours !== "") ? record.workHours : "";
-        document.getElementById('inpCount').value = record.memoCount || ""; document.getElementById('inpMemoSales').value = record.memoSales || "";
-        document.getElementById('inpMemoPurchase').value = record.memoPurchase || ""; document.getElementById('inpMemoDaily').value = record.memoDaily || "";
-      } else {
-        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily'].forEach(id => {
-            const el = document.getElementById(id); if (el) el.value = '';
-        });
-      }
-      updatePreview();
-    }
-
-    async function saveRecord() {
-      const tBranch = currentUser.permissions.editAll ? "秋葉原店" : currentUser.branch;
-      const grossSalesNum = Number(getNum('inpSales')) || 0;
-      const discountNum = Number(getNum('inpDiscount')) || 0;
-      const purchaseNum = Number(getNum('inpPurchase')) || 0;
-      const marginRateNum = Number(getNum('inpMarginRate')) || 0;
-      const cashlessNum = Number(getNum('inpCashless')) || 0;
-      const workHoursNum = Number(getNum('inpWorkHours')) || 0;
-
-      const netSalesNum = grossSalesNum - discountNum;
-      const feeRate = 3.0; 
-      const cashlessFee = cashlessNum * (feeRate / 100);
-      const grossProfit = netSalesNum * (marginRateNum / 100);
-      const cashFlow = netSalesNum - purchaseNum - cashlessFee;
-      const cogs = netSalesNum - grossProfit; 
-      const invChange = purchaseNum - cogs;
-      const laborProd = workHoursNum > 0 ? grossProfit / workHoursNum : 0;
-
-      showLoading("保存中...");
-      try {
-        const { error } = await db.from('daily_records').upsert({
-            target_date: todayStr,
-            branch: tBranch,
-            author: currentUser.name,
-            sales: grossSalesNum,
-            cashless: cashlessNum,
-            discount: discountNum,
-            margin_rate: marginRateNum,
-            purchase: purchaseNum,
-            work_hours: workHoursNum,
-            memo_sales: document.getElementById('inpMemoSales').value || "",
-            memo_purchase: document.getElementById('inpMemoPurchase').value || "",
-            memo_daily: document.getElementById('inpMemoDaily').value || "",
-            memo_count: document.getElementById('inpCount').value || "",
-            gross_profit: grossProfit,
-            cogs: cogs,
-            cash_flow: cashFlow,
-            inv_change: invChange,
-            labor_prod: laborProd,
-            cashless_fee_rate: feeRate,
-            cashless_fee: cashlessFee
-        }, { onConflict: 'target_date,branch' });
-
-        if (error) throw error;
-        hideLoading();
-        alert("日次実績の保存が完了しました！");
-        loadDashboardData();
-      } catch(err) {
-        hideLoading();
-        alert("保存エラー: " + err.message);
-      }
-    }
-
-    async function loadTimeline() {
-      const container = document.getElementById('timelineContainer'); 
-      container.innerHTML = '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-amber-500"></i></div>';
-      
-      const mStr = document.getElementById('tlMonth').value; 
-      const bStr = document.getElementById('tlBranch').value || "全店舗";
-
-      try {
-          let query = db.from('daily_records').select('*');
-          if (mStr) {
-              const [yyyy, mm] = mStr.split('-');
-              const lastDay = new Date(yyyy, mm, 0).getDate();
-              query = query.gte('target_date', `${mStr}-01`).lte('target_date', `${mStr}-${lastDay}`);
-          }
-          if (bStr !== "全店舗") query = query.eq('branch', bStr);
-          query = query.order('target_date', { ascending: false });
-          
-          const { data: reports, error } = await query;
-          if (error) throw error;
-
-          if(!reports || reports.length === 0) { 
-              container.innerHTML = '<div class="bg-slate-900 p-6 text-center rounded-xl border border-slate-800"><p class="text-slate-500 font-bold text-xs">データがありません。</p></div>'; 
-              return; 
-          }
-
-          let html = "";
-          reports.forEach((r, i) => {
-            const cashColor = r.cash_flow >= 0 ? "text-emerald-400" : "text-rose-400"; 
-            const cashSign = r.cash_flow >= 0 ? "+" : "";
-            const feeLabel = r.cashless_fee > 0 ? `<div class="text-[9px] text-slate-500 mt-1 mb-2">内 決済手数料: -${Math.round(r.cashless_fee).toLocaleString()}円</div>` : "";
-            const block = (title, text) => { if (!text) return ""; return `<div class="mt-2"><p class="text-[10px] text-sky-400 font-bold mb-0.5">■ ${title}</p><p class="bg-slate-950 p-2 rounded-lg border border-slate-800 whitespace-pre-wrap text-slate-300 text-xs">${text}</p></div>`; };
-            const statsBlock = `<div class="grid grid-cols-2 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 mb-4 shadow-inner"><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">純売上高</p><p class="text-sm font-mono text-sky-400 font-bold">${r.sales != null ? Math.round(r.sales).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">買取高</p><p class="text-sm font-mono text-rose-400 font-bold">${r.purchase != null ? Math.round(r.purchase).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">ｷｬｯｼｭﾚｽ</p><p class="text-sm font-mono text-slate-300 font-bold">${r.cashless != null ? Math.round(r.cashless).toLocaleString() : "-"}<span class="text-[10px] ml-0.5">円</span></p></div><div><p class="text-[9px] text-slate-500 font-bold mb-0.5">粗利率</p><p class="text-sm font-mono text-emerald-400 font-bold">${r.margin_rate != null ? r.margin_rate : "-"}<span class="text-[10px] ml-0.5">%</span></p></div></div>`;
-            const reportId = 'mob_report_' + i;
-            
-            const cleanDateStr = r.target_date ? String(r.target_date).substring(0, 10).replace(/-/g, '/') : "";
-            const dObj = new Date(r.created_at);
-            const tsStr = `${String(dObj.getMonth() + 1).padStart(2, '0')}/${String(dObj.getDate()).padStart(2, '0')} ${String(dObj.getHours()).padStart(2, '0')}:${String(dObj.getMinutes()).padStart(2, '0')}`;
-
-            html += `<div class="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden transition-all"><div class="p-4 cursor-pointer" onclick="toggleTimeline('${reportId}')"><div class="flex justify-between items-start mb-2"><div><p class="font-black text-white text-sm">${r.branch} <span class="text-[10px] text-slate-400 font-normal ml-1">/ ${r.author}</span></p><p class="text-[9px] text-slate-500 font-mono mt-0.5">対象: ${cleanDateStr}</p></div><div class="text-right"><p class="text-[9px] text-slate-500 font-bold mb-0.5">現金増減</p><p class="${cashColor} font-mono font-bold text-sm">${cashSign}${Math.round(r.cash_flow).toLocaleString()}<span class="text-[9px]">円</span></p></div></div><div class="flex justify-between items-center text-[10px]"><div class="text-slate-400 font-mono">売: ${r.sales != null ? Math.round(r.sales).toLocaleString() : "-"}円 / 買: ${r.purchase != null ? Math.round(r.purchase).toLocaleString() : "-"}円</div><i class="fa-solid fa-chevron-down text-slate-600 transition-transform duration-300" id="icon_${reportId}"></i></div></div><div id="${reportId}" class="h-0 timeline-detail px-4 pb-0 bg-slate-900/50 border-t border-slate-800/0"><div class="pt-3 pb-4">${statsBlock}${feeLabel}${block("定量データ", r.memo_count)}${block("高額販売", r.memo_sales)}${block("高額買取", r.memo_purchase)}${block("業務報告・反省点", r.memo_daily)}<div class="text-right mt-2"><span class="text-[9px] text-slate-600 bg-slate-950 px-2 py-1 rounded">入力: ${tsStr}</span></div></div></div></div>`;
-          });
-          container.innerHTML = html;
-      } catch (err) {
-          container.innerHTML = `<p class="text-rose-400 text-center font-bold text-sm">通信エラー: ${err.message}</p>`;
-      }
-    }
-
-    function toggleTimeline(id) {
-      const el = document.getElementById(id); const icon = document.getElementById('icon_' + id);
-      if (el.classList.contains('h-0')) { el.classList.remove('h-0', 'pb-0', 'border-slate-800/0'); el.classList.add('h-auto', 'border-slate-800'); if (icon) icon.classList.add('rotate-180'); } 
-      else { el.classList.add('h-0', 'pb-0', 'border-slate-800/0'); el.classList.remove('h-auto', 'border-slate-800'); if (icon) icon.classList.remove('rotate-180'); }
-    }
+    // 以下、タスク関連のロジックは正常に動くようになっています
+    // ==========================================
 
     function updateStaffHeader() {
         const el = document.getElementById('currentStaffName');
         const btn = document.getElementById('btnStaffAuth');
-        if (!el || !btn) return;
+        if (!el) return; // btn が無くても続行
         
         if (currentTaskStaff) { 
             let badge = currentTaskStaff.level === "店長・副店長" ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
             el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
-            btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
+            if(btn) btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
             
             const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
             const pjBtn = document.getElementById('btnCreateProject');
@@ -798,8 +533,9 @@
             }
         } else { 
             el.innerHTML = "未設定 (タップして認証)"; 
-            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse"; 
-            btn.innerHTML = `<i class="fa-solid fa-user-lock mr-1"></i>本人認証`; 
+            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse cursor-pointer"; 
+            el.onclick = openStaffAuthModal; // テキスト自体をクリック可能にする
+            if(btn) btn.innerHTML = `<i class="fa-solid fa-user-lock mr-1"></i>本人認証`; 
             const pjBtn = document.getElementById('btnCreateProject');
             if(pjBtn) pjBtn.classList.add('hidden');
         }
@@ -906,44 +642,33 @@
         const modals = ['addTaskModal', 'addProjectModal', 'addSubTaskModal', 'staffAuthModal', 'taskDetailModal']; 
         let isAnyModalOpen = modals.some(id => { const m = document.getElementById(id); return m && !m.classList.contains('hidden'); }); 
         if (isAnyModalOpen) return; 
-        const isTasksTab = !document.getElementById('tab_tasks') || !document.getElementById('tab_tasks').classList.contains('hidden'); 
+        
+        // PC版のタスク画面が開いているかをチェック
+        const isTasksTab = !document.getElementById('content').classList.contains('hidden'); 
         if (currentUser && isTasksTab) loadTasks(true); 
     }
 
     async function loadTasks(isSilent = false) {
-      if (!isSilent) document.getElementById('loading').classList.remove('hidden');
+      if (!isSilent) showLoading("タスク同期中...");
       const tDate = document.getElementById('targetDate').value;
       const requestTime = new Date().getTime(); 
 
       try {
           if (requestTime < lastActionTime) return; 
 
-          const [resTasks, resProj, resRM] = await Promise.all([
+          const [resTasks, resProj, resRM, resStaffs] = await Promise.all([
               db.from('tasks').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
               db.from('projects').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
-              db.from('routine_master').select('*').eq('branch', targetBranch).eq('status', 'active')
+              db.from('routine_master').select('*').eq('branch', targetBranch).eq('status', 'active'),
+              db.from('store_staffs').select('*').eq('branch', targetBranch)
           ]);
 
           if (resTasks.error) throw resTasks.error;
           if (resProj.error) throw resProj.error;
           if (resRM.error) throw resRM.error;
+          if (resStaffs.error) throw resStaffs.error;
 
-          // ★修正: GAS独自の処理を排除し、Supabase経由で取得済みの店舗マスタ(globalBranches)をセレクトボックスに適用
-          const sel = document.getElementById('branchSelector'); 
-          if (sel && sel.options.length <= 1 && globalBranches.length > 0) {
-              sel.innerHTML = "";
-              if (currentUser.permissions.viewAll) {
-                  sel.innerHTML += '<option value="全店舗">全店</option>';
-                  globalBranches.forEach(b => { 
-                      const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
-                      if(b === targetBranch) opt.selected = true; 
-                      sel.appendChild(opt); 
-                  });
-              } else {
-                  sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-                  sel.disabled = true;
-              }
-          }
+          storeStaffs = resStaffs.data || [];
 
           const activeRoutineNames = resRM.data.map(rm => rm.name);
 
@@ -1061,12 +786,11 @@
           if(!document.getElementById('view_routineMaster').classList.contains('hidden')) renderRoutineMasters();
 
           if (!isSilent) {
-              document.getElementById('loading').classList.add('hidden'); 
-              document.getElementById('content').classList.remove('hidden');
+              hideLoading();
           }
       } catch (err) {
           if (!isSilent) {
-              document.getElementById('loading').classList.add('hidden'); 
+              hideLoading(); 
               alert("通信エラー: " + err.message);
               if (err.message && (err.message.includes('JWT') || err.message.includes('Auth'))) {
                   logout();
@@ -1211,6 +935,293 @@
           loadTasks(true); 
       } catch(err) {
           alert("通信エラー: " + err.message); loadTasks(true);
+      }
+    }
+
+    function renderTasks() {
+      activeTimers = {};
+      const routineContainer = document.getElementById('routineList'); const kanbanTodo = document.getElementById('kanbanTodo'); const kanbanDoing = document.getElementById('kanbanDoing'); const kanbanDone = document.getElementById('kanbanDone');
+      routineContainer.innerHTML = ""; kanbanTodo.innerHTML = ""; kanbanDoing.innerHTML = ""; kanbanDone.innerHTML = "";
+      let cTodo = 0, cDoing = 0, cDone = 0, routineCount = 0;
+
+      const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
+      if (isReadOnly) {
+        document.getElementById('readOnlyBadge').classList.remove('hidden');
+        document.getElementById('btnAddTask').classList.add('hidden');
+      } else {
+        document.getElementById('readOnlyBadge').classList.add('hidden');
+        document.getElementById('btnAddTask').classList.remove('hidden');
+      }
+
+      tasksData.forEach(task => {
+        if (taskFilterMode === 'mine' && currentTaskStaff) {
+            const isAssignedToMe = String(task.assignee || "").includes(currentTaskStaff.name);
+            const amIRealDoer = task.realAssignee === currentTaskStaff.name;
+            const isUnassigned = task.assignee === '未定' || task.assignee === '';
+            
+            if (!isAssignedToMe && !amIRealDoer && !isUnassigned) {
+                return; 
+            }
+        }
+
+        let displayAssigneeHtml = "";
+        if (task.status === "todo") {
+            displayAssigneeHtml = `<span class="text-[10px] font-bold bg-slate-900 border border-slate-700 text-slate-400 px-2 py-1 rounded"><i class="fa-solid fa-users mr-1"></i>${task.assignee || '未定'}</span>`;
+        } else {
+            const doerName = task.realAssignee ? task.realAssignee : "不明";
+            displayAssigneeHtml = `<span class="text-[10px] font-bold bg-indigo-900/50 border border-indigo-500 text-indigo-300 px-2 py-1 rounded"><i class="fa-solid fa-user-check mr-1"></i>${doerName} が対応</span>`;
+        }
+
+        let alertBadgeHtml = "";
+        let cardBorderClass = "border-slate-800";
+        let cardBgClass = "bg-slate-950";
+        
+        if (task.type === 'routine' && task.isPastUnachieved) {
+            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-triangle-exclamation"></i>過去の未達成を引き継ぎ</div>`;
+            cardBorderClass = "border-rose-900/50";
+        } else if (task.type === 'kanban' && task.date < todayStr && task.status !== 'done') {
+            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-clock"></i>期限超過（過去のタスク）</div>`;
+            cardBorderClass = "border-rose-900/50";
+            cardBgClass = "bg-rose-950/10";
+        }
+
+        let memoIconHtml = task.memo ? `<span class="text-amber-500 text-[10px] ml-2" title="メモあり"><i class="fa-regular fa-note-sticky"></i> メモ</span>` : "";
+        let clickAction = `onclick="openTaskDetailModal('${task.id}')"`;
+
+        if (task.type === 'routine') {
+          routineCount++;
+          let statusIcon = '<i class="fa-regular fa-square text-slate-500 text-2xl"></i>';
+          let timerClass = "text-slate-500"; 
+          let totalSec = parseInt(task.elapsedSeconds) || 0;
+          
+          if (task.status === 'doing') {
+            statusIcon = '<i class="fa-solid fa-spinner fa-spin text-indigo-400 text-2xl"></i>';
+            timerClass = "timer-active font-black text-lg";
+            if (task.startTime && !isNaN(task.startTime) && task.startTime > 0) { 
+                activeTimers[task.id] = { startTime: task.startTime, elapsedSeconds: totalSec }; 
+                totalSec += Math.floor((new Date().getTime() - task.startTime) / 1000); 
+            } else {
+                totalSec = 0;
+            }
+          } else if (task.status === 'done') {
+            statusIcon = '<i class="fa-solid fa-check-square text-emerald-500 text-2xl"></i>';
+            timerClass = "text-emerald-500 font-black";
+          }
+          if (totalSec < 0) totalSec = 0;
+          let timeStr = formatTime(totalSec);
+          let deleteBtn = !isReadOnly ? `<button onclick="deleteTask('${task.id}'); event.stopPropagation();" class="text-slate-600 hover:text-rose-400 px-2 shrink-0" title="今日だけスキップ"><i class="fa-solid fa-trash"></i></button>` : '';
+          
+          routineContainer.innerHTML += `
+            <div class="flex items-center justify-between p-4 sm:p-5 rounded-2xl ${cardBgClass} border ${cardBorderClass} task-card shadow-sm cursor-pointer" ${clickAction}>
+              <div class="flex items-start gap-4 overflow-hidden w-full">
+                <div class="shrink-0 mt-1">${statusIcon}</div>
+                <div class="flex flex-col truncate w-full">
+                  ${alertBadgeHtml}
+                  <span class="text-base font-black text-slate-200 truncate ${task.status === 'done' ? 'line-through opacity-50' : ''}">${task.name}${memoIconHtml}</span>
+                  <div class="flex items-center gap-3 mt-1.5">
+                    ${displayAssigneeHtml}
+                    <span class="text-[12px] font-mono ${timerClass}"><i class="fa-solid fa-stopwatch mr-1"></i><span id="timer_${task.id}">${timeStr}</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 ml-2 pl-2 border-l border-slate-800 shrink-0">
+                ${deleteBtn}
+              </div>
+            </div>`;
+        } else if (task.type === 'kanban') {
+          let timerClass = "text-slate-500"; 
+          let totalSec = parseInt(task.elapsedSeconds) || 0;
+          
+          if (task.status === 'todo') { 
+              cTodo++; 
+          } 
+          else if (task.status === 'doing') { 
+              cDoing++; timerClass = "timer-active font-black text-base"; 
+              if (task.startTime && !isNaN(task.startTime) && task.startTime > 0) { 
+                  activeTimers[task.id] = { startTime: task.startTime, elapsedSeconds: totalSec }; 
+                  totalSec += Math.floor((new Date().getTime() - task.startTime) / 1000); 
+              } else {
+                  totalSec = 0;
+              }
+          } 
+          else if (task.status === 'done') { 
+              cDone++; timerClass = "text-emerald-500 font-black text-sm"; 
+          }
+          if (totalSec < 0) totalSec = 0;
+          let timeStr = formatTime(totalSec);
+          let deleteBtn = !isReadOnly ? `<button onclick="deleteTask('${task.id}'); event.stopPropagation();" class="absolute top-3 right-3 text-slate-600 hover:text-rose-400 hidden group-hover:block"><i class="fa-solid fa-trash text-xs"></i></button>` : '';
+          
+          let createdStr = getCreatedAt(task.id);
+          
+          let cardHtml = `
+            <div class="${cardBgClass} p-4 rounded-2xl border ${cardBorderClass} shadow-lg task-card flex flex-col relative group cursor-pointer" ${clickAction}>
+              ${deleteBtn}
+              <div class="flex justify-between items-start mb-1">
+                <p class="text-[9px] text-slate-500 font-mono"><i class="fa-solid fa-pen-nib mr-1"></i>作成: ${createdStr}</p>
+              </div>
+              ${alertBadgeHtml}
+              <p class="text-sm font-bold text-slate-200 leading-snug mb-3 pr-4 ${task.status==='done'?'line-through opacity-50':''}">${task.name}${memoIconHtml}</p>
+              <div class="flex justify-between items-end mt-auto pt-2 border-t border-slate-800/50">
+                ${displayAssigneeHtml}
+                <span class="text-[11px] font-mono ${timerClass}"><i class="fa-solid fa-stopwatch mr-1"></i><span id="timer_${task.id}">${timeStr}</span></span>
+              </div>
+            </div>
+          `;
+          
+          if (task.status === 'todo') kanbanTodo.innerHTML += cardHtml; else if (task.status === 'doing') kanbanDoing.innerHTML += cardHtml; else if (task.status === 'done') kanbanDone.innerHTML += cardHtml;
+        }
+      });
+
+      if(routineCount === 0) routineContainer.innerHTML = '<p class="text-center text-xs text-slate-500 py-4 font-bold">表示するルーティン業務はありません。</p>';
+      if(cTodo === 0) kanbanTodo.innerHTML = '<div class="bg-slate-950/50 border border-slate-800 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-slate-600">タスクなし</p></div>';
+      if(cDoing === 0) kanbanDoing.innerHTML = '<div class="bg-indigo-950/30 border border-indigo-900/30 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-indigo-900/50">対応中なし</p></div>';
+      if(cDone === 0) kanbanDone.innerHTML = '<div class="bg-emerald-950/30 border border-emerald-900/30 border-dashed rounded-xl p-6 flex justify-center items-center h-24"><p class="text-[10px] font-bold text-emerald-900/50">完了なし</p></div>';
+
+      document.getElementById('cntTodo').innerText = cTodo; document.getElementById('cntDoing').innerText = cDoing; document.getElementById('cntDone').innerText = cDone;
+    }
+
+    let currentDetailTask = null;
+
+    function openTaskDetailModal(taskId) {
+      const task = tasksData.find(t => t.id === taskId);
+      if (!task) return;
+      currentDetailTask = task;
+
+      document.getElementById('detailTaskName').innerText = task.name;
+      document.getElementById('detailTaskAssignee').innerText = task.assignee || '未定';
+      
+      const statusEl = document.getElementById('detailTaskStatus');
+      const actionContainer = document.getElementById('detailTaskActions');
+      let statusHtml = '';
+      let actionHtml = '';
+
+      if (task.status === 'todo') {
+          statusHtml = `<span class="bg-slate-800 text-slate-400 px-3 py-1 rounded-xl text-xs font-bold border border-slate-700">未対応</span>`;
+          actionHtml = `<button onclick="updateTaskDetail('doing')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-play"></i> 作業を開始する</button>`;
+      } else if (task.status === 'doing') {
+          const doerName = task.realAssignee ? task.realAssignee : "不明";
+          statusHtml = `<span class="bg-indigo-900/50 text-indigo-400 px-3 py-1 rounded-xl text-xs font-bold border border-indigo-500 animate-pulse">対応中 (${doerName})</span>`;
+          let isOtherPersonDoing = task.realAssignee && (!currentTaskStaff || task.realAssignee !== currentTaskStaff.name);
+          
+          if (isOtherPersonDoing) {
+              actionHtml = `<button onclick="updateTaskDetail('doing')" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-people-arrows"></i> 自分が引き継ぐ</button>`;
+          } else {
+              actionHtml = `
+                <div class="flex gap-3 w-full">
+                  <button onclick="updateTaskDetail('todo')" class="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white font-bold py-4 rounded-xl border border-slate-700 transition-colors flex justify-center items-center gap-1"><i class="fa-solid fa-pause"></i> 中断</button>
+                  <button onclick="updateTaskDetail('done')" class="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg transition-colors flex justify-center items-center gap-2"><i class="fa-solid fa-check"></i> 完了にする</button>
+                </div>
+              `;
+          }
+      } else if (task.status === 'done') {
+          statusHtml = `<span class="bg-emerald-900/50 text-emerald-400 px-3 py-1 rounded-xl text-xs font-bold border border-emerald-500">完了</span>`;
+          let canRevert = !currentTaskStaff || task.realAssignee === (currentTaskStaff ? currentTaskStaff.name : null);
+          if (canRevert) {
+              actionHtml = `<button onclick="updateTaskDetail('todo')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-500 hover:text-white font-bold py-3 rounded-xl border border-slate-700 transition-colors text-sm">未完了に戻す</button>`;
+          } else {
+              actionHtml = `<div class="text-center text-slate-500 text-xs font-bold py-2">このタスクは完了済みです</div>`;
+          }
+      }
+
+      statusEl.innerHTML = statusHtml;
+      actionContainer.innerHTML = actionHtml;
+
+      const isManager = (currentUser.permissions.editAll) || (currentTaskStaff && currentTaskStaff.level === "店長・副店長");
+      const isRealAssignee = task.realAssignee && currentTaskStaff && task.realAssignee === currentTaskStaff.name;
+      const canEditMemo = isManager || isRealAssignee;
+      
+      const memoEl = document.getElementById('detailTaskMemo');
+      const saveBtn = document.getElementById('btnSaveTaskMemo');
+      memoEl.value = task.memo || '';
+      
+      if (canEditMemo) {
+          memoEl.readOnly = false;
+          memoEl.placeholder = "なぜ未着手なのか、どこまで進んでいるか等を自由に記入してください...";
+          saveBtn.classList.remove('hidden');
+      } else {
+          memoEl.readOnly = true;
+          memoEl.placeholder = "メモを編集する権限がありません（着手中の担当者または店長・副店長のみ編集可能）";
+          saveBtn.classList.add('hidden');
+      }
+
+      document.getElementById('taskDetailModal').classList.replace('hidden', 'flex');
+    }
+
+    function closeTaskDetailModal() {
+        document.getElementById('taskDetailModal').classList.replace('flex', 'hidden');
+        currentDetailTask = null;
+    }
+
+    async function updateTaskDetail(newStatus = null) {
+      if (!currentDetailTask) return;
+      
+      const memo = document.getElementById('detailTaskMemo').value;
+      const taskId = currentDetailTask.id;
+      const targetStatus = newStatus || currentDetailTask.status; 
+      
+      // 変更前の状態を記憶
+      const originalStatus = currentDetailTask.status; 
+      
+      if (newStatus && targetStatus !== originalStatus && !requireStaffAuth()) return;
+      
+      lastActionTime = new Date().getTime(); 
+      
+      let upd = { 
+          status: targetStatus, 
+          memo: memo,
+          updated_at: new Date().toISOString() 
+      };
+
+      let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
+
+      // タイマーの加算計算
+      if (originalStatus === 'doing' && targetStatus !== 'doing') {
+          let st = currentDetailTask.startTime;
+          if (st && !isNaN(st) && st > 0) {
+              const diffSec = Math.floor((new Date().getTime() - st) / 1000);
+              currentTotalSec += diffSec;
+          }
+          currentDetailTask.elapsedSeconds = currentTotalSec;
+          upd.elapsed_seconds = currentTotalSec;
+      }
+
+      // 「変更前の状態(originalStatus)」と比較して名前と時間をセットする
+      if (targetStatus === "doing" && originalStatus !== 'doing') {
+          if (!currentTaskStaff || !currentTaskStaff.name) {
+              alert("スタッフの認証が切れています。右上のボタンから再度ご自身の名前を選択してください。");
+              openStaffAuthModal();
+              return; 
+          }
+          currentDetailTask.realAssignee = currentTaskStaff.name;
+          currentDetailTask.startTime = new Date().getTime();
+          upd.real_assignee = currentDetailTask.realAssignee;
+          upd.start_time = currentDetailTask.startTime;
+
+      } else if (targetStatus === "todo" && originalStatus === 'doing') {
+          currentDetailTask.realAssignee = "";
+          currentDetailTask.startTime = null;
+          upd.real_assignee = "";
+          upd.start_time = null;
+      }
+
+      // すべての判定が終わった後に状態を最新化する
+      currentDetailTask.status = targetStatus;
+      currentDetailTask.memo = memo;
+
+      const actionContainer = document.getElementById('detailTaskActions');
+      actionContainer.innerHTML = '<div class="w-full text-center py-4 text-sky-400 font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>更新中...</div>';
+      document.getElementById('btnSaveTaskMemo').classList.add('hidden');
+
+      try {
+          const { error } = await db.from('tasks').update(upd).eq('id', taskId);
+          if (error) throw error;
+          
+          closeTaskDetailModal();
+          loadTasks(true); 
+      } catch(err) {
+          alert("通信エラー: " + err.message); 
+          closeTaskDetailModal();
+          loadTasks(true);
       }
     }
 
