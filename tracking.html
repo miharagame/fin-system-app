@@ -62,10 +62,7 @@
       <div class="lg:col-span-5 flex flex-col gap-6">
         
         <div class="bg-slate-900 p-6 border border-slate-800 rounded-3xl shadow-xl relative">
-          <div id="readOnlyBadgeObj" class="hidden absolute top-4 right-4 bg-rose-500/20 text-rose-400 text-[10px] font-bold px-2 py-1 rounded border border-rose-500/50">
-            <i class="fa-solid fa-lock mr-1"></i><span id="readOnlyTextObj">閲覧専用</span>
-          </div>
-          
+        
           <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-4">
             <div class="flex items-center">
               <h2 class="font-bold text-sky-400">当月目標ステータス <span id="lblTargetMonth" class="text-xs text-slate-400 ml-2"></span></h2>
@@ -892,10 +889,8 @@
       if (confirmedStats) {
           isEditable = false;
           document.getElementById('readOnlyText').innerText = "本部確定済ロック";
-          document.getElementById('readOnlyTextObj').innerText = "本部確定済ロック";
       } else {
           document.getElementById('readOnlyText').innerText = "閲覧専用";
-          document.getElementById('readOnlyTextObj').innerText = "閲覧専用";
       }
       
       const inputs = ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily', 'saveBtn'];
@@ -906,11 +901,9 @@
       
       if (!isEditable) { 
           document.getElementById('readOnlyBadge').classList.remove('hidden'); 
-          document.getElementById('readOnlyBadgeObj').classList.remove('hidden'); 
       } 
       else { 
           document.getElementById('readOnlyBadge').classList.add('hidden'); 
-          document.getElementById('readOnlyBadgeObj').classList.add('hidden'); 
       }
     }
 
