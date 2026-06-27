@@ -661,25 +661,26 @@
 
         if (recordErr) throw recordErr;
 
+        // ★修正: 数値が0の場合に空文字になるのを防ぐため、論理OR(||)からNullish Coalescing(??)に変更
         allTrackingData = sbData.map(r => ({
           date: r.target_date ? String(r.target_date).substring(0, 10) : "",
           branch: r.branch,
           author: r.author,
-          sales: r.sales || "",
-          cashless: r.cashless || "",
-          discount: r.discount || "",
-          grossProfitRate: r.margin_rate || "",
-          purchase: r.purchase || "",
-          workHours: r.work_hours || "",
+          sales: r.sales ?? "",
+          cashless: r.cashless ?? "",
+          discount: r.discount ?? "",
+          grossProfitRate: r.margin_rate ?? "",
+          purchase: r.purchase ?? "",
+          workHours: r.work_hours ?? "",
           memoSales: r.memo_sales || "",
           memoPurchase: r.memo_purchase || "",
           memoDaily: r.memo_daily || "",
           memoCount: r.memo_count || "",
-          cogs: r.cogs || 0,
-          cashFlow: r.cash_flow || 0,
-          invChange: r.inv_change || 0,
-          laborProd: r.labor_prod || 0,
-          cashlessFee: r.cashless_fee || 0,
+          cogs: r.cogs ?? 0,
+          cashFlow: r.cash_flow ?? 0,
+          invChange: r.inv_change ?? 0,
+          laborProd: r.labor_prod ?? 0,
+          cashlessFee: r.cashless_fee ?? 0,
           timestamp: r.created_at
         }));
 
