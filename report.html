@@ -136,6 +136,17 @@
           </div>
         </div>
 
+        <!-- 証拠画像のアップロード -->
+        <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 shadow-inner mt-4">
+          <label class="text-xs text-slate-400 mb-2 block font-bold"><i class="fa-solid fa-camera mr-1"></i>証拠画像 (任意)</label>
+          <input type="file" id="rptImage" accept="image/jpeg, image/png, image/webp" class="input-box text-sm py-2 bg-slate-900 cursor-pointer" onchange="previewImage(this)">
+          <div id="imagePreviewContainer" class="hidden mt-3 relative inline-block">
+            <img id="imagePreview" class="max-w-full h-auto max-h-48 rounded-xl border border-slate-700 shadow-sm" src="">
+            <button onclick="clearImage()" class="absolute -top-2 -right-2 bg-rose-600 hover:bg-rose-500 text-white w-6 h-6 rounded-full flex justify-center items-center shadow-lg transition-colors" title="画像を削除"><i class="fa-solid fa-xmark text-xs"></i></button>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-2">※通信量を抑えるため、自動的に画質を最適化して安全な領域に保存します。</p>
+        </div>
+
         <button id="btnSubmit" onclick="submitReport()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-4 text-lg">
           <i class="fa-solid fa-paper-plane"></i> 本部・店長へ送信する
         </button>
@@ -239,6 +250,7 @@
 
     let currentUser = null, reportsData = [];
     let currentReport = null;
+    let selectedImageFile = null;
     
     function cleanShopName(x) {
         let name = String(x || "").replace(/Bee本舗/gi, '').trim();
@@ -325,7 +337,6 @@
         document.getElementById('content').classList.remove('hidden');
         document.getElementById('content').classList.add('flex');
         
-        // フォームの初期表示設定
         changeReportForm();
       }
     };
@@ -346,6 +357,68 @@
       }
     }
 
+    // 画像のプレビュー処理
+    function previewImage(input) {
+      if (input.files && input.files[0]) {
+        selectedImageFile = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('imagePreview').src = e.target.result;
+          document.getElementById('imagePreviewContainer').classList.remove('hidden');
+        };
+        reader.readAsDataURL(selectedImageFile);
+      } else {
+        clearImage();
+      }
+    }
+
+    function clearImage() {
+      selectedImageFile = null;
+      document.getElementById('rptImage').value = "";
+      document.getElementById('imagePreviewContainer').classList.add('hidden');
+      document.getElementById('imagePreview').src = "";
+    }
+
+    // 画像の圧縮処理 (Canvas API)
+    async function compressImage(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1200;
+            const MAX_HEIGHT = 1200;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // JPEGで画質80%に圧縮してBlob化
+            canvas.toBlob((blob) => {
+              resolve(blob);
+            }, 'image/jpeg', 0.8);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     async function submitReport() {
       const type = document.getElementById('rptType').value;
       const title = document.getElementById('rptTitle').value.trim();
@@ -362,9 +435,7 @@
         const p2 = document.getElementById('kaizen_cause').value.trim();
         const p3 = document.getElementById('kaizen_solution').value.trim();
         const p4 = document.getElementById('kaizen_effect').value.trim();
-        
         if (!p1 || !p2 || !p3 || !p4) { alert("すべての項目を入力してください。"); return; }
-        
         contentStr = `【対象となった事象・問題点】\n${p1}\n\n【発生原因の分析】\n${p2}\n\n【具体的な業務改善策】\n${p3}\n\n【期待される効果】\n${p4}`;
       } 
       else if (type === '提案書') {
@@ -373,9 +444,7 @@
         const p3 = document.getElementById('teian_merit').value.trim();
         const p4 = document.getElementById('teian_resource').value.trim();
         const p5 = document.getElementById('teian_risk').value.trim();
-        
         if (!p1 || !p2 || !p3 || !p4) { alert("必須項目をすべて入力してください。"); return; }
-        
         contentStr = `【現状の課題・背景】\n${p1}\n\n【提案の具体的内容】\n${p2}\n\n【期待される効果・メリット】\n${p3}\n\n【必要なリソース（費用・人員・期間等）】\n${p4}`;
         if (p5) contentStr += `\n\n【想定されるリスクと対策】\n${p5}`;
       } 
@@ -387,9 +456,7 @@
         const p5 = document.getElementById('shimatsu_cause').value.trim();
         const p6 = document.getElementById('shimatsu_prevention').value.trim();
         const p7 = document.getElementById('shimatsu_reflection').value.trim();
-
         if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6 || !p7) { alert("すべての項目を入力してください。"); return; }
-
         contentStr = `【発生日時・場所】\n${p1}\n\n【トラブルの概要】\n${p2}\n\n【発生に至る経緯（時系列）】\n${p3}\n\n【被害・影響の範囲】\n${p4}\n\n【原因】\n${p5}\n\n【再発防止策】\n${p6}\n\n【反省および今後の決意】\n${p7}`;
       }
 
@@ -399,6 +466,30 @@
       btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 送信中...';
       
       try {
+        let uploadedImagePath = "";
+        
+        // 画像が選択されている場合はアップロード処理
+        if (selectedImageFile) {
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 画像を圧縮・アップロード中...';
+          const compressedBlob = await compressImage(selectedImageFile);
+          
+          const fileName = `report_${new Date().getTime()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
+          const filePath = `${currentUser.branch}/${fileName}`;
+
+          const { data: uploadData, error: uploadError } = await db.storage
+            .from('report_images')
+            .upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
+
+          if (uploadError) throw uploadError;
+          uploadedImagePath = filePath;
+        }
+
+        // URL文字列の追加（構造を変えないための措置）
+        if (uploadedImagePath) {
+          contentStr += `\n\n【添付画像パス】\n${uploadedImagePath}`;
+        }
+
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> データベースへ登録中...';
         const { error } = await db.from('business_reports').insert({
           branch: currentUser.branch,
           author: currentUser.name,
@@ -415,10 +506,10 @@
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 本部・店長へ送信する';
         alert("レポートの提出が完了しました。");
         
-        // フォームのリセット
         document.getElementById('rptTitle').value = "";
         document.querySelectorAll('textarea').forEach(ta => ta.value = "");
         document.getElementById('shimatsu_datetime').value = "";
+        clearImage();
         
         if (!document.getElementById('dashboardSection').classList.contains('hidden')) {
           loadReports();
@@ -507,14 +598,7 @@
       tbody.innerHTML = html;
     }
 
-    function parseContentToHTML(text) {
-        if (!text) return "";
-        // 【】で囲まれた見出しをハイライトする簡単なパーサー
-        let html = text.replace(/【(.*?)】/g, '<span class="block mt-4 mb-1 font-black text-sky-400 border-l-2 border-sky-400 pl-2">$1</span>');
-        return html;
-    }
-
-    function openModal(id) {
+    async function openModal(id) {
       currentReport = reportsData.find(r => r.id === id);
       if (!currentReport) return;
 
@@ -524,7 +608,37 @@
       document.getElementById('dtlBranch').innerText = currentReport.branch;
       document.getElementById('dtlAuthor').innerText = currentReport.author;
       
-      document.getElementById('dtlContent').innerHTML = parseContentToHTML(currentReport.content);
+      // 一時的にローディング表示
+      document.getElementById('dtlContent').innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>読み込み中...';
+      document.getElementById('detailModal').classList.replace('hidden', 'flex');
+
+      let htmlContent = currentReport.content || "";
+      const match = htmlContent.match(/【添付画像パス】\n([^\s]+)/);
+      
+      // パス文字列を画面から見えなくする
+      let displayHtml = htmlContent.replace(/【添付画像パス】\n[^\s]+/, '');
+      // 見出しの装飾
+      displayHtml = displayHtml.replace(/【(.*?)】/g, '<span class="block mt-6 mb-2 font-black text-sky-400 border-l-4 border-sky-500 pl-2">$1</span>');
+
+      if (match && match[1]) {
+         const path = match[1];
+         // 非公開バケットのため、署名付きURL(有効期限24時間)を都度取得する
+         const { data, error } = await db.storage.from('report_images').createSignedUrl(path, 60 * 60 * 24);
+         
+         if (data && !error) {
+             displayHtml += `
+               <div class="mt-8 border-t border-slate-800 pt-6">
+                 <span class="block mb-3 font-black text-amber-400 border-l-4 border-amber-500 pl-2"><i class="fa-solid fa-camera mr-1"></i>添付された証拠画像</span>
+                 <a href="${data.signedUrl}" target="_blank">
+                   <img src="${data.signedUrl}" class="max-w-full h-auto max-h-64 rounded-xl border border-slate-700 shadow-lg hover:opacity-80 transition-opacity">
+                 </a>
+               </div>`;
+         } else {
+             displayHtml += `<div class="mt-6 text-rose-400 text-xs font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>画像の読み込みに失敗しました</div>`;
+         }
+      }
+
+      document.getElementById('dtlContent').innerHTML = displayHtml;
 
       const stEl = document.getElementById('dtlStatus');
       stEl.innerText = currentReport.status;
@@ -557,8 +671,6 @@
       ptsEl.disabled = !(isHQ && !isLocked);
 
       buildActionButtons(isHQ, isBranchMgr, isLocked);
-
-      document.getElementById('detailModal').classList.replace('hidden', 'flex');
     }
 
     function buildActionButtons(isHQ, isBranchMgr, isLocked) {
