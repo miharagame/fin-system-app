@@ -1403,7 +1403,11 @@
         document.getElementById('monSumWork').innerText = sumW.toFixed(1);
         document.getElementById('monLaborProd').innerText = Math.round(laborProd).toLocaleString();
 
-        document.getElementById('inpMonthlyComment').value = "読み込み中...";
+        const commentInput = document.getElementById('inpMonthlyComment');
+        const btnSubmit = document.getElementById('btnSubmitMonthly');
+        const submitterLabel = document.getElementById('lblMonthlySubmitter');
+        
+        commentInput.value = "読み込み中...";
         
         try {
             const { data, error } = await db.from('fin_monthly_applications')
@@ -1418,19 +1422,48 @@
                 updateCheckButtonUI('attendance_checked', data.attendance_checked);
                 updateCheckButtonUI('report_checked', data.report_checked);
                 updateCheckButtonUI('inventory_checked', data.inventory_checked);
-                document.getElementById('inpMonthlyComment').value = data.monthly_comment || "";
-                document.getElementById('lblMonthlySubmitter').innerText = data.submitted_by ? data.submitted_by : "未提出";
+                
+                commentInput.value = data.monthly_comment || "";
+                
+                if (data.submitted_by) {
+                    // ★追加: 提出済みならUIをロックする
+                    submitterLabel.innerText = data.submitted_by;
+                    
+                    commentInput.disabled = true;
+                    commentInput.classList.add('opacity-50', 'cursor-not-allowed');
+                    
+                    btnSubmit.disabled = true;
+                    btnSubmit.innerHTML = '<i class="fa-solid fa-lock mr-2"></i>提出済 (編集不可)';
+                    btnSubmit.className = "bg-slate-800 text-slate-500 font-bold py-3 px-6 rounded-xl shadow-none transition-all text-sm border border-slate-700 cursor-not-allowed";
+                } else {
+                    submitterLabel.innerText = "未提出";
+                    
+                    commentInput.disabled = false;
+                    commentInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                    
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
+                    btnSubmit.className = "bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all text-sm";
+                }
             } else {
                 updateCheckButtonUI('attendance_checked', false);
                 updateCheckButtonUI('report_checked', false);
                 updateCheckButtonUI('inventory_checked', false);
-                document.getElementById('inpMonthlyComment').value = "";
-                document.getElementById('lblMonthlySubmitter').innerText = "未提出";
+                
+                commentInput.value = "";
+                commentInput.disabled = false;
+                commentInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                
+                btnSubmit.disabled = false;
+                btnSubmit.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
+                btnSubmit.className = "bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all text-sm";
+                
+                submitterLabel.innerText = "未提出";
             }
         } catch (err) {
             console.error(err);
-            document.getElementById('inpMonthlyComment').value = "";
-            document.getElementById('lblMonthlySubmitter').innerText = "取得失敗";
+            commentInput.value = "";
+            submitterLabel.innerText = "取得失敗";
         }
     }
 
@@ -1500,11 +1533,20 @@
             return;
         }
 
+        const text = document.getElementById('inpMonthlyComment').value.trim();
+        if (!text) {
+            alert("月報のテキストを入力してください。");
+            return;
+        }
+
+        // ★追加: 一度限りの送信に対する警告
+        if (!confirm("一度送信すると、以降はテキストを修正できなくなります。\n（どうしても修正が必要な場合は本部に連絡が必要です）\n\n本当に提出してよろしいですか？")) {
+            return;
+        }
+
         const btn = document.getElementById('btnSubmitMonthly');
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>送信中...';
-        
-        const text = document.getElementById('inpMonthlyComment').value;
         
         try {
             const { data: existing } = await db.from('fin_monthly_applications')
@@ -1530,13 +1572,13 @@
             const { error } = await db.from('fin_monthly_applications').upsert(payload, { onConflict: 'target_month,branch' });
             if (error) throw error;
 
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
             alert("月報を送信しました。");
+            // ★変更: 完了後にデータを再取得させることで、即座にUIがロック状態に切り替わる
             loadMonthlyApplicationData(); 
         } catch (err) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>月報を送信する';
+            btn.className = "bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all text-sm";
             alert("送信エラー: " + err.message);
         }
     }
