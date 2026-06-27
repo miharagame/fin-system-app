@@ -474,7 +474,9 @@
           const compressedBlob = await compressImage(selectedImageFile);
           
           const fileName = `report_${new Date().getTime()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
-          const filePath = `${currentUser.branch}/${fileName}`;
+          
+          // ★修正: ファイルパスから日本語(currentUser.branch)を排除し、必ず英数字になる「ユーザーID」をフォルダ名にする
+          const filePath = `${currentUser.id}/${fileName}`;
 
           const { data: uploadData, error: uploadError } = await db.storage
             .from('report_images')
