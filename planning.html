@@ -1379,16 +1379,22 @@
     function loadHistoryPlan(index) {
       const r = latestHistoryList[index];
       if (!r) return;
+      
       document.getElementById('inpSales').value = (Math.round(Number(r['年間売上目標(円)']) / 10000) || 0).toLocaleString();
       document.getElementById('inpMargin').value = r['想定粗利率(%)'] || 0;
       
       document.getElementById('inpCashlessRatio').value = r['C/L比率(%)'] !== undefined ? r['C/L比率(%)'] : 50;
       document.getElementById('inpCashlessFeeRate').value = r['C/L決済手数料率(%)'] !== undefined ? r['C/L決済手数料率(%)'] : 3.2;
       document.getElementById('inpCorpTaxRate').value = r['法人税等実効税率(%)'] !== undefined ? r['法人税等実効税率(%)'] : 30;
-      document.getElementById('inpTaxableFixed').value = r['販管費の消費税 課税割合'] !== undefined ? r['販管費の消費税 課税割合'] : 42;
       
-      document.getElementById('inpInvIncrease').value = Math.round(Number(r['年間在庫増額(円)']) / 10000 || 500).toLocaleString();
-      document.getElementById('inpTargetCash').value = Math.round(Number(r['目標最終手残り現金(円)']) / 10000 || 2000).toLocaleString();
+      // ★修正: キー名を「消費税課税割合(%)」に統一
+      document.getElementById('inpTaxableFixed').value = r['消費税課税割合(%)'] !== undefined ? r['消費税課税割合(%)'] : 42; 
+      
+      // ★修正: キー名を「年間在庫増加額(円)」に統一
+      document.getElementById('inpInvIncrease').value = Math.round(Number(r['年間在庫増加額(円)']) / 10000 || 500).toLocaleString();
+      
+      // ★修正: キー名を「目標手残り現金(円)」に統一
+      document.getElementById('inpTargetCash').value = Math.round(Number(r['目標手残り現金(円)']) / 10000 || 2000).toLocaleString();
 
       formatFCInput(document.getElementById('inpSales'));
       calc();
