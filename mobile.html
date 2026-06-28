@@ -411,6 +411,14 @@
             await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
         }
 
+        // ★追加: DBから自身の最新の「本部タスク権限」を直接確認する
+        try {
+            const { data: myRole, error: roleErr } = await db.from('roles').select('can_honbu_task').eq('id', currentUser.roleId).single();
+            if (!roleErr && myRole) {
+                currentUser.permissions.canHonbuTask = myRole.can_honbu_task;
+            }
+        } catch(e) { console.warn("権限取得エラー", e); }
+
         try {
             const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
             if (bErr) throw bErr;
@@ -428,19 +436,30 @@
             }
         }
 
-        targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+        // ★修正: 本部権限があれば初期表示を「本部」にする
+        if (currentUser.permissions.canHonbuTask === "可能") {
+            targetBranch = "本部";
+        } else {
+            targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+        }
         
         const sel = document.getElementById('branchSelector');
         if (sel) {
             sel.innerHTML = "";
+            // ★追加: 本部権限がある場合のみ、プルダウンの先頭に「本部」を追加
+            if (currentUser.permissions.canHonbuTask === "可能") {
+                let selected = ("本部" === targetBranch) ? "selected" : "";
+                sel.innerHTML += `<option value="本部" ${selected} class="bg-fuchsia-950 text-fuchsia-300 font-bold">本部 (専用領域)</option>`;
+            }
             if (currentUser.permissions.viewAll) {
                 sel.innerHTML += '<option value="全店舗">全店</option>';
                 globalBranches.forEach(b => {
-                   sel.innerHTML += `<option value="${b}">${b}</option>`;
+                   let selected = (b === targetBranch) ? "selected" : "";
+                   sel.innerHTML += `<option value="${b}" ${selected} class="bg-slate-950 text-white">${b}</option>`;
                 });
             } else {
-                sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-                sel.disabled = true;
+                sel.innerHTML = `<option value="${currentUser.branch}" class="bg-slate-950 text-white" ${targetBranch === currentUser.branch ? "selected" : ""}>${currentUser.branch}</option>`;
+                if (currentUser.permissions.canHonbuTask !== "可能") sel.disabled = true;
             }
         }
 
@@ -488,7 +507,8 @@
             editAll: rData.edit_scope === '全店舗', viewAll: rData.view_scope === '全店舗', manageAccess: rData.manage_access === '可能',
             canAnalytics: rData.can_analytics === '可能', canPlanning: rData.can_planning === '可能', canTracking: rData.can_tracking === '可能',
             canInventory: rData.can_inventory === '可能', canTasks: rData.can_tasks !== '不可', canHr: rData.can_hr,
-            canNotice: rData.can_notice === '可能', canLog: rData.can_log === '可能', canReport: rData.can_report === '可能'
+            canNotice: rData.can_notice === '可能', canLog: rData.can_log === '可能', canReport: rData.can_report === '可能',
+            canHonbuTask: rData.can_honbu_task // ★追加
           }
         };
 
@@ -516,7 +536,13 @@
       document.getElementById('btnStaffAuth').classList.remove('hidden');
       document.getElementById('headerBranch').innerText = currentUser.name + " (" + currentUser.branch + ")";
       
-      targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      // ★修正: showApp内でtargetBranchを初期化する際も本部を考慮
+      if (currentUser.permissions.canHonbuTask === "可能") {
+          targetBranch = "本部";
+      } else {
+          targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      }
+      
       initBranchSelect('tlBranch');
       
       const savedStaff = sessionStorage.getItem('finTaskStaff');
