@@ -848,20 +848,36 @@
 
     async function saveUser() {
       const payload = {
-        id: document.getElementById('u_id').value, pass: document.getElementById('u_pass').value,
-        name: document.getElementById('u_name').value, roleId: document.getElementById('u_role').value,
+        id: document.getElementById('u_id').value, 
+        pass: document.getElementById('u_pass').value,
+        name: document.getElementById('u_name').value, 
+        roleId: document.getElementById('u_role').value,
         branch: document.getElementById('u_branch').value,
         roleLevel: document.getElementById('u_roleLevel').value 
       };
-      if(!payload.id || !payload.pass || !payload.name) { alert("必須項目を入力してください。"); return; }
+
+      if(!payload.id || !payload.pass || !payload.name) { 
+        alert("必須項目を入力してください。"); 
+        return; 
+      }
       
       try {
-        const { error } = await db.from('system_users').upsert({
-            id: payload.id, password: payload.pass, name: payload.name, role_id: payload.roleId, branch: payload.branch, role_level: payload.roleLevel, updated_at: new Date().toISOString()
+        // ★修正: SupabaseのDatabaseに直接アクセスするのではなく、自作したAPI(裏口)にデータを送信する
+        const response = await fetch('/api/upsertUser', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-        if (error) throw error;
-        alert("ユーザー情報を保存しました。");
+        
+        const result = await response.json();
+        
+        // エラーが返ってきた場合は例外を投げる
+        if (!response.ok) throw new Error(result.error);
+        
+        alert("ユーザー情報を保存しました。\n（認証システムにも自動連携されました）");
         await addOperationLog("設定変更(ユーザー)", `ユーザー[${payload.id}]の情報を更新`);
+        
+        // 画面を更新
         loadData();
         if(currentUser.permissions.canLog) loadLogs();
       } catch (err) {
