@@ -394,32 +394,44 @@
           }
       }
 
+      // ★追加: DBから自身の最新の「本部タスク権限」を直接確認する
+      try {
+          const { data: myRole, error: roleErr } = await db.from('roles').select('can_honbu_task').eq('id', currentUser.roleId).single();
+          if (!roleErr && myRole) {
+              currentUser.permissions.canHonbuTask = myRole.can_honbu_task;
+          }
+      } catch(e) { console.warn("権限取得エラー", e); }
+
       // 4. 初期店舗の設定とプルダウン生成 (全店を除外)
-      targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      // ★修正: 本部権限があれば初期表示を「本部」にする
+      if (currentUser.permissions.canHonbuTask === "可能") {
+          targetBranch = "本部";
+      } else {
+          targetBranch = currentUser.branch === "全店舗" ? globalBranches[0] : currentUser.branch;
+      }
       
       const sel = document.getElementById('branchSelector');
       if (sel) {
           sel.innerHTML = "";
+
+          // ★追加: 本部権限がある場合のみ、プルダウンの先頭に「本部」を追加
+          if (currentUser.permissions.canHonbuTask === "可能") {
+              let selected = ("本部" === targetBranch) ? "selected" : "";
+              sel.innerHTML += `<option value="本部" ${selected} class="bg-fuchsia-950 text-fuchsia-300 font-bold">本部 (専用領域)</option>`;
+          }
+
           if (currentUser.permissions.viewAll) {
               globalBranches.forEach(b => {
                  let selected = (b === targetBranch) ? "selected" : "";
                  sel.innerHTML += `<option value="${b}" ${selected} class="bg-slate-950 text-white">${b}</option>`;
               });
           } else {
-              sel.innerHTML = `<option value="${currentUser.branch}" class="bg-slate-950 text-white">${currentUser.branch}</option>`;
-              sel.disabled = true;
+              sel.innerHTML += `<option value="${currentUser.branch}" class="bg-slate-950 text-white" ${targetBranch === currentUser.branch ? "selected" : ""}>${currentUser.branch}</option>`;
+              // ★修正: 本部権限がない場合のみプルダウンを操作不可にする
+              if (currentUser.permissions.canHonbuTask !== "可能") {
+                  sel.disabled = true;
+              }
           }
-      }
-
-      const savedStaffStr = sessionStorage.getItem('finTaskStaff');
-      if (savedStaffStr) {
-          try {
-              currentTaskStaff = JSON.parse(savedStaffStr);
-          } catch(e) {
-              currentTaskStaff = null;
-          }
-      } else {
-          currentTaskStaff = null;
       }
       
       updateStaffHeader();
@@ -660,6 +672,13 @@
           if (sel && globalBranches.length > 0) {
               if (sel.options.length === 0 || sel.innerHTML.includes('全店')) {
                   sel.innerHTML = "";
+                  
+                  // ★追加: 再構築時も本部を追加
+                  if (currentUser.permissions.canHonbuTask === "可能") {
+                      let selected = ("本部" === targetBranch) ? "selected" : "";
+                      sel.innerHTML += `<option value="本部" ${selected} class="bg-fuchsia-950 text-fuchsia-300 font-bold">本部 (専用領域)</option>`;
+                  }
+
                   if (currentUser.permissions.viewAll) {
                       globalBranches.forEach(b => { 
                           const opt = document.createElement('option'); opt.value = b; opt.text = b; opt.className = "bg-slate-950 text-white"; 
@@ -667,8 +686,11 @@
                           sel.appendChild(opt); 
                       });
                   } else {
-                      sel.innerHTML = `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
-                      sel.disabled = true;
+                      sel.innerHTML += `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
+                      // ★修正: 本部権限がない場合のみプルダウンを操作不可にする
+                      if (currentUser.permissions.canHonbuTask !== "可能") {
+                          sel.disabled = true;
+                      }
                   }
               }
           }
