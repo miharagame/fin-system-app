@@ -553,7 +553,20 @@
       }
       updateStaffHeader();
       
-      loadDashboardData();
+      // ★追加: 本部権限の場合は「入力」画面を隠し、初期画面を「タスク」にする
+      if (currentUser.permissions.canHonbuTask === "可能") {
+          document.getElementById('nav_input').style.display = 'none'; // 入力ボタンを消す
+          document.getElementById('nav_tasks').style.width = '50%';    // 残りのボタン幅を調整
+          document.getElementById('nav_timeline').style.width = '50%'; // 残りのボタン幅を調整
+          switchTab('tasks'); // 初期画面をタスクに強制
+      } else {
+          document.getElementById('nav_input').style.display = 'flex';
+          document.getElementById('nav_input').style.width = '33.33%';
+          document.getElementById('nav_tasks').style.width = '33.33%';
+          document.getElementById('nav_timeline').style.width = '33.33%';
+          switchTab('input'); // 通常は入力画面がデフォルト
+          loadDashboardData(); // 本部以外のみダッシュボード(日報)を読み込む
+      }
       
       if(currentUser.permissions.canTasks !== false) {
           loadTasks();
