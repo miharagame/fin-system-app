@@ -201,14 +201,14 @@
           <p id="assigneeLockMsg" class="text-[10px] text-amber-500 mt-2 hidden"><i class="fa-solid fa-lock mr-1"></i>一般スタッフは自分以外のタスクを作成できません。</p>
         </div>
         
-        <!-- ★追加: 非公開タスク設定 -->
+        <!-- 修正後の tasks.html の非公開設定部分 -->
         <div id="privateTaskContainer" class="hidden bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
           <div>
             <label class="text-sm text-slate-200 font-bold flex items-center cursor-pointer">
               <input type="checkbox" id="chkPrivate" class="mr-2 w-4 h-4 accent-indigo-500">
-              <i class="fa-solid fa-lock text-slate-400 mr-2"></i>自分と管理者のみに表示 (非公開)
+              <i class="fa-solid fa-lock text-slate-400 mr-2"></i>自分以外には非公開にする
             </label>
-            <p class="text-[9px] text-slate-500 mt-1 pl-6">※他のスタッフのタスク一覧には表示されなくなります。</p>
+            <p class="text-[9px] text-slate-500 mt-1 pl-6">※他のスタッフからは見えなくなります。</p>
           </div>
         </div>
 
