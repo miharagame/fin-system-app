@@ -169,6 +169,14 @@
 
               <div><label class="text-[10px] text-slate-500 block">タスク管理</label><select id="r_task" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
               <div>
+                <label class="text-[10px] text-fuchsia-400 block font-bold">本部タスク管理</label>
+                <select id="r_honbu_task" class="input-box text-sm cursor-pointer border-fuchsia-500/50 bg-fuchsia-950/20 text-fuchsia-200">
+                  <option value="不可">不可</option>
+                  <option value="可能">可能</option>
+                </select>
+              </div>
+              
+              <div class="col-span-2">
                 <label class="text-[10px] text-slate-500 block">人事評価アクセス</label>
                 <select id="r_hr" class="input-box text-sm cursor-pointer border-blue-500/50 bg-blue-950/20 text-blue-200">
                   <option value="不可">不可</option>
@@ -359,7 +367,6 @@
     let usersList = [], rolesList = [], branchesMasterList = [], branchList = [], staffsList = [];
 
     window.onload = async () => {
-      // ★修正: GAS独自のセッション取得を撤廃
       const userStr = sessionStorage.getItem('finUser');
       if(!userStr) { document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>不正アクセスです。</h1>"; return; }
       
@@ -464,7 +471,8 @@
             canInventorySave: r.can_inventory_save, canTasks: r.can_tasks, canHr: r.can_hr, isEvalTarget: r.is_eval_target,
             canNotice: r.can_notice, canLog: r.can_log, canReport: r.can_report,
             canViewTrueCash: r.can_view_true_cash,
-            canChangePeriod: r.can_change_period
+            canChangePeriod: r.can_change_period,
+            canHonbuTask: r.can_honbu_task // ★追加
         }));
         
         branchList = bRes.data.map(b => b.name);
@@ -616,6 +624,8 @@
             bRes.data.forEach(b => { 
                 bSel.innerHTML += `<option value="${b.name}">${b.name}</option>`; 
             });
+            // ★追加: 本部タスク用のスタッフを作れるように強制的に選択肢を追加
+            bSel.innerHTML += `<option value="本部" class="text-fuchsia-300 font-bold">本部</option>`;
         }
         
         renderStaffs();
@@ -752,7 +762,8 @@
           : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">期間変更</span>`;
 
         const mgmtHtml = badge(r.manageAccess, "ｱｶｳﾝﾄ", "indigo") + badge(r.canNotice, "お知らせ", "rose") + badge(r.canLog, "ログ", "sky") + trueCashBadge + periodBadge;
-        const toolHtml = badge(r.canAnalytics, "業績", "sky") + badge(r.canPlanning, "計画", "emerald") + badge(r.canTracking, "予実", "amber") + badge(r.canInventory, "在庫", "fuchsia") + invSaveBadge + badge(r.canTasks, "ﾀｽｸ", "indigo") + hrBadge + evalTargetBadge + reportBadge;
+        // ★修正: toolHtmlに本部タスクバッジを追加
+        const toolHtml = badge(r.canAnalytics, "業績", "sky") + badge(r.canPlanning, "計画", "emerald") + badge(r.canTracking, "予実", "amber") + badge(r.canInventory, "在庫", "fuchsia") + invSaveBadge + badge(r.canTasks, "ﾀｽｸ", "indigo") + badge(r.canHonbuTask, "本部ﾀｽｸ", "fuchsia") + hrBadge + evalTargetBadge + reportBadge;
 
         html += `<tr>
           <td class="py-3 text-white font-bold">${r.name}<br><span class="text-[10px] text-slate-500 font-mono">${r.id}</span></td>
@@ -765,18 +776,6 @@
         </tr>`;
       });
       document.getElementById('roleTbody').innerHTML = html;
-    }
-
-    function editUser(id) {
-      const u = usersList.find(x => x.id === id);
-      if(!u) return;
-      document.getElementById('u_id').value = u.id; document.getElementById('u_pass').value = u.pass;
-      document.getElementById('u_name').value = u.name; document.getElementById('u_role').value = u.roleId;
-      document.getElementById('u_branch').value = u.branch;
-      document.getElementById('u_roleLevel').value = u.roleLevel || "一般";
-
-      window.scrollTo(0, 0);
-      switchTab('users');
     }
 
     function editRole(id) {
@@ -792,6 +791,7 @@
       document.getElementById('r_inv').value = r.canInventory;
       document.getElementById('r_inv_save').value = r.canInventorySave || "不可";
       document.getElementById('r_task').value = r.canTasks;
+      document.getElementById('r_honbu_task').value = r.canHonbuTask || "不可"; // ★追加
       document.getElementById('r_hr').value = r.canHr || "不可"; 
       document.getElementById('r_eval_target').value = r.isEvalTarget || "対象";
       document.getElementById('r_notice').value = r.canNotice;
@@ -816,6 +816,7 @@
         canInventory: document.getElementById('r_inv').value,
         canInventorySave: document.getElementById('r_inv_save').value, 
         canTasks: document.getElementById('r_task').value,
+        canHonbuTask: document.getElementById('r_honbu_task').value, // ★追加
         canHr: document.getElementById('r_hr').value,
         isEvalTarget: document.getElementById('r_eval_target').value,
         canNotice: document.getElementById('r_notice').value,
@@ -830,7 +831,8 @@
         const { error } = await db.from('roles').upsert({
             id: payload.id, name: payload.name, view_scope: payload.viewScope, edit_scope: payload.editScope, manage_access: payload.manageAccess,
             can_analytics: payload.canAnalytics, can_planning: payload.canPlanning, can_tracking: payload.canTracking, can_inventory: payload.canInventory,
-            can_inventory_save: payload.canInventorySave, can_tasks: payload.canTasks, can_hr: payload.canHr, is_eval_target: payload.isEvalTarget,
+            can_inventory_save: payload.canInventorySave, can_tasks: payload.canTasks, can_honbu_task: payload.canHonbuTask, // ★追加
+            can_hr: payload.canHr, is_eval_target: payload.isEvalTarget,
             can_notice: payload.canNotice, can_log: payload.canLog, can_report: payload.canReport, 
             can_view_true_cash: payload.canViewTrueCash,
             can_change_period: payload.canChangePeriod,
@@ -862,7 +864,6 @@
       }
       
       try {
-        // ★修正: SupabaseのDatabaseに直接アクセスするのではなく、自作したAPI(裏口)にデータを送信する
         const response = await fetch('/api/upsertUser', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -871,13 +872,11 @@
         
         const result = await response.json();
         
-        // エラーが返ってきた場合は例外を投げる
         if (!response.ok) throw new Error(result.error);
         
         alert("ユーザー情報を保存しました。\n（認証システムにも自動連携されました）");
         await addOperationLog("設定変更(ユーザー)", `ユーザー[${payload.id}]の情報を更新`);
         
-        // 画面を更新
         loadData();
         if(currentUser.permissions.canLog) loadLogs();
       } catch (err) {
@@ -1060,7 +1059,7 @@
       }
     }
 
-    // ★修正: Vercelのルート構造に合わせて静的HTMLへ遷移
     function goHome() { window.location.href = "portal.html"; }
   </script>
+</body>
 </html>
