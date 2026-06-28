@@ -201,6 +201,17 @@
           <p id="assigneeLockMsg" class="text-[10px] text-amber-500 mt-2 hidden"><i class="fa-solid fa-lock mr-1"></i>一般スタッフは自分以外のタスクを作成できません。</p>
         </div>
         
+        <!-- ★追加: 非公開タスク設定 -->
+        <div id="privateTaskContainer" class="hidden bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <label class="text-sm text-slate-200 font-bold flex items-center cursor-pointer">
+              <input type="checkbox" id="chkPrivate" class="mr-2 w-4 h-4 accent-indigo-500">
+              <i class="fa-solid fa-lock text-slate-400 mr-2"></i>自分と管理者のみに表示 (非公開)
+            </label>
+            <p class="text-[9px] text-slate-500 mt-1 pl-6">※他のスタッフのタスク一覧には表示されなくなります。</p>
+          </div>
+        </div>
+
         <button onclick="saveNewTask()" id="btnSaveTask" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl shadow-lg transition-all mt-4 flex items-center justify-center gap-2">追加する</button>
       </div>
     </div>
@@ -342,8 +353,10 @@
     document.getElementById('newTaskType').addEventListener('change', function() {
        if (this.value === 'routine') {
            document.getElementById('routineDaysContainer').classList.remove('hidden');
+           document.getElementById('privateTaskContainer').classList.add('hidden'); // ★追加
        } else {
            document.getElementById('routineDaysContainer').classList.add('hidden');
+           document.getElementById('privateTaskContainer').classList.remove('hidden'); // ★追加
        }
     });
 
@@ -730,7 +743,8 @@
                   tasksData.push({
                       id: t.id, branch: t.branch, date: d, type: t.type, name: t.name, assignee: t.assignee, 
                       status: t.status, elapsedSeconds: t.elapsed_seconds || 0, startTime: st, 
-                      realAssignee: ra, isPastUnachieved: false, memo: t.memo || ""
+                      realAssignee: ra, isPastUnachieved: false, memo: t.memo || "",
+                      isPrivate: t.is_private || false, createdBy: t.created_by || "" // ★追加
                   });
               }
           });
@@ -884,10 +898,14 @@
       if (currentTaskStaff && currentTaskStaff.level !== "一般スタッフ") {
           typeSelect.innerHTML += '<option value="routine">定期ルーティンとして登録</option>';
           document.getElementById('routineDaysContainer').classList.remove('hidden');
+          document.getElementById('privateTaskContainer').classList.add('hidden'); // ★追加
       } else {
           document.getElementById('routineDaysContainer').classList.add('hidden');
+          document.getElementById('privateTaskContainer').classList.remove('hidden'); // ★追加
       }
       typeSelect.innerHTML += '<option value="kanban">単発タスクとして登録</option>';
+      
+      document.getElementById('chkPrivate').checked = false; // ★追加: 初期化
       document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
     }
     
@@ -924,6 +942,9 @@
       const btn = document.getElementById('btnSaveTask'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
       
       try {
+          // ★追加: 非公開フラグの取得
+          const isPrivate = type === 'kanban' ? document.getElementById('chkPrivate').checked : false;
+
           if (type === 'routine') {
               const newRmId = "RM" + new Date().getTime() + Math.floor(Math.random()*1000);
               const { error } = await db.from('routine_master').insert([{ 
@@ -935,7 +956,8 @@
               const newId = "T" + new Date().getTime() + Math.floor(Math.random()*1000);
               const { error } = await db.from('tasks').insert([{ 
                   id: newId, branch: targetBranch, target_date: tDate, type: type, name: name, 
-                  assignee: assigneeData, status: 'todo' 
+                  assignee: assigneeData, status: 'todo',
+                  is_private: isPrivate, created_by: currentTaskStaff.name // ★追加
               }]);
               if (error) throw error;
           }
@@ -978,6 +1000,15 @@
       }
 
       tasksData.forEach(task => {
+        // ★追加: 非公開タスクの表示フィルター
+        if (task.isPrivate) {
+            const isAdmin = currentUser.permissions.editAll;
+            const isMine = currentTaskStaff && task.createdBy === currentTaskStaff.name;
+            if (!isAdmin && !isMine) {
+                return; // 管理者でも作成者でもなければスキップ（表示しない）
+            }
+        }
+
         if (taskFilterMode === 'mine' && currentTaskStaff) {
             const isAssignedToMe = String(task.assignee || "").includes(currentTaskStaff.name);
             const amIRealDoer = task.realAssignee === currentTaskStaff.name;
@@ -999,6 +1030,9 @@
         let alertBadgeHtml = "";
         let cardBorderClass = "border-slate-800";
         let cardBgClass = "bg-slate-950";
+        
+        // ★追加: 非公開バッジの生成
+        let privateBadgeHtml = task.isPrivate ? `<span class="bg-slate-800 text-slate-400 border border-slate-700 text-[9px] font-bold px-2 py-0.5 rounded ml-2" title="非公開タスク"><i class="fa-solid fa-lock mr-1"></i>非公開</span>` : "";
         
         if (task.type === 'routine' && task.isPastUnachieved) {
             alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-triangle-exclamation"></i>過去の未達成を引き継ぎ</div>`;
@@ -1081,7 +1115,7 @@
             <div class="${cardBgClass} p-4 rounded-2xl border ${cardBorderClass} shadow-lg task-card flex flex-col relative group cursor-pointer" ${clickAction}>
               ${deleteBtn}
               <div class="flex justify-between items-start mb-1">
-                <p class="text-[9px] text-slate-500 font-mono"><i class="fa-solid fa-pen-nib mr-1"></i>作成: ${createdStr}</p>
+                <p class="text-[9px] text-slate-500 font-mono flex items-center"><i class="fa-solid fa-pen-nib mr-1"></i>作成: ${createdStr} ${privateBadgeHtml}</p>
               </div>
               ${alertBadgeHtml}
               <p class="text-sm font-bold text-slate-200 leading-snug mb-3 pr-4 ${task.status==='done'?'line-through opacity-50':''}">${task.name}${memoIconHtml}</p>
