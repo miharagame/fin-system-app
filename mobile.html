@@ -886,10 +886,9 @@
             el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
             btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
             
-            const isManager = (currentUser.permissions.editAll) || (currentTaskStaff.level === "店長・副店長");
             const pjBtn = document.getElementById('btnCreateProject');
             if (pjBtn) {
-                if (isManager && (targetBranch === currentUser.branch || currentUser.permissions.editAll)) pjBtn.classList.remove('hidden');
+                if (targetBranch === currentUser.branch || currentUser.permissions.editAll) pjBtn.classList.remove('hidden');
                 else pjBtn.classList.add('hidden');
             }
         } else { 
