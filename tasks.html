@@ -180,8 +180,15 @@
           <label class="text-xs text-slate-400 mb-1 block font-bold">タスク名・内容</label>
           <input type="text" id="newTaskName" class="w-full bg-slate-950 border border-slate-700 text-white text-sm font-bold rounded-xl px-4 py-3 focus:border-indigo-500" placeholder="例: 特価コーナーの補充">
         </div>
+
+        <!-- ★追加: カンバン(単発)用の期日設定 -->
+        <div id="kanbanDueContainer" class="hidden">
+           <label class="text-xs text-rose-400 mb-1 block font-bold">完了期日 (必須)</label>
+           <input type="date" id="newTaskDue" class="input-box text-sm py-2 px-3 border-rose-900/50 text-rose-300 [color-scheme:dark]">
+        </div>
         
         <div id="routineDaysContainer" class="bg-indigo-950/20 p-4 rounded-xl border border-indigo-900/30">
+          
           <label class="text-xs text-indigo-300 mb-2 block font-bold"><i class="fa-solid fa-calendar-week mr-1"></i>実行する曜日を選択</label>
           <div class="flex flex-wrap gap-2">
             <label class="cursor-pointer"><input type="checkbox" class="day-chk hidden" value="1" checked><span class="inline-block px-3 py-1.5 border border-slate-700 rounded-lg text-xs font-bold text-slate-400 transition-colors">月</span></label>
@@ -356,10 +363,12 @@
     document.getElementById('newTaskType').addEventListener('change', function() {
        if (this.value === 'routine') {
            document.getElementById('routineDaysContainer').classList.remove('hidden');
-           document.getElementById('privateTaskContainer').classList.add('hidden'); // ★追加
+           document.getElementById('privateTaskContainer').classList.add('hidden');
+           document.getElementById('kanbanDueContainer').classList.add('hidden'); // ★追加
        } else {
            document.getElementById('routineDaysContainer').classList.add('hidden');
-           document.getElementById('privateTaskContainer').classList.remove('hidden'); // ★追加
+           document.getElementById('privateTaskContainer').classList.remove('hidden');
+           document.getElementById('kanbanDueContainer').classList.remove('hidden'); // ★追加
        }
     });
 
@@ -746,7 +755,8 @@
                       id: t.id, branch: t.branch, date: d, type: t.type, name: t.name, assignee: t.assignee, 
                       status: t.status, elapsedSeconds: t.elapsed_seconds || 0, startTime: st, 
                       realAssignee: ra, isPastUnachieved: false, memo: t.memo || "",
-                      isPrivate: t.is_private || false, createdBy: t.created_by || "" // ★追加
+                      isPrivate: t.is_private || false, createdBy: t.created_by || "",
+                      dueDate: t.due_date || "" // ★追加
                   });
               }
           });
@@ -900,14 +910,17 @@
       if (currentTaskStaff && currentTaskStaff.level !== "一般スタッフ") {
           typeSelect.innerHTML += '<option value="routine">定期ルーティンとして登録</option>';
           document.getElementById('routineDaysContainer').classList.remove('hidden');
-          document.getElementById('privateTaskContainer').classList.add('hidden'); // ★追加
+          document.getElementById('privateTaskContainer').classList.add('hidden');
+          document.getElementById('kanbanDueContainer').classList.add('hidden'); // ★追加
       } else {
           document.getElementById('routineDaysContainer').classList.add('hidden');
-          document.getElementById('privateTaskContainer').classList.remove('hidden'); // ★追加
+          document.getElementById('privateTaskContainer').classList.remove('hidden');
+          document.getElementById('kanbanDueContainer').classList.remove('hidden'); // ★追加
       }
       typeSelect.innerHTML += '<option value="kanban">単発タスクとして登録</option>';
       
-      document.getElementById('chkPrivate').checked = false; // ★追加: 初期化
+      document.getElementById('chkPrivate').checked = false;
+      document.getElementById('newTaskDue').value = ""; // ★追加: カレンダーの初期化
       document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
     }
     
@@ -935,9 +948,15 @@
       if (!name) { alert("タスク名を入力してください。"); return; }
       
       let routineDays = [];
+      let dueVal = null; // ★追加
+      
       if (type === 'routine') {
           document.querySelectorAll('.day-chk:checked').forEach(cb => routineDays.push(parseInt(cb.value)));
           if (routineDays.length === 0) { alert("実行する曜日を1つ以上選択してください。"); return; }
+      } else {
+          // ★追加: カンバンの場合は期日必須
+          dueVal = document.getElementById('newTaskDue').value;
+          if (!dueVal) { alert("完了期日を入力してください。"); return; }
       }
       
       lastActionTime = new Date().getTime(); 
@@ -959,7 +978,8 @@
               const { error } = await db.from('tasks').insert([{ 
                   id: newId, branch: targetBranch, target_date: tDate, type: type, name: name, 
                   assignee: assigneeData, status: 'todo',
-                  is_private: isPrivate, created_by: currentTaskStaff.name // ★追加
+                  is_private: isPrivate, created_by: currentTaskStaff.name,
+                  due_date: dueVal // ★追加
               }]);
               if (error) throw error;
           }
@@ -1039,8 +1059,9 @@
         if (task.type === 'routine' && task.isPastUnachieved) {
             alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-triangle-exclamation"></i>過去の未達成を引き継ぎ</div>`;
             cardBorderClass = "border-rose-900/50";
-        } else if (task.type === 'kanban' && task.date < todayStr && task.status !== 'done') {
-            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-clock"></i>期限超過（過去のタスク）</div>`;
+        } else if (task.type === 'kanban' && task.dueDate && task.dueDate < todayStr && task.status !== 'done') {
+            // ★修正: 判定を date から dueDate に変更 (dueDateがない既存タスクはアラート対象外)
+            alertBadgeHtml = `<div class="bg-rose-500/20 text-rose-400 border border-rose-500/50 text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 mb-2 w-fit"><i class="fa-solid fa-clock"></i>期日超過</div>`;
             cardBorderClass = "border-rose-900/50";
             cardBgClass = "bg-rose-950/10";
         }
@@ -1113,11 +1134,15 @@
           
           let createdStr = getCreatedAt(task.id);
           
+          // ★追加: カード右上に期日を表示（超過時は赤色）
+          let dueDateHtml = task.dueDate ? `<p class="text-[9px] ${task.dueDate < todayStr && task.status !== 'done' ? 'text-rose-400 font-bold' : 'text-slate-400'} font-mono ml-2"><i class="fa-regular fa-calendar mr-1"></i>期日: ${task.dueDate}</p>` : '';
+
           let cardHtml = `
             <div class="${cardBgClass} p-4 rounded-2xl border ${cardBorderClass} shadow-lg task-card flex flex-col relative group cursor-pointer" ${clickAction}>
               ${deleteBtn}
               <div class="flex justify-between items-start mb-1">
                 <p class="text-[9px] text-slate-500 font-mono flex items-center"><i class="fa-solid fa-pen-nib mr-1"></i>作成: ${createdStr} ${privateBadgeHtml}</p>
+                ${dueDateHtml}
               </div>
               ${alertBadgeHtml}
               <p class="text-sm font-bold text-slate-200 leading-snug mb-3 pr-4 ${task.status==='done'?'line-through opacity-50':''}">${task.name}${memoIconHtml}</p>
