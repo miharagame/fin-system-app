@@ -351,7 +351,10 @@
         
         <div>
           <p class="text-[10px] text-slate-500 font-bold mb-1">タスク名</p>
-          <h2 id="detailTaskName" class="text-lg font-black text-white leading-tight">--</h2>
+          <div class="flex items-start gap-2">
+            <h2 id="detailTaskName" class="text-lg font-black text-white leading-tight break-all">--</h2>
+            <button id="btnEditTaskName" onclick="editTaskName()" class="hidden text-slate-500 hover:text-sky-400 mt-1 shrink-0 transition-colors"><i class="fa-solid fa-pen"></i></button>
+          </div>
         </div>
         
         <div class="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
@@ -1214,10 +1217,21 @@
 
       const isManager = (currentUser.permissions.editAll) || (currentTaskStaff && currentTaskStaff.level === "店長・副店長");
       const isRealAssignee = task.realAssignee && currentTaskStaff && task.realAssignee === currentTaskStaff.name;
-      const canEditMemo = isManager || isRealAssignee;
+      const isCreator = task.createdBy && currentTaskStaff && task.createdBy === currentTaskStaff.name; // ★追加: 作成者判定
+      const canEditTask = isManager || isRealAssignee || isCreator; // ★変更: タスク全体を編集できるか
       
       const memoEl = document.getElementById('detailTaskMemo');
       const saveBtn = document.getElementById('btnSaveTaskMemo');
+      const editNameBtn = document.getElementById('btnEditTaskName'); // ★追加: 鉛筆ボタン
+      
+      if (canEditTask) {
+          if (editNameBtn) editNameBtn.classList.remove('hidden');
+      } else {
+          if (editNameBtn) editNameBtn.classList.add('hidden');
+      }
+      
+      // ★修正: 以下の canEditMemo は canEditTask に置き換えます
+      const canEditMemo = canEditTask;
       memoEl.value = task.memo || '';
       
       if (canEditMemo) {
@@ -1295,6 +1309,45 @@
           alert("通信エラー: " + err.message); 
           closeTaskDetailModal();
           loadTasks(true);
+      }
+    }
+
+    async function editTaskName() {
+      if (!currentDetailTask || !requireStaffAuth()) return;
+      
+      // ブラウザ標準のポップアップで新しい名前を入力させる
+      const newName = prompt("新しいタスク名を入力してください", currentDetailTask.name);
+      if (newName === null) return; // キャンセルを押した場合は終了
+      
+      const trimmedName = newName.trim();
+      if (trimmedName === "") {
+          alert("タスク名は空にできません。");
+          return;
+      }
+      if (trimmedName === currentDetailTask.name) return; // 変更がない場合は終了
+      
+      lastActionTime = new Date().getTime(); 
+      const editBtn = document.getElementById('btnEditTaskName');
+      if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // くるくる回す
+      
+      try {
+          const { error } = await db.from('tasks').update({ 
+              name: trimmedName, 
+              updated_at: new Date().toISOString() 
+          }).eq('id', currentDetailTask.id);
+          
+          if (error) throw error;
+          
+          // エラーがなければ画面上の表示を即時更新
+          currentDetailTask.name = trimmedName;
+          document.getElementById('detailTaskName').innerText = trimmedName;
+          if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+          
+          // 裏側で一覧データも更新
+          loadTasks(true); 
+      } catch (err) {
+          alert("タスク名の変更に失敗しました: " + err.message);
+          if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
       }
     }
 
