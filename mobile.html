@@ -877,26 +877,28 @@
     }
 
     function updateStaffHeader() {
-        const el = document.getElementById('currentStaffName');
         const btn = document.getElementById('btnStaffAuth');
-        if (!el || !btn) return;
+        const headerBranch = document.getElementById('headerBranch');
+        if (!btn) return;
         
+        // 認証済みの場合はヘッダーに担当者名を表示
         if (currentTaskStaff) { 
             let badge = currentTaskStaff.level === "店長・副店長" ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[9px] ml-1">割当可</span>` : `<span class="bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5 rounded text-[9px] ml-1">一般</span>`;
-            el.innerHTML = `${currentTaskStaff.name} さん ${badge}`; 
-            btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>スタッフ切替`; 
-            
-            const pjBtn = document.getElementById('btnCreateProject');
-            if (pjBtn) {
-                if (targetBranch === currentUser.branch || currentUser.permissions.editAll) pjBtn.classList.remove('hidden');
-                else pjBtn.classList.add('hidden');
-            }
+            if (headerBranch) headerBranch.innerHTML = `${currentUser.name} (${currentUser.branch}) <span class="mx-1">/</span> ${currentTaskStaff.name} ${badge}`; 
+            btn.innerHTML = `<i class="fa-solid fa-key mr-1"></i>切替`; 
         } else { 
-            el.innerHTML = "未設定 (タップして認証)"; 
-            el.className = "text-rose-400 font-black text-sm leading-none animate-pulse"; 
+            if (headerBranch) headerBranch.innerText = currentUser.name + " (" + currentUser.branch + ")";
             btn.innerHTML = `<i class="fa-solid fa-user-lock mr-1"></i>本人認証`; 
-            const pjBtn = document.getElementById('btnCreateProject');
-            if(pjBtn) pjBtn.classList.add('hidden');
+        }
+
+        // ★修正：プロジェクト作成ボタンは、本人認証の有無に関わらず自店舗なら常に表示する
+        const pjBtn = document.getElementById('btnCreateProject');
+        if (pjBtn) {
+            if (targetBranch === currentUser.branch || currentUser.permissions.editAll) {
+                pjBtn.classList.remove('hidden');
+            } else {
+                pjBtn.classList.add('hidden');
+            }
         }
     }
 
