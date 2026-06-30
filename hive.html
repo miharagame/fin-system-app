@@ -9,12 +9,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { background-color: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .hive-card { transition: all 0.2s; }
-        .hive-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
-        .tab-btn.active { border-bottom: 2px solid #38bdf8; color: #38bdf8; background-color: rgba(56, 189, 248, 0.1); }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; border-radius: 3px; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        
+        /* タブのスタイルを他ツールと統一 */
+        .tab-btn { border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom: 2px solid #38bdf8; color: #38bdf8; }
+        
+        .list-row { transition: background-color 0.2s; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col relative">
@@ -23,28 +26,39 @@
         <p class="text-sky-400 text-sm font-bold animate-pulse" id="loadingText">処理中...</p>
     </div>
 
-    <!-- ヘッダー -->
-    <header class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-40">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div>
-                <h1 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">HIVE</h1>
-                <p class="text-[10px] text-slate-500 font-mono">Hub for Information, Views, Exchange</p>
+    <!-- ヘッダー（他ツールとレイアウト統一） -->
+    <header class="bg-slate-900 border-b border-slate-800 pt-4 px-4 sticky top-0 z-40">
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center gap-6">
+                <a href="portal.html" class="text-slate-400 hover:text-white transition-colors font-bold text-sm flex items-center gap-1">
+                    <i class="fa-solid fa-arrow-left"></i> ポータルへ
+                </a>
+                <div class="flex items-center gap-2 border-l border-slate-700 pl-6">
+                    <div class="bg-sky-500/20 text-sky-400 w-8 h-8 rounded-lg flex items-center justify-center border border-sky-500/30">
+                        <i class="fa-solid fa-cubes text-lg"></i>
+                    </div>
+                    <h1 class="text-lg font-black text-white">HIVE <span class="text-[10px] text-slate-500 font-mono ml-2 hidden sm:inline">Hub for Information, Views, Exchange</span></h1>
+                </div>
             </div>
-            <div class="flex items-center gap-4">
-                <p id="headerBranch" class="text-xs text-slate-400 font-bold">読込中...</p>
-                <a href="portal.html" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition flex items-center shadow"><i class="fa-solid fa-arrow-left mr-1"></i>ポータルへ戻る</a>
+            
+            <div class="flex items-center gap-4 text-xs font-bold">
+                <span id="headerRole" class="text-amber-400 hidden">管理者 (全店舗)</span>
+                <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg text-slate-300 flex items-center gap-2">
+                    <i class="fa-solid fa-store"></i> <span id="headerBranch">読込中...</span>
+                </div>
             </div>
         </div>
+        
         <!-- タブメニュー -->
-        <div class="max-w-6xl mx-auto mt-4 flex gap-2 border-b border-slate-800">
-            <button onclick="switchTab('knowledge')" id="tab-knowledge" class="tab-btn active px-4 py-2 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors rounded-t-lg"><i class="fa-solid fa-book-open mr-1"></i>ナレッジ一覧</button>
-            <button onclick="switchTab('approval')" id="tab-approval" class="tab-btn hidden px-4 py-2 text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors rounded-t-lg relative"><i class="fa-solid fa-inbox mr-1"></i>承認トレイ <span id="pendingBadge" class="hidden absolute top-1 right-1 bg-rose-500 text-white text-[9px] px-1.5 rounded-full">0</span></button>
-            <button onclick="switchTab('create')" id="tab-create" class="tab-btn px-4 py-2 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors rounded-t-lg"><i class="fa-solid fa-pen-to-square mr-1"></i>新規報告</button>
+        <div class="flex gap-6 px-2">
+            <button onclick="switchTab('knowledge')" id="tab-knowledge" class="tab-btn active pb-3 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors"><i class="fa-solid fa-book-open mr-1"></i>ナレッジ一覧</button>
+            <button onclick="switchTab('approval')" id="tab-approval" class="tab-btn hidden pb-3 text-sm font-bold text-amber-500 hover:text-amber-400 transition-colors relative"><i class="fa-solid fa-inbox mr-1"></i>承認トレイ <span id="pendingBadge" class="hidden absolute top-0 -right-3 bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span></button>
+            <button onclick="switchTab('create')" id="tab-create" class="tab-btn pb-3 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors"><i class="fa-solid fa-pen-to-square mr-1"></i>新規報告</button>
         </div>
     </header>
 
     <!-- メインコンテンツ -->
-    <main class="flex-grow p-4 max-w-6xl mx-auto w-full">
+    <main class="flex-grow p-4 w-full max-w-7xl mx-auto">
         
         <!-- ==================== タブ1: ナレッジ一覧 ==================== -->
         <div id="content-knowledge" class="block space-y-4">
@@ -59,10 +73,10 @@
                     <option value="トラブル">トラブル</option>
                     <option value="クレーム">クレーム</option>
                     <option value="改善提案">改善提案</option>
+                    <option value="その他">その他</option>
                 </select>
                 <select id="filterBranch" onchange="applyFilters()" class="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none font-bold">
                     <option value="">全店舗</option>
-                    <!-- JavaScriptで動的に追加 -->
                 </select>
                 <select id="sortOrder" onchange="applyFilters()" class="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none font-bold">
                     <option value="date_desc">発生日 (新しい順)</option>
@@ -70,8 +84,9 @@
                 </select>
             </div>
             
-            <div id="knowledgeList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <!-- 承認済みナレッジカードがここに描画されます -->
+            <!-- 横長アコーディオンリスト -->
+            <div id="knowledgeList" class="flex flex-col space-y-2">
+                <!-- 承認済みナレッジがここに描画されます -->
             </div>
         </div>
 
@@ -90,7 +105,7 @@
 
         <!-- ==================== タブ3: 新規報告 ==================== -->
         <div id="content-create" class="hidden">
-            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-3xl mx-auto">
+            <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-3xl mx-auto mt-4">
                 <div class="border-b border-slate-800 pb-4 mb-6">
                     <h2 class="text-lg font-black text-white flex items-center"><i class="fa-solid fa-bullhorn text-sky-400 mr-2"></i>新しい知見を投稿する</h2>
                     <p class="text-xs text-slate-400 mt-1">店舗で起きた事象や対応策を入力し、本部へ送信してください。本部の承認後、全店舗へ共有されます。</p>
@@ -147,7 +162,7 @@
         const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         let currentUser = null;
-        let allReports = []; // 全件のキャッシュ
+        let allReports = [];
 
         window.onload = () => {
             const savedUser = sessionStorage.getItem('finUser');
@@ -155,14 +170,14 @@
                 currentUser = JSON.parse(savedUser);
                 document.getElementById('headerBranch').innerText = `${currentUser.name} (${currentUser.branch})`;
                 
-                // 本部権限（全店舗編集権限）がある場合、承認トレイタブを表示
+                // 本部権限（全店舗編集権限）の判定
                 if (currentUser.permissions && currentUser.permissions.editAll) {
                     document.getElementById('tab-approval').classList.remove('hidden');
+                    const roleBadge = document.getElementById('headerRole');
+                    roleBadge.classList.remove('hidden');
                 }
 
-                // 新規作成用の日付初期値
                 document.getElementById('reportDate').value = new Date().toLocaleDateString('en-CA');
-                
                 fetchReports();
             } else {
                 alert("セッション情報がありません。ポータルからログインしてください。");
@@ -170,7 +185,6 @@
             }
         };
 
-        // ローディングUI
         function showLoading(text) {
             document.getElementById('loadingText').innerText = text || "処理中...";
             document.getElementById('loadingOverlay').classList.remove('hidden');
@@ -179,9 +193,9 @@
             document.getElementById('loadingOverlay').classList.add('hidden');
         }
 
-        // タブ切り替えロジック
+        // タブ切り替え
         function switchTab(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active', 'bg-sky-500/10'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-' + tabId).classList.add('active');
             
             document.getElementById('content-knowledge').classList.add('hidden');
@@ -202,7 +216,6 @@
                 
                 allReports = data || [];
                 
-                // 店舗フィルタの選択肢を動的生成
                 const branches = [...new Set(allReports.map(r => r.branch))].filter(b => b);
                 const filterBranch = document.getElementById('filterBranch');
                 filterBranch.innerHTML = '<option value="">全店舗</option>';
@@ -227,7 +240,6 @@
             const branch = document.getElementById('filterBranch').value;
             const sort = document.getElementById('sortOrder').value;
 
-            // 承認済みのもの（または自分が投稿した差し戻し等も表示したい場合はここで調整可能。今回は承認済みのみとする）
             let filtered = allReports.filter(r => r.status === 'approved');
 
             if (keyword) {
@@ -244,7 +256,6 @@
                 filtered = filtered.filter(r => r.branch === branch);
             }
 
-            // ソート
             filtered.sort((a, b) => {
                 if (sort === 'date_desc') return new Date(b.incident_date) - new Date(a.incident_date);
                 if (sort === 'date_asc') return new Date(a.incident_date) - new Date(b.incident_date);
@@ -259,59 +270,88 @@
             listEl.innerHTML = "";
             
             if (reports.length === 0) {
-                listEl.innerHTML = `<p class="text-slate-500 text-sm col-span-full text-center py-10">該当するナレッジが見つかりません。</p>`;
+                listEl.innerHTML = `<p class="text-slate-500 text-sm text-center py-10">該当するナレッジが見つかりません。</p>`;
                 return;
             }
 
             reports.forEach(r => {
-                let catColor = "text-slate-400 bg-slate-950";
+                let catColor = "text-slate-400 bg-slate-950 border-slate-700";
                 if (r.category === "クレーム") catColor = "text-rose-400 bg-rose-950/30 border-rose-900/50";
                 else if (r.category === "トラブル") catColor = "text-amber-400 bg-amber-950/30 border-amber-900/50";
                 else if (r.category === "改善提案") catColor = "text-emerald-400 bg-emerald-950/30 border-emerald-900/50";
+                else if (r.category === "その他") catColor = "text-fuchsia-400 bg-fuchsia-950/30 border-fuchsia-900/50";
+
+                const isHq = currentUser.permissions && currentUser.permissions.editAll;
+                const scoreBadge = (r.score > 0 && isHq) ? `<span class="text-[10px] text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded font-bold shadow-inner border border-amber-900 shrink-0"><i class="fa-solid fa-star mr-1"></i>${r.score}pt</span>` : '';
 
                 const card = document.createElement('div');
-                card.className = "bg-slate-900 border border-slate-800 p-5 rounded-2xl hive-card flex flex-col relative";
+                card.className = "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm list-row";
                 card.innerHTML = `
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="text-[10px] px-2 py-0.5 rounded border ${catColor} font-bold">${r.category}</span>
-                        ${r.score > 0 && (currentUser.permissions && currentUser.permissions.editAll) ? `<span class="text-[10px] text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded font-bold shadow-inner border border-amber-900"><i class="fa-solid fa-star mr-1"></i>${r.score}pt</span>` : ''}
-                    </div>
-                    <h3 class="text-sm font-black text-slate-100 mb-2 leading-snug">${r.title}</h3>
-                    
-                    <div class="text-xs text-slate-400 space-y-2 mt-2 flex-grow bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">
-                        <div>
-                            <span class="text-[10px] font-bold text-sky-400 block mb-0.5">【事象】</span>
-                            <p class="whitespace-pre-wrap leading-relaxed line-clamp-3">${r.content}</p>
+                    <!-- アコーディオンのヘッダーバー -->
+                    <div class="p-3 cursor-pointer hover:bg-slate-800 flex items-center justify-between gap-4" onclick="toggleKnowledge('${r.id}')">
+                        <div class="flex items-center gap-3 flex-grow min-w-0">
+                            <span class="text-[10px] px-2 py-1 rounded border ${catColor} font-bold shrink-0 w-16 text-center">${r.category}</span>
+                            <h3 class="text-sm font-black text-slate-100 truncate">${r.title}</h3>
                         </div>
-                        <div class="border-t border-slate-800/50 pt-2 mt-2">
-                            <span class="text-[10px] font-bold text-emerald-400 block mb-0.5">【対応・解決策】</span>
-                            <p class="whitespace-pre-wrap leading-relaxed line-clamp-3">${r.action_taken}</p>
+                        <div class="flex items-center gap-4 shrink-0">
+                            ${scoreBadge}
+                            <div class="hidden md:flex text-[10px] text-slate-500 font-mono gap-4 items-center">
+                                <span class="flex items-center w-28 truncate"><i class="fa-solid fa-store mr-1"></i>${r.branch}</span>
+                                <span class="flex items-center"><i class="fa-solid fa-calendar mr-1"></i>${r.incident_date}</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down text-slate-500 text-xs transition-transform duration-200" id="icon_${r.id}"></i>
                         </div>
                     </div>
                     
-                    <div class="text-[10px] text-slate-500 font-mono mt-4 pt-2 border-t border-slate-800/50 flex justify-between items-center">
-                        <span class="font-bold"><i class="fa-solid fa-store mr-1"></i>${r.branch} (${r.created_by})</span>
-                        <span><i class="fa-solid fa-calendar mr-1"></i>${r.incident_date}</span>
-                    </div>
+                    <!-- アコーディオンの中身（詳細） -->
+                    <div id="content_${r.id}" class="hidden border-t border-slate-800 p-5 bg-slate-950/50 text-xs">
+                        <div class="flex md:hidden text-[10px] text-slate-500 font-mono gap-4 mb-4 pb-3 border-b border-slate-800/50">
+                            <span><i class="fa-solid fa-store mr-1"></i>${r.branch}</span>
+                            <span><i class="fa-solid fa-calendar mr-1"></i>${r.incident_date}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono hidden md:block mb-4">報告者: ${r.created_by}</div>
+                        
+                        <div class="space-y-5">
+                            <div>
+                                <span class="text-[10px] font-bold text-sky-400 block mb-1.5 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-1"></i>事象の詳細</span>
+                                <p class="text-slate-300 whitespace-pre-wrap leading-relaxed text-sm bg-slate-950 p-3 rounded-lg border border-slate-800">${r.content}</p>
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold text-emerald-400 block mb-1.5 flex items-center"><i class="fa-solid fa-lightbulb mr-1"></i>対応・解決策</span>
+                                <p class="text-slate-300 whitespace-pre-wrap leading-relaxed text-sm bg-slate-950 p-3 rounded-lg border border-slate-800">${r.action_taken}</p>
+                            </div>
+                        </div>
 
-                    ${r.hq_comment ? `
-                    <div class="bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30 mt-3">
-                        <p class="text-[10px] text-indigo-400 font-bold flex items-center mb-1"><i class="fa-solid fa-comment-dots mr-1"></i>本部からの追記</p>
-                        <p class="text-[11px] text-slate-300 break-words">${r.hq_comment}</p>
-                    </div>` : ''}
+                        ${r.hq_comment ? `
+                        <div class="bg-indigo-950/20 p-4 rounded-xl border border-indigo-900/30 mt-5">
+                            <p class="text-xs text-indigo-400 font-bold flex items-center mb-1.5"><i class="fa-solid fa-comment-dots mr-1"></i>本部からの追記・フィードバック</p>
+                            <p class="text-sm text-indigo-100/80 break-words leading-relaxed">${r.hq_comment}</p>
+                        </div>` : ''}
+                    </div>
                 `;
                 listEl.appendChild(card);
             });
         }
 
+        // アコーディオンの開閉制御
+        function toggleKnowledge(id) {
+            const el = document.getElementById('content_' + id);
+            const icon = document.getElementById('icon_' + id);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                if (icon) icon.classList.add('rotate-180');
+            } else {
+                el.classList.add('hidden');
+                if (icon) icon.classList.remove('rotate-180');
+            }
+        }
+
         // ==================== タブ2: 承認トレイロジック ====================
         function renderApprovalList() {
-            // 本部権限がない場合は処理しない
             if (!currentUser.permissions || !currentUser.permissions.editAll) return;
 
             const pending = allReports.filter(r => r.status === 'pending' || r.status === 'returned');
             
-            // バッジの更新
             const badge = document.getElementById('pendingBadge');
             if (pending.length > 0) {
                 badge.innerText = pending.length;
@@ -333,15 +373,21 @@
             }
 
             pending.forEach(r => {
+                let catColor = "text-slate-400 bg-slate-950 border-slate-700";
+                if (r.category === "クレーム") catColor = "text-rose-400 bg-rose-950/30 border-rose-900/50";
+                else if (r.category === "トラブル") catColor = "text-amber-400 bg-amber-950/30 border-amber-900/50";
+                else if (r.category === "改善提案") catColor = "text-emerald-400 bg-emerald-950/30 border-emerald-900/50";
+                else if (r.category === "その他") catColor = "text-fuchsia-400 bg-fuchsia-950/30 border-fuchsia-900/50";
+
                 const card = document.createElement('div');
                 card.className = "bg-slate-900 border border-slate-700 p-5 rounded-2xl shadow-lg";
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-4 border-b border-slate-800 pb-3">
                         <div>
-                            <span class="text-[10px] px-2 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-300 font-bold mr-2">${r.category}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded border ${catColor} font-bold mr-2">${r.category}</span>
                             <span class="text-sm font-black text-white">${r.title}</span>
                         </div>
-                        <div class="text-[10px] text-slate-400 font-mono text-right">
+                        <div class="text-[10px] text-slate-400 font-mono text-right shrink-0 ml-4">
                             <p>${r.branch} / ${r.created_by}</p>
                             <p>発生日: ${r.incident_date}</p>
                         </div>
@@ -408,7 +454,6 @@
 
                 if (error) throw error;
                 
-                // 再読み込みしてUI更新
                 await fetchReports();
             } catch (err) {
                 console.error(err);
@@ -453,12 +498,10 @@
 
                 alert("ナレッジを申請しました！本部の確認をお待ちください。");
                 
-                // フォームをリセット
                 document.getElementById('reportTitle').value = "";
                 document.getElementById('reportContent').value = "";
                 document.getElementById('reportAction').value = "";
                 
-                // 再読み込みしてナレッジ一覧タブへ戻す
                 await fetchReports();
                 switchTab('knowledge');
             } catch (err) {
