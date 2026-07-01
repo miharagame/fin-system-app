@@ -1232,31 +1232,57 @@
 
       const isManager = (currentUser.permissions.editAll) || (currentTaskStaff && currentTaskStaff.level === "店長・副店長");
       const isRealAssignee = task.realAssignee && currentTaskStaff && task.realAssignee === currentTaskStaff.name;
-      const isCreator = task.createdBy && currentTaskStaff && task.createdBy === currentTaskStaff.name; // ★追加: 作成者判定
-      const canEditTask = isManager || isRealAssignee || isCreator; // ★変更: タスク全体を編集できるか
+      const isCreator = task.createdBy && currentTaskStaff && task.createdBy === currentTaskStaff.name;
+      // ★追加: 自分が担当者に含まれているか (Todoの時から編集可能にするため)
+      const isAssignedToMe = currentTaskStaff && task.assignee && String(task.assignee).includes(currentTaskStaff.name);
+      
+      // ★修正: 権限を拡張 (担当者なら編集OK)
+      const canEditTask = isManager || isRealAssignee || isCreator || isAssignedToMe; 
       
       const memoEl = document.getElementById('detailTaskMemo');
       const saveBtn = document.getElementById('btnSaveTaskMemo');
-      const editNameBtn = document.getElementById('btnEditTaskName'); // ★追加: 鉛筆ボタン
+      const editNameBtn = document.getElementById('btnEditTaskName');
       
+      // ★復活: タイトルの鉛筆表示コントロール
       if (canEditTask) {
           if (editNameBtn) editNameBtn.classList.remove('hidden');
       } else {
           if (editNameBtn) editNameBtn.classList.add('hidden');
       }
       
-      // ★修正: 以下の canEditMemo は canEditTask に置き換えます
+      // ★期日の表示コントロール
+      const dueContainer = document.getElementById('detailTaskDueContainer');
+      const dueInput = document.getElementById('detailTaskDue');
+      const editDueBtn = document.getElementById('btnEditTaskDue');
+      
+      if (task.type === 'kanban') {
+          if (dueContainer) dueContainer.classList.remove('hidden');
+          if (dueInput) dueInput.value = task.dueDate || '';
+          
+          if (canEditTask) {
+              if (editDueBtn) editDueBtn.classList.remove('hidden');
+          } else {
+              if (editDueBtn) editDueBtn.classList.add('hidden');
+          }
+      } else {
+          if (dueContainer) dueContainer.classList.add('hidden');
+      }
+      
       const canEditMemo = canEditTask;
-      memoEl.value = task.memo || '';
+      if (memoEl) memoEl.value = task.memo || '';
       
       if (canEditMemo) {
-          memoEl.readOnly = false;
-          memoEl.placeholder = "なぜ未着手なのか、どこまで進んでいるか等を自由に記入してください...";
-          saveBtn.classList.remove('hidden');
+          if (memoEl) {
+              memoEl.readOnly = false;
+              memoEl.placeholder = "なぜ未着手なのか、どこまで進んでいるか等を自由に記入してください...";
+          }
+          if (saveBtn) saveBtn.classList.remove('hidden');
       } else {
-          memoEl.readOnly = true;
-          memoEl.placeholder = "メモを編集する権限がありません（着手中の担当者または店長・副店長のみ編集可能）";
-          saveBtn.classList.add('hidden');
+          if (memoEl) {
+              memoEl.readOnly = true;
+              memoEl.placeholder = "メモを編集する権限がありません（着手中の担当者または作成者・店長等のみ）";
+          }
+          if (saveBtn) saveBtn.classList.add('hidden');
       }
 
       document.getElementById('taskDetailModal').classList.replace('hidden', 'flex');
