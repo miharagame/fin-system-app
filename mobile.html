@@ -1308,12 +1308,19 @@
       const memo = document.getElementById('detailTaskMemo').value;
       const taskId = currentDetailTask.id;
       const targetStatus = newStatus || currentDetailTask.status; 
+      
       const originalStatus = currentDetailTask.status; 
       
       if (newStatus && targetStatus !== originalStatus && !requireStaffAuth()) return;
       
       lastActionTime = new Date().getTime(); 
-      let upd = { status: targetStatus, memo: memo, updated_at: new Date().toISOString() };
+      
+      let upd = { 
+          status: targetStatus, 
+          memo: memo,
+          updated_at: new Date().toISOString() 
+      };
+
       let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
 
       if (originalStatus === 'doing' && targetStatus !== 'doing') {
@@ -1336,11 +1343,27 @@
           currentDetailTask.startTime = new Date().getTime();
           upd.real_assignee = currentDetailTask.realAssignee;
           upd.start_time = currentDetailTask.startTime;
+
       } else if (targetStatus === "todo" && originalStatus === 'doing') {
           currentDetailTask.realAssignee = "";
           currentDetailTask.startTime = null;
           upd.real_assignee = "";
           upd.start_time = null;
+      }
+
+      // ★追加：完了時の基準日上書き ＆ 未完了に戻す時の作成日復元
+      if (currentDetailTask.type === 'kanban') {
+          if (targetStatus === 'done' && originalStatus !== 'done') {
+              upd.target_date = todayStr; // 完了日に上書き
+          } else if (targetStatus === 'todo' && originalStatus === 'done') {
+              // 完了状態から未完了に戻した場合は、タスクIDから作成日を逆算して戻す
+              const ts = parseInt(taskId.substring(1, 14));
+              if (!isNaN(ts)) {
+                  const dObj = new Date(ts);
+                  const tzOffset = dObj.getTimezoneOffset() * 60000;
+                  upd.target_date = new Date(dObj - tzOffset).toISOString().split('T')[0];
+              }
+          }
       }
 
       currentDetailTask.status = targetStatus;
@@ -1353,6 +1376,7 @@
       try {
           const { error } = await db.from('tasks').update(upd).eq('id', taskId);
           if (error) throw error;
+          
           closeTaskDetailModal();
           loadTasks(true); 
       } catch(err) {
