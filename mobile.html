@@ -363,6 +363,15 @@
             <button id="btnEditTaskName" onclick="editTaskName()" class="hidden text-slate-500 hover:text-sky-400 mt-1 shrink-0 transition-colors"><i class="fa-solid fa-pen"></i></button>
           </div>
         </div>
+
+        <!-- ★追加: 完了期日の表示・編集エリア -->
+        <div id="detailTaskDueContainer" class="hidden">
+          <p class="text-[10px] text-slate-500 font-bold mb-1">完了期日</p>
+          <div class="flex items-center gap-2">
+            <input type="date" id="detailTaskDue" class="bg-slate-950 border border-slate-800 text-rose-400 text-sm font-bold rounded-lg px-3 py-2 outline-none transition-colors [color-scheme:dark]" readonly>
+            <button id="btnEditTaskDue" onclick="editTaskDue()" class="hidden text-slate-500 hover:text-sky-400 shrink-0 transition-colors"><i class="fa-solid fa-pen"></i></button>
+          </div>
+        </div>
         
         <div class="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
           <div>
@@ -1390,6 +1399,61 @@
           alert("タスク名の変更に失敗しました: " + err.message);
           if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
       }
+    }
+
+    // ★追加: 完了期日の編集ロジック
+    async function editTaskDue() {
+      if (!currentDetailTask || !requireStaffAuth()) return;
+      
+      const dueInput = document.getElementById('detailTaskDue');
+      dueInput.readOnly = false; 
+      dueInput.classList.remove('bg-slate-950', 'border-slate-800');
+      dueInput.classList.add('bg-slate-800', 'border-sky-500'); 
+
+      try {
+          dueInput.showPicker(); 
+      } catch (e) {
+          dueInput.focus();
+      }
+
+      dueInput.onchange = async function() {
+          const newDue = dueInput.value;
+          dueInput.readOnly = true;
+          dueInput.classList.add('bg-slate-950', 'border-slate-800');
+          dueInput.classList.remove('bg-slate-800', 'border-sky-500');
+
+          if (newDue === currentDetailTask.dueDate) return; 
+          
+          lastActionTime = new Date().getTime(); 
+          const editBtn = document.getElementById('btnEditTaskDue');
+          if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; 
+          
+          try {
+              const { error } = await db.from('tasks').update({ 
+                  due_date: newDue || null, 
+                  updated_at: new Date().toISOString() 
+              }).eq('id', currentDetailTask.id);
+              
+              if (error) throw error;
+              
+              currentDetailTask.dueDate = newDue;
+              if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+              
+              loadTasks(true); 
+          } catch (err) {
+              alert("期日の変更に失敗しました: " + err.message);
+              dueInput.value = currentDetailTask.dueDate || '';
+              if (editBtn) editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+          }
+      };
+
+      dueInput.onblur = function() {
+          setTimeout(() => {
+              dueInput.readOnly = true;
+              dueInput.classList.add('bg-slate-950', 'border-slate-800');
+              dueInput.classList.remove('bg-slate-800', 'border-sky-500');
+          }, 200);
+      };
     }
 
     async function loadTasks(isSilent = false) {
