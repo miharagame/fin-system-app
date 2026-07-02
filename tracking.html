@@ -1468,13 +1468,20 @@
         }
         
         const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.roleLevel === "店舗共通(店長・副店長用)" || currentUser.permissions.editAll;
-        if (!isMgr) {
-            alert("この操作は店長・副店長のみ可能です。");
-            return;
-        }
+      if (!isMgr) {
+          alert("この操作は店長・副店長のみ可能です。");
+          return;
+      }
 
-        let confirmMsg = "この項目を「完了」にすると、以降修正できなくなります。\n（どうしても修正が必要な場合は本部に連絡が必要です）\n\n本当に完了してよろしいですか？";
-        if(!confirm(confirmMsg)) return;
+      　// ★追加: 自店舗チェック（全店編集権限を持つ管理者はパス）
+      　const isOwnBranch = currentUser.branch === targetBranch || currentUser.permissions.editAll;
+      　if (!isOwnBranch) {
+          　alert("自店舗のデータのみ確定可能です。");
+          　return;
+　      }
+
+     　 let confirmMsg = "この項目を「完了」にすると、以降修正できなくなります。\n（どうしても修正が必要な場合は本部に連絡が必要です）\n\n本当に完了してよろしいですか？";
+     　 if(!confirm(confirmMsg)) return;
 
         const prefix = field.split('_')[0];
         const btn = document.getElementById('btn_' + prefix + '_check');
@@ -1524,6 +1531,12 @@
         const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.roleLevel === "店舗共通(店長・副店長用)" || currentUser.permissions.editAll;
         if (!isMgr) {
             alert("月報の提出は店長・副店長のみ可能です。");
+            return;
+        }
+     　 // ★追加: 自店舗チェック（全店編集権限を持つ管理者はパス）
+        const isOwnBranch = currentUser.branch === targetBranch || currentUser.permissions.editAll;
+        if (!isOwnBranch) {
+            alert("自店舗の月報のみ提出可能です。");
             return;
         }
 
