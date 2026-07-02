@@ -1467,7 +1467,7 @@
             return;
         }
         
-        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.permissions.editAll;
+        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.roleLevel === "店舗共通(店長・副店長用)" || currentUser.permissions.editAll;
         if (!isMgr) {
             alert("この操作は店長・副店長のみ可能です。");
             return;
@@ -1521,7 +1521,7 @@
             return;
         }
         
-        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.permissions.editAll;
+        const isMgr = currentUser.roleLevel === "店長" || currentUser.roleLevel === "副店長" || currentUser.roleLevel === "店舗共通(店長・副店長用)" || currentUser.permissions.editAll;
         if (!isMgr) {
             alert("月報の提出は店長・副店長のみ可能です。");
             return;
