@@ -98,7 +98,8 @@
                   <option value="副店長">副店長</option>
                   <option value="一般">一般スタッフ</option>
                   <option value="管理者">本部/管理者</option>
-                  <option value="店舗アカウント">店舗共通/モバイル用</option>
+                  <option value="店舗共通(店長・副店長用)">店舗共通(店長・副店長用)</option>
+                  <option value="店舗共通(一般用)">店舗共通(一般用)</option>
                 </select>
               </div>
             </div>
@@ -709,6 +710,21 @@
         targetTab.classList.add('active');
         targetView.classList.remove('hidden');
       }
+    }
+
+    // ★追加: ユーザー編集ボタンの処理
+    function editUser(id) {
+      const u = usersList.find(x => x.id === id);
+      if(!u) return;
+      document.getElementById('u_id').value = u.id;
+      document.getElementById('u_pass').value = u.pass || "";
+      document.getElementById('u_name').value = u.name;
+      document.getElementById('u_role').value = u.roleId;
+      document.getElementById('u_branch').value = u.branch;
+      document.getElementById('u_roleLevel').value = u.roleLevel || "一般";
+      
+      // 画面を一番上に戻す
+      window.scrollTo(0, 0);
     }
 
     function renderUsers() {
