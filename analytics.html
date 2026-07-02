@@ -1663,9 +1663,11 @@
 
       adminUsersList.forEach(u => {
         if (storeStaffCounts[u.branch] !== undefined) {
-          if (u.roleId === "role_employee" && u.roleLevel !== "店舗アカウント" && u.roleLevel !== "管理者") {
-            storeStaffCounts[u.branch]++; storeUserMaps[u.branch].push(u);
-          }
+          // ★修正: 「店舗共通」が含まれる役職を一括で賞与計算の分母から除外する
+        　const isCommonAccount = u.roleLevel && String(u.roleLevel).includes("店舗共通");
+        　if (u.roleId === "role_employee" && !isCommonAccount && u.roleLevel !== "管理者") {
+          　storeStaffCounts[u.branch]++; storeUserMaps[u.branch].push(u);
+        　}
         }
       });
 
