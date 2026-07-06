@@ -181,6 +181,11 @@
           <button onclick="setTaskFilter('mine')" id="filter_mine" class="text-slate-500 text-[10px] font-bold px-3 py-1.5 rounded-md">自分</button>
         </div>
         <div class="flex items-center gap-2">
+          <select id="kanbanSortOrder" onchange="renderTasks()" class="bg-slate-950 border border-slate-700 text-slate-300 text-[10px] font-bold rounded-lg p-1.5 cursor-pointer outline-none focus:border-indigo-500 transition-colors">
+            <option value="created_desc">作成順</option>
+            <option value="due_asc">期日順</option>
+          </select>
+          
           <input type="date" id="taskTargetDate" onchange="loadTasks()" class="bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-1.5 w-28 outline-none [color-scheme:dark]">
           <button id="btnAddTask" onclick="openAddTaskModal()" class="bg-indigo-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow"><i class="fa-solid fa-plus"></i> 追加</button>
         </div>
@@ -1030,6 +1035,24 @@
       activeTimers = {};
       const routineContainer = document.getElementById('routineList'); const kanbanTodo = document.getElementById('kanbanTodo'); const kanbanDoing = document.getElementById('kanbanDoing'); const kanbanDone = document.getElementById('kanbanDone');
       routineContainer.innerHTML = ""; kanbanTodo.innerHTML = ""; kanbanDoing.innerHTML = ""; kanbanDone.innerHTML = "";
+      
+      // ★追加: 単発タスクの並び替えロジック
+      const sortOrder = document.getElementById('kanbanSortOrder') ? document.getElementById('kanbanSortOrder').value : 'created_desc';
+      
+      if (sortOrder === 'due_asc') {
+          tasksData.sort((a, b) => {
+              if (a.type === 'kanban' && b.type === 'kanban') {
+                  if (!a.dueDate && !b.dueDate) return b.id.localeCompare(a.id);
+                  if (!a.dueDate) return 1;
+                  if (!b.dueDate) return -1;
+                  return a.dueDate.localeCompare(b.dueDate);
+              }
+              return 0;
+          });
+      } else {
+          tasksData.sort((a, b) => b.id.localeCompare(a.id));
+      }
+
       let cTodo = 0, cDoing = 0, cDone = 0, routineCount = 0;
 
       const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
@@ -2012,10 +2035,20 @@
       }
     }
 
+    /**
+     * モバイル版：子タスクの進捗率を更新し、親プロジェクトの平均進捗率を自動同期する
+     * @param {string} subtaskId - 更新対象の子タスクID
+     * @param {HTMLButtonElement} btnEl - 操作された更新ボタンの要素
+     */
     async function updateSubTask(subtaskId, btnEl) {
       if (!requireStaffAuth()) return;
-      const progress = parseInt(document.getElementById('slider_' + subtaskId).value, 10);
-      const memo = document.getElementById('memo_' + subtaskId).value;
+      
+      const progressInput = document.getElementById('slider_' + subtaskId);
+      const memoInput = document.getElementById('memo_' + subtaskId);
+      if (!progressInput || !memoInput) return;
+
+      const progress = parseInt(progressInput.value, 10);
+      const memo = memoInput.value;
       
       if (btnEl) {
           btnEl.dataset.original = btnEl.innerHTML;
@@ -2026,14 +2059,43 @@
       lastActionTime = new Date().getTime(); 
       
       try {
-          const { error } = await db.from('projects').update({ 
-              progress: progress, memo: memo, real_assignee: currentTaskStaff.name, updated_at: new Date().toISOString() 
+          // 1. 子タスクの進捗とメモを更新
+          const { error: subLinkError } = await db.from('projects').update({ 
+              progress: progress, 
+              memo: memo, 
+              real_assignee: currentTaskStaff.name, 
+              updated_at: new Date().toISOString() 
           }).eq('id', subtaskId);
-          if (error) throw error;
+          
+          if (subLinkError) throw new Error("子タスクの更新に失敗しました: " + subLinkError.message);
+
+          // 2. 親プロジェクトの平均進捗率を再計算してDBに同期
+          const currentSubtask = subtasksData.find(s => s.id === subtaskId);
+          if (currentSubtask && currentSubtask.parentId) {
+              const parentId = currentSubtask.parentId;
+              
+              const targetSubs = subtasksData.map(s => s.id === subtaskId ? { ...s, progress: progress } : s)
+                                             .filter(s => s.parentId === parentId && s.status !== 'deleted');
+              
+              let totalProgress = 0;
+              targetSubs.forEach(s => totalProgress += (s.progress || 0));
+              const avgProgress = targetSubs.length > 0 ? Math.floor(totalProgress / targetSubs.length) : 0;
+              
+              const { error: parentLinkError } = await db.from('projects').update({
+                  progress: avgProgress,
+                  updated_at: new Date().toISOString()
+              }).eq('id', parentId);
+              
+              if (parentLinkError) throw new Error("親プロジェクトの進捗同期に失敗しました: " + parentLinkError.message);
+          }
+          
           loadTasks(true); 
       } catch(err) {
           alert("エラー: " + err.message); 
-          if(btnEl){btnEl.innerHTML=btnEl.dataset.original; btnEl.disabled=false;} 
+          if(btnEl){
+              btnEl.innerHTML = btnEl.dataset.original; 
+              btnEl.disabled = false;
+          } 
       }
     }
 
