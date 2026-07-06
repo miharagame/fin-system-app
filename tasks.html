@@ -1674,10 +1674,20 @@
       }
     }
 
+    /**
+     * 子タスクの進捗率およびメモを更新し、親プロジェクトの平均進捗率を自動同期する
+     * @param {string} subtaskId - 更新対象の子タスクID
+     * @param {HTMLButtonElement} btnEl - 操作された更新ボタンの要素
+     */
     async function updateSubTask(subtaskId, btnEl) {
       if (!requireStaffAuth()) return;
-      const progress = parseInt(document.getElementById('slider_' + subtaskId).value, 10);
-      const memo = document.getElementById('memo_' + subtaskId).value;
+      
+      const progressInput = document.getElementById('slider_' + subtaskId);
+      const memoInput = document.getElementById('memo_' + subtaskId);
+      if (!progressInput || !memoInput) return;
+
+      const progress = parseInt(progressInput.value, 10);
+      const memo = memoInput.value;
       
       if (btnEl) {
           btnEl.dataset.original = btnEl.innerHTML;
@@ -1688,14 +1698,46 @@
       lastActionTime = new Date().getTime(); 
       
       try {
-          const { error } = await db.from('projects').update({ 
-              progress: progress, memo: memo, real_assignee: currentTaskStaff.name, updated_at: new Date().toISOString() 
+          // 1. 当該子タスクの進捗とメモを更新
+          const { error: subLinkError } = await db.from('projects').update({ 
+              progress: progress, 
+              memo: memo, 
+              real_assignee: currentTaskStaff.name, 
+              updated_at: new Date().toISOString() 
           }).eq('id', subtaskId);
-          if (error) throw error;
+          
+          if (subLinkError) throw new Error("子タスクの更新に失敗しました: " + subLinkError.message);
+
+          // 2. 該当する親プロジェクトの平均進捗率を再計算してDBに同期
+          const currentSubtask = subtasksData.find(s => s.id === subtaskId);
+          if (currentSubtask && currentSubtask.parentId) {
+              const parentId = currentSubtask.parentId;
+              
+              // 擬似的に最新の進捗を反映させた配列を作成して平均値を算出
+              const targetSubs = subtasksData.map(s => s.id === subtaskId ? { ...s, progress: progress } : s)
+                                             .filter(s => s.parentId === parentId && s.status !== 'deleted');
+              
+              let totalProgress = 0;
+              targetSubs.forEach(s => totalProgress += (s.progress || 0));
+              const avgProgress = targetSubs.length > 0 ? Math.floor(totalProgress / targetSubs.length) : 0;
+              
+              // 親プロジェクトの progress カラムを書き換え
+              const { error: parentLinkError } = await db.from('projects').update({
+                  progress: avgProgress,
+                  updated_at: new Date().toISOString()
+              }).eq('id', parentId);
+              
+              if (parentLinkError) throw new Error("親プロジェクトの進捗同期に失敗しました: " + parentLinkError.message);
+          }
+          
+          // 3. 再読み込みして画面を更新
           loadTasks(true); 
       } catch(err) {
           alert("エラー: " + err.message); 
-          if(btnEl){btnEl.innerHTML=btnEl.dataset.original; btnEl.disabled=false;} 
+          if(btnEl){
+              btnEl.innerHTML = btnEl.dataset.original; 
+              btnEl.disabled = false;
+          } 
       }
     }
 
