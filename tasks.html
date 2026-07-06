@@ -97,6 +97,11 @@
       </div>
 
       <div class="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 border-slate-800 pt-3 lg:pt-0">
+        <select id="kanbanSortOrder" onchange="renderTasks()" class="bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-2 cursor-pointer outline-none focus:border-indigo-500 transition-colors">
+          <option value="created_desc">作成日順 (新しい順)</option>
+          <option value="due_asc">期日順 (期限が近い順)</option>
+        </select>
+        
         <input type="date" id="targetDate" onchange="loadTasks()" class="bg-slate-950 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-2 cursor-pointer w-32 sm:w-auto [color-scheme:dark]">
         <button id="btnAddTask" onclick="openAddTaskModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition-all shrink-0"><i class="fa-solid fa-plus mr-1"></i>追加</button>
       </div>
@@ -1018,6 +1023,26 @@
       activeTimers = {};
       const routineContainer = document.getElementById('routineList'); const kanbanTodo = document.getElementById('kanbanTodo'); const kanbanDoing = document.getElementById('kanbanDoing'); const kanbanDone = document.getElementById('kanbanDone');
       routineContainer.innerHTML = ""; kanbanTodo.innerHTML = ""; kanbanDoing.innerHTML = ""; kanbanDone.innerHTML = "";
+      
+      // ★追加: 単発タスクの並び替えロジック
+      const sortOrder = document.getElementById('kanbanSortOrder') ? document.getElementById('kanbanSortOrder').value : 'created_desc';
+      
+      if (sortOrder === 'due_asc') {
+          // 期日順ソート（期日ありを優先し、期日がないタスクは一番下に配置）
+          tasksData.sort((a, b) => {
+              if (a.type === 'kanban' && b.type === 'kanban') {
+                  if (!a.dueDate && !b.dueDate) return b.id.localeCompare(a.id); // 両方空なら作成日降順
+                  if (!a.dueDate) return 1;  // aが空なら下へ
+                  if (!b.dueDate) return -1; // bが空なら下へ
+                  return a.dueDate.localeCompare(b.dueDate); // 期日昇順
+              }
+              return 0;
+          });
+      } else {
+          // デフォルト: 作成日降順（IDのタイムスタンプ文字列で比較）
+          tasksData.sort((a, b) => b.id.localeCompare(a.id));
+      }
+
       let cTodo = 0, cDoing = 0, cDone = 0, routineCount = 0;
 
       const isReadOnly = !currentUser.permissions.editAll && (targetBranch !== currentUser.branch);
