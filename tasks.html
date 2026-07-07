@@ -1326,9 +1326,14 @@
           updated_at: new Date().toISOString() 
       };
 
+      // 既存の変数宣言の直後に以下を挿入
       let currentTotalSec = parseInt(currentDetailTask.elapsedSeconds) || 0;
 
-      if (originalStatus === 'doing' && targetStatus !== 'doing') {
+      // ★追加: doingからdoingへの「引き継ぎ」が明示的に実行されたかどうかの判定フラグ
+      const isTakeover = originalStatus === 'doing' && targetStatus === 'doing' && newStatus === 'doing';
+
+      // 対応中から別の状態へ遷移する場合、または別の担当者へ「引き継ぐ」場合、それまでの時間を蓄積
+      if ((originalStatus === 'doing' && targetStatus !== 'doing') || isTakeover) {
           let st = currentDetailTask.startTime;
           if (st && !isNaN(st) && st > 0) {
               const diffSec = Math.floor((new Date().getTime() - st) / 1000);
@@ -1338,7 +1343,8 @@
           upd.elapsed_seconds = currentTotalSec;
       }
 
-      if (targetStatus === "doing" && originalStatus !== 'doing') {
+      // 未対応から対応中にする場合、または「引き継ぎ」が発生した場合、新作業者をセットしてタイマーをリスタート
+      if ((targetStatus === "doing" && originalStatus !== 'doing') || isTakeover) {
           if (!currentTaskStaff || !currentTaskStaff.name) {
               alert("スタッフの認証が切れています。右上のボタンから再度ご自身の名前を選択してください。");
               openStaffAuthModal();
