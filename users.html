@@ -157,6 +157,7 @@
             <div class="grid grid-cols-2 gap-2">
               <div><label class="text-[10px] text-slate-500 block">業績分析データ</label><select id="r_ana" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
               <div><label class="text-[10px] text-slate-500 block">経営計画ｼﾐｭﾚｰﾀ</label><select id="r_plan" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
+              <div><label class="text-[10px] text-emerald-400 block font-bold">店舗シフト計画</label><select id="r_shift_plan" class="input-box text-sm cursor-pointer border-emerald-500/50 bg-emerald-950/20 text-emerald-200"><option value="不可">不可</option><option value="可能">可能</option></select></div>
               <div><label class="text-[10px] text-slate-500 block">予実トラッカー</label><select id="r_track" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
               <div><label class="text-[10px] text-slate-500 block">在庫分析 (CSV)</label><select id="r_inv" class="input-box text-sm cursor-pointer"><option value="不可">不可</option><option value="可能">可能</option></select></div>
               
@@ -468,7 +469,7 @@
         
         rolesList = rRes.data.map(r => ({
             id: r.id, name: r.name, viewScope: r.view_scope, editScope: r.edit_scope, manageAccess: r.manage_access,
-            canAnalytics: r.can_analytics, canPlanning: r.can_planning, canTracking: r.can_tracking, canInventory: r.can_inventory,
+            canAnalytics: r.can_analytics, canPlanning: r.can_planning, canShiftPlan: r.can_shift_plan, canTracking: r.can_tracking, canInventory: r.can_inventory,
             canInventorySave: r.can_inventory_save, canTasks: r.can_tasks, canHr: r.can_hr, isEvalTarget: r.is_eval_target,
             canNotice: r.can_notice, canLog: r.can_log, canReport: r.can_report,
             canViewTrueCash: r.can_view_true_cash,
@@ -803,6 +804,7 @@
       
       document.getElementById('r_ana').value = r.canAnalytics;
       document.getElementById('r_plan').value = r.canPlanning;
+      document.getElementById('r_shift_plan').value = r.canShiftPlan || "不可";
       document.getElementById('r_track').value = r.canTracking;
       document.getElementById('r_inv').value = r.canInventory;
       document.getElementById('r_inv_save').value = r.canInventorySave || "不可";
@@ -828,6 +830,7 @@
         manageAccess: document.getElementById('r_manage').value,
         canAnalytics: document.getElementById('r_ana').value,
         canPlanning: document.getElementById('r_plan').value,
+        canShiftPlan: document.getElementById('r_shift_plan').value,
         canTracking: document.getElementById('r_track').value,
         canInventory: document.getElementById('r_inv').value,
         canInventorySave: document.getElementById('r_inv_save').value, 
@@ -846,7 +849,7 @@
       try {
         const { error } = await db.from('roles').upsert({
             id: payload.id, name: payload.name, view_scope: payload.viewScope, edit_scope: payload.editScope, manage_access: payload.manageAccess,
-            can_analytics: payload.canAnalytics, can_planning: payload.canPlanning, can_tracking: payload.canTracking, can_inventory: payload.canInventory,
+            can_analytics: payload.canAnalytics, can_planning: payload.canPlanning, can_shift_plan: payload.canShiftPlan, can_tracking: payload.canTracking, can_inventory: payload.canInventory,
             can_inventory_save: payload.canInventorySave, can_tasks: payload.canTasks, can_honbu_task: payload.canHonbuTask, // ★追加
             can_hr: payload.canHr, is_eval_target: payload.isEvalTarget,
             can_notice: payload.canNotice, can_log: payload.canLog, can_report: payload.canReport, 
