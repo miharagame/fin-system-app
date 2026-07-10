@@ -239,14 +239,33 @@
 
       <div class="lg:col-span-3 bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
         <h2 class="font-bold text-white mb-4">設定済み権限一覧</h2>
-        <table class="w-full text-sm text-left whitespace-nowrap">
-          <thead>
-            <tr class="border-b border-slate-700 text-xs text-slate-400">
-              <th class="pb-2">権限名 (ID)</th><th class="pb-2">データスコープ</th><th class="pb-2">管理/設定</th><th class="pb-2">分析/計画ツール</th><th class="pb-2 text-center">操作</th>
-            </tr>
-          </thead>
-          <tbody id="roleTbody" class="divide-y divide-slate-800/50"></tbody>
-        </table>
+        <table class="w-full text-xs text-left whitespace-nowrap border-collapse">
+　　　　  <thead>
+   　　　　 <tr class="border-b border-slate-700 text-slate-400">
+    　　　　  <th class="pb-2 pr-3 sticky left-0 bg-slate-900">権限名</th>
+    　　　　  <th class="pb-2 px-2 text-center">閲覧</th>
+   　　　　   <th class="pb-2 px-2 text-center">編集</th>
+    　　　　  <th class="pb-2 px-2 text-center border-l border-slate-800">ｱｶｳﾝﾄ</th>
+  　　　　    <th class="pb-2 px-2 text-center">お知らせ</th>
+    　　　　  <th class="pb-2 px-2 text-center">ログ</th>
+   　　　　   <th class="pb-2 px-2 text-center">手残り</th>
+   　　　　   <th class="pb-2 px-2 text-center">期間変更</th>
+    　　　　  <th class="pb-2 px-2 text-center border-l border-slate-800">業績</th>
+     　　　　 <th class="pb-2 px-2 text-center">計画</th>
+     　　　　 <th class="pb-2 px-2 text-center">ｼﾌﾄ</th>
+    　　　　  <th class="pb-2 px-2 text-center">予実</th>
+    　　　　  <th class="pb-2 px-2 text-center">在庫</th>
+   　　　　   <th class="pb-2 px-2 text-center">庫SAVE</th>
+　　　　      <th class="pb-2 px-2 text-center">ﾀｽｸ</th>
+　　　　      <th class="pb-2 px-2 text-center">本部ﾀｽｸ</th>
+　　　　      <th class="pb-2 px-2 text-center border-l border-slate-800">人事</th>
+　　　　      <th class="pb-2 px-2 text-center">評価対象</th>
+　　　　      <th class="pb-2 px-2 text-center">レポート</th>
+ 　　　　     <th class="pb-2 px-2 text-center border-l border-slate-800">操作</th>
+　　　　    </tr>
+　　　　  </thead>
+　　　　  <tbody id="roleTbody" class="divide-y divide-slate-800/50"></tbody>
+　　　　</table>
       </div>
     </div>
 
@@ -748,52 +767,49 @@
     }
 
     function renderRoles() {
-      let html = "";
-      rolesList.forEach(r => {
-        const lockStr = r.id === "role_admin" ? '<span class="text-[10px] text-rose-500 font-bold ml-2">※ロック</span>' : '';
-        const badge = (val, label, color) => val === "可能" ? `<span class="bg-${color}-900/50 text-${color}-400 border border-${color}-800 px-1 rounded mr-1">${label}</span>` : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">${label}</span>`;
-        
-        let hrBadge = `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">人事</span>`;
-        if (r.canHr && r.canHr !== "不可") {
-            hrBadge = `<span class="bg-blue-900/50 text-blue-400 border border-blue-800 px-1 rounded mr-1" title="${r.canHr}">人事(${r.canHr.split('(')[0]})</span>`;
-        }
+　　  // ○/−を表示する小さなヘルパー
+　　  const mark = (isOn) => isOn
+ 　　   ? `<span class="text-emerald-400 font-bold">○</span>`
+   　　 : `<span class="text-slate-700">−</span>`;
 
-        const invSaveBadge = r.canInventorySave === "可能" 
-          ? `<span class="bg-fuchsia-900/50 text-fuchsia-400 border border-fuchsia-800 px-1 rounded mr-1" title="クラウド確定保存可能">庫セーブ</span>` 
-          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1" title="保存不可">庫セーブ</span>`;
+　　  let html = "";
+　　  rolesList.forEach(r => {
+  　　  const lockStr = r.id === "role_admin" ? '<span class="text-[9px] text-rose-500 font-bold">※ロック</span>' : '';
+  　　  const editBtn = r.id !== "role_admin"
+  　　    ? `<button onclick="editRole('${r.id}')" class="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded text-white border border-slate-600">編集</button>`
+   　　   : lockStr;
 
-        const evalTargetBadge = r.isEvalTarget === "対象外"
-          ? `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1" title="評価対象外">対象外</span>`
-          : `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1 rounded mr-1" title="評価対象">評価対象</span>`;
+    　　// 人事欄は「不可」以外なら短縮ラベルで表示
+   　　 const hrLabel = (r.canHr && r.canHr !== "不可") ? r.canHr.split('(')[0] : null;
 
-        const reportBadge = r.canReport === "可能" 
-          ? `<span class="bg-rose-900/50 text-rose-400 border border-rose-800 px-1 rounded mr-1">レポート</span>` 
-          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">レポート</span>`;
-
-        const trueCashBadge = r.canViewTrueCash === "可能" 
-          ? `<span class="bg-amber-900/50 text-amber-400 border border-amber-800 px-1 rounded mr-1">手残り</span>` 
-          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">手残り</span>`;
-
-        const periodBadge = r.canChangePeriod === "可能"
-          ? `<span class="bg-sky-900/50 text-sky-400 border border-sky-800 px-1 rounded mr-1">期間変更</span>`
-          : `<span class="bg-slate-800 text-slate-500 border border-slate-700 px-1 rounded mr-1">期間変更</span>`;
-
-        const mgmtHtml = badge(r.manageAccess, "ｱｶｳﾝﾄ", "indigo") + badge(r.canNotice, "お知らせ", "rose") + badge(r.canLog, "ログ", "sky") + trueCashBadge + periodBadge;
-        // ★修正: toolHtmlに本部タスクバッジを追加
-        const toolHtml = badge(r.canAnalytics, "業績", "sky") + badge(r.canPlanning, "計画", "emerald") + badge(r.canTracking, "予実", "amber") + badge(r.canInventory, "在庫", "fuchsia") + invSaveBadge + badge(r.canTasks, "ﾀｽｸ", "indigo") + badge(r.canHonbuTask, "本部ﾀｽｸ", "fuchsia") + hrBadge + evalTargetBadge + reportBadge;
-
-        html += `<tr>
-          <td class="py-3 text-white font-bold">${r.name}<br><span class="text-[10px] text-slate-500 font-mono">${r.id}</span></td>
-          <td class="py-3 leading-tight"><span class="text-[10px] text-slate-400">閲:</span> ${r.viewScope}<br><span class="text-[10px] text-slate-400">編:</span> ${r.editScope}</td>
-          <td class="py-3 text-[10px] whitespace-nowrap">${mgmtHtml}</td>
-          <td class="py-3 text-[10px] whitespace-nowrap">${toolHtml}</td>
-          <td class="py-3 text-center">
-            ${r.id !== "role_admin" ? `<button onclick="editRole('${r.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded text-white border border-slate-600">編集</button>` : lockStr}
-          </td>
-        </tr>`;
-      });
-      document.getElementById('roleTbody').innerHTML = html;
-    }
+   　　 html += `<tr class="hover:bg-slate-800/30 transition-colors">
+   　　   <td class="py-2 pr-3 sticky left-0 bg-slate-900">
+    　　    <p class="text-white font-bold">${r.name}</p>
+     　　   <p class="text-[9px] text-slate-500 font-mono">${r.id}</p>
+   　　   </td>
+   　　   <td class="py-2 px-2 text-center text-[10px] text-slate-300">${r.viewScope === '全店舗' ? '全店' : '自店'}</td>
+   　　   <td class="py-2 px-2 text-center text-[10px] text-slate-300">${r.editScope === '全店舗' ? '全店' : (r.editScope === '所属店舗のみ' ? '自店' : '不可')}</td>
+   　　   <td class="py-2 px-2 text-center border-l border-slate-800/50">${mark(r.manageAccess === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.canNotice === '可能')}</td>
+    　　  <td class="py-2 px-2 text-center">${mark(r.canLog === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.canViewTrueCash === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.canChangePeriod === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center border-l border-slate-800/50">${mark(r.canAnalytics === '可能')}</td>
+    　　  <td class="py-2 px-2 text-center">${mark(r.canPlanning === '可能')}</td>
+    　　  <td class="py-2 px-2 text-center">${mark(r.canShiftPlan === '可能')}</td>
+    　　  <td class="py-2 px-2 text-center">${mark(r.canTracking === '可能')}</td>
+     　　 <td class="py-2 px-2 text-center">${mark(r.canInventory === '可能')}</td>
+     　　 <td class="py-2 px-2 text-center">${mark(r.canInventorySave === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.canTasks === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.canHonbuTask === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center border-l border-slate-800/50">${hrLabel ? `<span class="text-blue-400 text-[9px] font-bold">${hrLabel}</span>` : mark(false)}</td>
+   　　   <td class="py-2 px-2 text-center">${mark(r.isEvalTarget !== '対象外')}</td>
+  　　    <td class="py-2 px-2 text-center">${mark(r.canReport === '可能')}</td>
+   　　   <td class="py-2 px-2 text-center border-l border-slate-800/50">${editBtn}</td>
+  　　  </tr>`;
+　　  });
+ 　　 document.getElementById('roleTbody').innerHTML = html;
+　　}
 
     function editRole(id) {
       const r = rolesList.find(x => x.id === id);
