@@ -287,7 +287,7 @@
         console.error("セッションの復元に失敗しました:", authErr);
       }
 
-      const isHQ = ["role_admin", "role_honbu"].includes(currentUser.roleId);
+      const isHQ = ["role_admin", "role_honbu", "role_honbusyain"].includes(currentUser.roleId);
       const isManager = ["role_general"].includes(currentUser.roleId);
       
       if (isHQ || isManager) {
