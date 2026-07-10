@@ -56,7 +56,7 @@
     <div class="flex gap-6 border-b border-slate-800 overflow-x-auto whitespace-nowrap">
       <div onclick="switchSimTab('annual')" id="tab_annual" class="tab-btn active text-sm text-slate-400 font-bold"><i class="fa-solid fa-building mr-1"></i>年次経営計画</div>
       <div onclick="switchSimTab('daily')" id="tab_daily" class="tab-btn tab-btn-amber text-sm text-slate-500 hover:text-white font-bold"><i class="fa-solid fa-bullseye mr-1 text-amber-400"></i>本日アクション逆算</div>
-      <div onclick="switchSimTab('shift')" id="tab_shift" class="tab-btn tab-btn-emerald text-sm text-slate-500 hover:text-white font-bold"><i class="fa-solid fa-users-gear mr-1 text-emerald-400"></i>店舗シフト・生産性計画</div>
+      <div onclick="switchSimTab('shift')" id="tab_shift" class="tab-btn tab-btn-emerald text-sm text-slate-500 hover:text-white font-bold hidden"><i class="fa-solid fa-users-gear mr-1 text-emerald-400"></i>店舗シフト・生産性計画</div>
       <div onclick="switchSimTab('admin')" id="tab_admin" class="tab-btn tab-btn-fuchsia text-sm text-slate-500 hover:text-white font-bold hidden"><i class="fa-solid fa-lock mr-1 text-fuchsia-400"></i>マスタ配信・管理 (本部用)</div>
     </div>
 
@@ -606,9 +606,13 @@
       }
 
       if (currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
-          document.getElementById('tab_admin').classList.remove('hidden');
-          document.getElementById('msgGotoAdmin').classList.remove('hidden');
-      }
+ 　　　   document.getElementById('tab_admin').classList.remove('hidden');
+   　　　 document.getElementById('msgGotoAdmin').classList.remove('hidden');
+　　　}
+
+　　　if (currentUser.permissions.canShiftPlan === "可能" || currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
+　　　    document.getElementById('tab_shift').classList.remove('hidden');
+　　　}
       
       try {
           const { data: globalData, error: globalErr } = await db.from('fin_global_settings').select('*');
