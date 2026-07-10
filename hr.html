@@ -334,33 +334,33 @@
     }
 
     function inputSecKey(num) {
-      if (secKeyInput.length >= 6 || isVerifying) return;
-      secKeyInput += num;
-      updateSecDots();
-      
-      if (secKeyInput.length === 6) {
-        isVerifying = true;
-        const errMsg = document.getElementById('secErrorMsg');
-        errMsg.innerText = "認証中...";
-        errMsg.className = "h-6 text-sky-400 font-bold text-sm mb-4 transition-opacity opacity-100";
-        
-        setTimeout(() => {
-          isVerifying = false;
-          // 簡易ロック解除
-          if (secKeyInput === "112233" || secKeyInput.length === 6) {
-            const lockEl = document.getElementById('securityLockScreen');
-            if(lockEl) {
-              lockEl.classList.add('hidden');
-              initApp(); 
-            }
-          } else {
-            errMsg.innerText = "キーが間違っています";
-            errMsg.className = "h-6 text-rose-500 font-bold text-sm mb-4 transition-opacity opacity-100";
-            setTimeout(() => { errMsg.classList.remove('opacity-100'); errMsg.classList.add('opacity-0'); clearSecKey(); }, 800);
-          }
-        }, 800);
-      }
-    }
+　　  if (secKeyInput.length >= 6 || isVerifying) return;
+　　  secKeyInput += num;
+　　  updateSecDots();
+  
+　　  if (secKeyInput.length === 6) {
+　　    isVerifying = true;
+　　    const errMsg = document.getElementById('secErrorMsg');
+　　    errMsg.innerText = "認証中...";
+　　    errMsg.className = "h-6 text-sky-400 font-bold text-sm mb-4 transition-opacity opacity-100";
+    
+　　    setTimeout(() => {
+  　　    isVerifying = false;
+ 　　     // ★修正: 管理画面で設定された正しいPINとの完全一致でのみ解除する
+ 　　     if (secKeyInput === hrMasterPin) {
+ 　　       const lockEl = document.getElementById('securityLockScreen');
+   　　     if(lockEl) {
+    　　      lockEl.classList.add('hidden');
+     　　     initApp(); 
+   　　     }
+　　      } else {
+  　　      errMsg.innerText = "キーが間違っています";
+      　　  errMsg.className = "h-6 text-rose-500 font-bold text-sm mb-4 transition-opacity opacity-100";
+      　　  setTimeout(() => { errMsg.classList.remove('opacity-100'); errMsg.classList.add('opacity-0'); clearSecKey(); }, 800);
+     　　 }
+  　　  }, 800);
+ 　　 }
+　　}
     
     function clearSecKey() { secKeyInput = ""; updateSecDots(); }
     function updateSecDots() {
@@ -385,28 +385,51 @@
         return name;
     }
 
-    window.onload = () => {
-      // ★不具合修正：Vercel移行に伴い、GASへの依存を完全撤廃
-      const userStr = sessionStorage.getItem('finUser');
-      if (!userStr || userStr === "null" || userStr === "undefined") {
-        document.body.innerHTML = "<h1 style='text-align:center;margin-top:20%'>不正アクセスです。ポータルからログインし直してください。</h1>";
-        return;
-      }
-      
-      let tempUser = null;
-      try { tempUser = JSON.parse(userStr); } catch (e) { return; }
-      
-      const roleId = tempUser.roleId || tempUser.role_id;
-      if (roleId === "role_employee") {
-        const lockScreen = document.getElementById('securityLockScreen');
-        if(lockScreen) lockScreen.classList.add('hidden');
-        initApp();
-        return;
-      }
-      
-      const lockScreen = document.getElementById('securityLockScreen');
-      if(lockScreen) lockScreen.classList.remove('hidden');
-    };
+    let hrMasterPin = "112233"; // 取得失敗時のみ使う保険用の値
+
+window.onload = async () => {
+  // ★不具合修正：Vercel移行に伴い、GASへの依存を完全撤廃
+  const userStr = sessionStorage.getItem('finUser');
+  if (!userStr || userStr === "null" || userStr === "undefined") {
+    document.body.innerHTML = "<h1 style='text-align:center;margin-top:20%'>不正アクセスです。ポータルからログインし直してください。</h1>";
+    return;
+  }
+  
+  let tempUser = null;
+  try { tempUser = JSON.parse(userStr); } catch (e) { return; }
+  
+  const roleId = tempUser.roleId || tempUser.role_id;
+  if (roleId === "role_employee") {
+    const lockScreen = document.getElementById('securityLockScreen');
+    if(lockScreen) lockScreen.classList.add('hidden');
+    initApp();
+    return;
+  }
+  
+  // マスタPIN取得のためセッションを復元
+  try {
+    const accToken = sessionStorage.getItem('sb_access');
+    const refToken = sessionStorage.getItem('sb_refresh');
+    if (accToken && refToken) {
+        await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
+    }
+  } catch (authErr) {
+    console.error("セッションの復元に失敗しました:", authErr);
+  }
+
+  // ★修正: マスターPINを管理画面の設定(system_settings)から取得する
+  try {
+    const { data: pinData, error: pinErr } = await db.from('system_settings').select('value').eq('key', 'hr_master_pin').maybeSingle();
+    if (!pinErr && pinData && pinData.value) {
+      hrMasterPin = String(pinData.value);
+    }
+  } catch (e) {
+    console.error("マスターPIN取得エラー:", e);
+  }
+  
+  const lockScreen = document.getElementById('securityLockScreen');
+  if(lockScreen) lockScreen.classList.remove('hidden');
+};
 
     async function initApp() {
       const userStr = sessionStorage.getItem('finUser');
