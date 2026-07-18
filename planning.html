@@ -615,7 +615,7 @@
    　　　 document.getElementById('msgGotoAdmin').classList.remove('hidden');
 　　　}
 
-　　　if (currentUser.permissions.canShiftPlan === "可能" || currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
+　　　if (currentUser.permissions.canShiftPlan === true || currentUser.permissions.canShiftPlan === "可能" || currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
 　　　    document.getElementById('tab_shift').classList.remove('hidden');
 　　　}
       
