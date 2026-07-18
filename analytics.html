@@ -118,7 +118,7 @@
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 p-4 sm:p-6 rounded-3xl border border-slate-800 shadow-lg gap-4">
         <div>
           <h2 class="font-bold text-emerald-400 text-lg"><i class="fa-solid fa-ranking-star mr-2"></i>店舗パフォーマンス評価</h2>
-          <p class="text-[10px] text-slate-400 mt-1">「現金・在庫・利益・生産性」の5大重要指標に基づく【上限なし・青天井】の総合評価</p>
+          <p class="text-[10px] text-slate-400 mt-1">「現金・在庫・利益・生産性・基本管理」の6指標に基づく総合評価(基準480点 / 一部項目は上限なしの青天井)</p>
           <p id="scorePeriodDetailLabel" class="text-xs text-sky-400 font-mono font-bold mt-1.5 bg-slate-950/80 border border-slate-800 rounded px-2 py-0.5 inline-block"></p>
         </div>
         <div class="flex gap-2 w-full sm:w-auto items-center">
@@ -180,25 +180,29 @@
                </div>
                <div class="space-y-3">
                  <div class="bg-slate-950 p-3 rounded-xl border border-sky-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-sky-400">① 現金化力 (基準:120)</span><span class="font-mono font-bold text-white" id="detScore1">-- / 120</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-sky-400">① 現金化力 (基準:150 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore1">-- / 150</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail1">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-emerald-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-emerald-400">② 在庫コントロール (上限:80)</span><span class="font-mono font-bold text-white" id="detScore2">-- / 80</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-emerald-400">② 在庫コントロール (上限:100)</span><span class="font-mono font-bold text-white" id="detScore2">-- / 100</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail2">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-fuchsia-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-fuchsia-400">③ 在庫質ランク評価 (基準:70)</span><span class="font-mono font-bold text-white" id="detScore3">-- / 70</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-fuchsia-400">③ 在庫質ランク評価 (上限:100)</span><span class="font-mono font-bold text-white" id="detScore3">-- / 100</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail3">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-amber-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-amber-500">④ 粗利率達成度 (基準:70)</span><span class="font-mono font-bold text-white" id="detScore4">-- / 70</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-amber-500">④ 粗利率達成度 (基準:50 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore4">-- / 50</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail4">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-indigo-900/30 relative overflow-hidden">
                    <div id="prodAlertBg" class="absolute inset-0 bg-rose-950/20 hidden"></div>
-                   <div class="relative z-10 flex justify-between items-center mb-1"><span class="text-xs font-bold text-indigo-400">⑤ 基本管理・生産性 (基準:60)</span><span class="font-mono font-bold text-white" id="detScore5">-- / 60</span></div>
+                   <div class="relative z-10 flex justify-between items-center mb-1"><span class="text-xs font-bold text-indigo-400">⑤ 生産性 (基準:50 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore5">-- / 50</span></div>
                    <p class="relative z-10 text-[10px] text-slate-400" id="detDetail5">--</p>
+                 </div>
+                 <div class="bg-slate-950 p-3 rounded-xl border border-teal-900/30">
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-teal-400">⑥ 基本管理 (上限:30)</span><span class="font-mono font-bold text-white" id="detScore6">-- / 30</span></div>
+                   <p class="text-[10px] text-slate-400" id="detDetail6">--</p>
                  </div>
                </div>
              </div>
@@ -229,7 +233,7 @@
               <p class="text-amber-400 font-bold mb-1">【全社業績・店舗スコアの引用元】</p>
               <ul class="list-disc pl-4 space-y-1">
                 <li>売上/買取/現金化: <span class="text-white">日報データ(daily_records)</span> 及び <span class="text-white">月次確定データ(fin_monthly_stats)</span></li>
-                <li>目標値: <span class="text-white">予算マスタ(fin_target_budget_master)</span></li>
+                <li>目標値: <span class="text-white">月次予算マスタ(fin_monthly_targets)</span></li>
                 <li>固定費/返済額: <span class="text-white">固定費マスタ(fin_branch_fixed_costs, fin_global_settings)</span></li>
               </ul>
             </div>
@@ -901,14 +905,17 @@
         
         targetBranches.forEach(b => {
             branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0 };
+            let marginSum = 0, marginCount = 0;
             targetMonthsList.forEach(mStr => {
                 let mData = budgetRes.data.find(d => d.target_month === mStr && d.branch === b);
                 if (mData) {
                     branchPeriodTargets[b].cash += Number(mData.target_cash) || 0;
                     branchPeriodTargets[b].invLimit += Number(mData.target_inv_limit) || 0;
-                    branchPeriodTargets[b].marginRate = Number(mData.margin_rate) || 0; 
+                    let mr = Number(mData.margin_rate) || 0;
+                    if (mr > 0) { marginSum += mr; marginCount++; }
                 }
             });
+            if (marginCount > 0) branchPeriodTargets[b].marginRate = marginSum / marginCount;
         });
 
         let confirmedStats = {};
@@ -958,6 +965,7 @@
         targetBranches.forEach(b => {
             let target = branchPeriodTargets[b];
             let stats = branchStats[b] || { sales: 0, discount: 0, grossProfit: 0, cashFlow: 0, invChange: 0, workHours: 0, recordDays: new Set() };
+            let hasMaster = !!fixedCostMap[b];
             let fcObj = fixedCostMap[b] || { monthlySga: 2500000, monthlyRepay: 500000, targetHours: 160 };
 
             let cStats = confirmedStats[b];
@@ -979,14 +987,14 @@
             let periodTargetHours = fcObj.targetHours * monthsCount;
 
             let scoreCash = 0; let currentTargetCash = target.cash * periodDaysRatio; let cashRatio = 0;
-            if (currentTargetCash > 0) { cashRatio = stats.cashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 120); } 
-            else if (currentTargetCash <= 0 && stats.cashFlow > 0) { scoreCash = 120; cashRatio = 1; }
+            if (currentTargetCash > 0) { cashRatio = stats.cashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 150); } 
+            else if (currentTargetCash <= 0 && stats.cashFlow > 0) { scoreCash = 150; cashRatio = 1; }
 
             let scoreInv = 0; let currentInvLimit = target.invLimit * periodDaysRatio;
-            if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 80; } 
-            else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 80 - (Math.abs(actualInvChange) / minLimit) * 40; } 
-            else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * 0.5 : 500000; scoreInv = 80 - (overAmount / penaltyZone) * 80; }
-            scoreInv = Math.min(80, Math.max(0, scoreInv));
+            if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 100; } 
+            else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 100 - (Math.abs(actualInvChange) / minLimit) * 50; } 
+            else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * 0.5 : 500000; scoreInv = 100 - (overAmount / penaltyZone) * 100; }
+            scoreInv = Math.min(100, Math.max(0, scoreInv));
 
             let sumGoodInv = 0; let sumTotalInv = 0; let validInvMonths = 0;
             if (invRes.data) {
@@ -1001,11 +1009,11 @@
                 });
             }
             let goodInvRatio = sumTotalInv > 0 ? (sumGoodInv / sumTotalInv) : 0;
-            let scoreInventoryRank = Math.max(0, goodInvRatio * 100 * 0.7);
+            let scoreInventoryRank = Math.min(100, Math.max(0, goodInvRatio * 100));
 
             let scoreMargin = 0; let mRatio = 0;
-            if (target.marginRate > 0) { mRatio = actualMarginRate / target.marginRate; scoreMargin = Math.max(0, mRatio * 70); } 
-            else if (actualMarginRate > 0) { scoreMargin = 70; mRatio = 1; }
+            if (target.marginRate > 0) { mRatio = actualMarginRate / target.marginRate; scoreMargin = Math.max(0, mRatio * 50); } 
+            else if (actualMarginRate > 0) { scoreMargin = 50; mRatio = 1; }
 
             let scoreLaborProd = 0; let breakevenProd = periodTargetHours > 0 ? periodFixedCost / periodTargetHours : 4000;
             let actualProd = actualWorkHours > 0 ? actualGrossProfit / actualWorkHours : 0;
@@ -1013,23 +1021,26 @@
             if (actualWorkHours < minHoursThreshold) { 
               scoreLaborProd = 0; 
             } else if (breakevenProd > 0) { 
-              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 60); 
+              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 50); 
             }
 
-            let scoresArr = [Math.round(scoreCash), Math.round(scoreInv), Math.round(scoreInventoryRank), Math.round(scoreMargin), Math.round(scoreLaborProd)];
-            let totalScore = scoresArr[0] + scoresArr[1] + scoresArr[2] + scoresArr[3] + scoresArr[4];
-
-            let rank = "D";
-            if (totalScore >= 320) rank = "S";
-            else if (totalScore >= 260) rank = "A";
-            else if (totalScore >= 200) rank = "B";
-            else if (totalScore >= 140) rank = "C";
-
             let inputRate = elapsedPeriodDays > 0 ? (stats.recordDays.size / elapsedPeriodDays) * 100 : 0;
+            let scoreBase = Math.min(30, Math.max(0, (inputRate / 100) * 30));
+
+            let scoresArr = [Math.round(scoreCash), Math.round(scoreInv), Math.round(scoreInventoryRank), Math.round(scoreMargin), Math.round(scoreLaborProd), Math.round(scoreBase)];
+            let totalScore = scoresArr.reduce((a, v) => a + v, 0);
+
+            const BASE_TOTAL = 480;
+            let rank = "E";
+            if (totalScore >= BASE_TOTAL) rank = "S";
+            else if (totalScore >= BASE_TOTAL * 0.8) rank = "A";
+            else if (totalScore >= BASE_TOTAL * 0.7) rank = "B";
+            else if (totalScore >= BASE_TOTAL * 0.6) rank = "C";
+            else if (totalScore >= BASE_TOTAL * 0.5) rank = "D";
 
             scoringData.push({
                 branch: b, totalScore: totalScore, rank: rank, scores: scoresArr,
-                isConfirmed: isConfirmed,
+                isConfirmed: isConfirmed, hasMaster: hasMaster,
                 details: {
                     targetCash: currentTargetCash, actualCash: stats.cashFlow, cashRatio: (cashRatio * 100).toFixed(1),
                     targetInvLimit: currentInvLimit, actualInvChange: actualInvChange,
@@ -1102,6 +1113,8 @@
         else if (s.rank === "A") rankColor = "bg-emerald-900/50 text-emerald-400 border-emerald-500";
         else if (s.rank === "B") rankColor = "bg-sky-900/50 text-sky-400 border-sky-500";
         else if (s.rank === "C") rankColor = "bg-rose-900/50 text-rose-400 border-rose-500";
+        else if (s.rank === "D") rankColor = "bg-slate-800 text-slate-400 border-slate-600";
+        else if (s.rank === "E") rankColor = "bg-rose-950 text-rose-500 border-rose-800";
 
         let medal = "";
         if (index === 0) medal = '<i class="fa-solid fa-crown text-amber-400 mr-2 text-lg"></i>';
@@ -1155,9 +1168,11 @@
       if (s.rank === "S") badge.className = "ml-2 bg-amber-500 text-slate-900 text-lg px-3 py-1 rounded-xl font-black shadow-[0_0_15px_rgba(245,158,11,0.5)]";
       else if (s.rank === "A") badge.className = "ml-2 bg-emerald-500 text-slate-900 text-lg px-3 py-1 rounded-xl font-black";
       else if (s.rank === "B") badge.className = "ml-2 bg-sky-500 text-slate-900 text-lg px-3 py-1 rounded-xl font-black";
-      else badge.className = "ml-2 bg-slate-700 text-white text-lg px-3 py-1 rounded-xl font-black";
+      else if (s.rank === "C") badge.className = "ml-2 bg-rose-500 text-slate-900 text-lg px-3 py-1 rounded-xl font-black";
+      else if (s.rank === "D") badge.className = "ml-2 bg-slate-700 text-white text-lg px-3 py-1 rounded-xl font-black";
+      else badge.className = "ml-2 bg-rose-950 text-rose-400 border border-rose-800 text-lg px-3 py-1 rounded-xl font-black";
 
-      const maxScores = [120, 80, 70, 70, 60]; 
+      const maxScores = [150, 100, 100, 50, 50, 30];
       
       document.getElementById('detScore1').innerText = s.scores[0] + " / " + maxScores[0];
       document.getElementById('detDetail1').innerHTML = `目標累計: <span class="text-white">${Math.round(s.details.targetCash).toLocaleString()}</span>円 / 実績累計: <span class="text-white ${s.details.actualCash < 0 ? 'text-rose-400' : 'text-emerald-400'}">${Math.round(s.details.actualCash).toLocaleString()}</span>円 (進捗 ${s.details.cashRatio}%)`;
@@ -1172,7 +1187,11 @@
       document.getElementById('detDetail4').innerHTML = `目標粗利: <span class="text-white">${s.details.targetMargin}</span>% / 実績: <span class="text-white">${s.details.actualMargin}</span>% (進捗 ${s.details.marginRatio}%)`;
 
       document.getElementById('detScore5').innerText = s.scores[4] + " / " + maxScores[4];
-      document.getElementById('detDetail5').innerHTML = `分岐点生産性: <span class="text-white">${s.details.breakevenProd}</span>円/h / 実績: <span class="text-white">${s.details.actualProd}</span>円/h (実働 ${s.details.workHours}h / 基準 ${s.details.targetHours}h)<br>日報入力率: <span class="text-white">${s.details.inputRate}</span>%`;
+      const masterWarn = s.hasMaster ? "" : `<br><span class="text-amber-400 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>固定費マスタ未設定のため仮の基準値で計算されています</span>`;
+      document.getElementById('detDetail5').innerHTML = `分岐点生産性: <span class="text-white">${s.details.breakevenProd}</span>円/h / 実績: <span class="text-white">${s.details.actualProd}</span>円/h (実働 ${s.details.workHours}h / 基準 ${s.details.targetHours}h)${masterWarn}`;
+
+      document.getElementById('detScore6').innerText = s.scores[5] + " / " + maxScores[5];
+      document.getElementById('detDetail6').innerHTML = `日報入力率: <span class="text-white">${s.details.inputRate}</span>% (経過日数ベース)`;
 
       if (s.scores[4] === 0 && s.details.actualProd > 0) {
           document.getElementById('prodAlertBg').classList.remove('hidden');
@@ -1193,13 +1212,14 @@
         (scores[1] / maxScores[1]) * 100,
         (scores[2] / maxScores[2]) * 100,
         (scores[3] / maxScores[3]) * 100,
-        (scores[4] / maxScores[4]) * 100
+        (scores[4] / maxScores[4]) * 100,
+        (scores[5] / maxScores[5]) * 100
       ];
 
       radarChartObj = new Chart(ctx, {
         type: 'radar',
         data: {
-          labels: ['現金化力', '在庫コントロール', '在庫質ランク', '粗利率達成度', '基本管理・生産性'],
+          labels: ['現金化力', '在庫コントロール', '在庫質ランク', '粗利率達成度', '生産性', '基本管理'],
           datasets: [{
             label: '基準達成率(%)',
             data: normalizedData,
@@ -1278,264 +1298,6 @@
       }
 
       document.getElementById('aiAdviceArea').innerHTML = `<ul class="space-y-3">${advice.join('')}</ul>`;
-    }
-
-    async function loadScoringDataSilent() {
-      const periodMode = document.getElementById('scorePeriodMode').value;
-      let monthStr = "";
-      if (periodMode === 'monthly') monthStr = document.getElementById('scoreMonth').value;
-      else if (periodMode === 'semi') monthStr = document.getElementById('scoreSemiYear').value;
-      else if (periodMode === 'annual') monthStr = document.getElementById('scoreAnnualYear').value;
-
-      try {
-        let year = monthStr.substring(0, 4);
-        let monthNum = parseInt(monthStr.substring(5, 7), 10);
-        let targetMonthsList = [];
-        if (periodMode === "monthly") {
-            targetMonthsList.push(monthStr);
-        } else if (periodMode === "semi") {
-            if (monthNum >= 3 && monthNum <= 8) {
-                for (let m = 3; m <= 8; m++) targetMonthsList.push(year + "-" + String(m).padStart(2, '0'));
-            } else {
-                let baseYear = (monthNum === 1 || monthNum === 2) ? String(parseInt(year, 10) - 1) : year;
-                let nextYear = String(parseInt(baseYear, 10) + 1);
-                for (let m = 9; m <= 12; m++) targetMonthsList.push(baseYear + "-" + String(m).padStart(2, '0'));
-                for (let m = 1; m <= 2; m++) targetMonthsList.push(nextYear + "-" + String(m).padStart(2, '0'));
-            }
-        } else if (periodMode === "annual") {
-            let baseYear = (monthNum === 1 || monthNum === 2) ? String(parseInt(year, 10) - 1) : year;
-            let nextYear = String(parseInt(baseYear, 10) + 1);
-            for (let m = 3; m <= 12; m++) targetMonthsList.push(baseYear + "-" + String(m).padStart(2, '0'));
-            for (let m = 1; m <= 2; m++) targetMonthsList.push(nextYear + "-" + String(m).padStart(2, '0'));
-        }
-
-        const periodLabelEl = document.getElementById('bonusSimPeriodLabel');
-        if (periodLabelEl && targetMonthsList.length > 0) {
-            periodLabelEl.innerText = targetMonthsList.join(' / ');
-        }
-
-        let totalPeriodDays = 0, elapsedPeriodDays = 0;
-        let today = new Date();
-        let todayStrLocal = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().substring(0, 10);
-
-        targetMonthsList.forEach(mStr => {
-            let y = parseInt(mStr.substring(0, 4), 10);
-            let m = parseInt(mStr.substring(5, 7), 10);
-            let dim = new Date(y, m, 0).getDate();
-            totalPeriodDays += dim;
-            if (todayStrLocal.startsWith(mStr)) {
-                elapsedPeriodDays += today.getDate();
-            } else if (todayStrLocal > mStr) {
-                elapsedPeriodDays += dim;
-            }
-        });
-        let periodDaysRatio = totalPeriodDays > 0 ? elapsedPeriodDays / totalPeriodDays : 1;
-        if (periodDaysRatio <= 0 || periodDaysRatio > 1) periodDaysRatio = 1;
-
-        let firstM = targetMonthsList[0];
-        let lastM = targetMonthsList[targetMonthsList.length - 1];
-        let lastDayNum = new Date(parseInt(lastM.substring(0, 4), 10), parseInt(lastM.substring(5, 7), 10), 0).getDate();
-        let startDateStr = firstM + "-01";
-        let endDateStr = lastM + "-" + String(lastDayNum).padStart(2, '0');
-
-        const [budgetRes, statsRes, dailyRes, fixedRes, invRes] = await Promise.all([
-            db.from('fin_target_budget_master').select('*'),
-            db.from('fin_monthly_stats').select('*'),
-            db.from('daily_records').select('*').gte('target_date', startDateStr).lte('target_date', endDateStr),
-            db.from('fin_branch_fixed_costs').select('*'),
-            db.from('inventory_summaries').select('*')
-        ]);
-
-        let targetBranches = currentUser.permissions.viewAll ? globalBranches : [currentUser.branch];
-        let branchPeriodTargets = {};
-        
-        targetBranches.forEach(b => {
-            branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0 };
-            targetMonthsList.forEach(mStr => {
-                let mYear = mStr.substring(0, 4);
-                let mMonth = mStr.substring(5, 7);
-                let mData = budgetRes.data.find(d => d.target_year === mYear && d.branch === b);
-                if (mData) {
-                    let w = mData[`weight_${mMonth}`] || 0;
-                    branchPeriodTargets[b].cash += Math.round((mData.target_cash || 0) * (w / 100));
-                    branchPeriodTargets[b].invLimit += Math.round((mData.target_inv_limit || 0) * (w / 100));
-                    branchPeriodTargets[b].marginRate = mData.margin_rate || 0;
-                }
-            });
-        });
-
-        let confirmedStats = {};
-        if (statsRes.data) {
-            statsRes.data.forEach(r => {
-                let rowMStr = String(r.target_month).substring(0, 7);
-                if (targetMonthsList.includes(rowMStr)) {
-                    if (!confirmedStats[r.branch]) confirmedStats[r.branch] = { totalPurchase: 0, cogs: 0, grossProfit: 0 };
-                    confirmedStats[r.branch].totalPurchase += Number(r.total_purchase) || 0;
-                    confirmedStats[r.branch].cogs += Number(r.cogs) || 0;
-                    confirmedStats[r.branch].grossProfit += Number(r.gross_profit) || 0;
-                }
-            });
-        }
-
-        let branchStats = {};
-        if (dailyRes.data) {
-            dailyRes.data.forEach(r => {
-                let dStr = r.target_date ? r.target_date.substring(0, 10) : "";
-                let rowMStr = dStr.substring(0, 7);
-                if (targetMonthsList.includes(rowMStr)) {
-                    let b = r.branch;
-                    if (!branchStats[b]) branchStats[b] = { sales: 0, discount: 0, grossProfit: 0, cashFlow: 0, invChange: 0, workHours: 0, recordDays: new Set() };
-                    branchStats[b].sales += Number(r.sales) || 0;
-                    branchStats[b].discount += Number(r.discount) || 0;
-                    branchStats[b].grossProfit += Number(r.gross_profit) || 0;
-                    branchStats[b].cashFlow += Number(r.cash_flow) || 0;
-                    branchStats[b].invChange += Number(r.inv_change) || 0;
-                    branchStats[b].workHours += Number(r.work_hours) || 0;
-                    branchStats[b].recordDays.add(dStr);
-                }
-            });
-        }
-
-        let fixedCostMap = {};
-        if (fixedRes.data) {
-            fixedRes.data.forEach(r => {
-                fixedCostMap[r.branch] = {
-                    monthlySga: Math.round(Number(r.total_sga || 0) * 10000 / 12),
-                    monthlyRepay: Math.round(Number(r.allocated_repay || 0) * 10000 / 12),
-                    targetHours: Number(r.target_hours) || 160
-                };
-            });
-        }
-
-        scoringData = [];
-        targetBranches.forEach(b => {
-            let target = branchPeriodTargets[b];
-            let stats = branchStats[b] || { sales: 0, discount: 0, grossProfit: 0, cashFlow: 0, invChange: 0, workHours: 0, recordDays: new Set() };
-            let fcObj = fixedCostMap[b] || { monthlySga: 2500000, monthlyRepay: 500000, targetHours: 160 };
-
-            let cStats = confirmedStats[b];
-            let actualNetSales = stats.sales - stats.discount;
-            let actualGrossProfit = stats.grossProfit;
-            let actualInvChange = stats.invChange;
-            let actualWorkHours = stats.workHours; 
-            let isConfirmed = false;
-
-            if (cStats) {
-                actualGrossProfit = cStats.grossProfit;
-                actualInvChange = cStats.totalPurchase - cStats.cogs;
-                isConfirmed = true;
-            }
-
-            let actualMarginRate = actualNetSales > 0 ? (actualGrossProfit / actualNetSales) * 100 : 0;
-            let monthsCount = targetMonthsList.length;
-            let periodFixedCost = (fcObj.monthlySga + fcObj.monthlyRepay) * monthsCount;
-            let periodTargetHours = fcObj.targetHours * monthsCount;
-
-            let scoreCash = 0; let currentTargetCash = target.cash * periodDaysRatio; let cashRatio = 0;
-            if (currentTargetCash > 0) { cashRatio = stats.cashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 120); } 
-            else if (currentTargetCash <= 0 && stats.cashFlow > 0) { scoreCash = 120; cashRatio = 1; }
-
-            let scoreInv = 0; let currentInvLimit = target.invLimit * periodDaysRatio;
-            if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 80; } 
-            else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 80 - (Math.abs(actualInvChange) / minLimit) * 40; } 
-            else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * 0.5 : 500000; scoreInv = 80 - (overAmount / penaltyZone) * 80; }
-            scoreInv = Math.min(80, Math.max(0, scoreInv));
-
-            let sumGoodInv = 0; let sumTotalInv = 0; let validInvMonths = 0;
-            if (invRes.data) {
-                let bInv = invRes.data.filter(i => i.branch === b);
-                bInv.forEach(r => {
-                    let rMonth = String(r.target_month).substring(0, 7);
-                    if (targetMonthsList.includes(rMonth)) {
-                        sumTotalInv += Number(r.total_amount) || 0;
-                        sumGoodInv += (Number(r.rank_a)||0) + (Number(r.rank_b)||0) + (Number(r.rank_c)||0);
-                        validInvMonths++;
-                    }
-                });
-            }
-            let goodInvRatio = sumTotalInv > 0 ? (sumGoodInv / sumTotalInv) : 0;
-            let scoreInventoryRank = Math.max(0, goodInvRatio * 100 * 0.7);
-
-            let scoreMargin = 0; let mRatio = 0;
-            if (target.marginRate > 0) { mRatio = actualMarginRate / target.marginRate; scoreMargin = Math.max(0, mRatio * 70); } 
-            else if (actualMarginRate > 0) { scoreMargin = 70; mRatio = 1; }
-
-            let scoreLaborProd = 0; let breakevenProd = periodTargetHours > 0 ? periodFixedCost / periodTargetHours : 4000;
-            let actualProd = actualWorkHours > 0 ? actualGrossProfit / actualWorkHours : 0;
-            let minHoursThreshold = periodTargetHours * 0.8 * periodDaysRatio;
-            if (actualWorkHours < minHoursThreshold) { 
-              scoreLaborProd = 0; 
-            } else if (breakevenProd > 0) { 
-              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 60); 
-            }
-
-            let scoresArr = [Math.round(scoreCash), Math.round(scoreInv), Math.round(scoreInventoryRank), Math.round(scoreMargin), Math.round(scoreLaborProd)];
-            let totalScore = scoresArr[0] + scoresArr[1] + scoresArr[2] + scoresArr[3] + scoresArr[4];
-
-            let rank = "D";
-            if (totalScore >= 320) rank = "S";
-            else if (totalScore >= 260) rank = "A";
-            else if (totalScore >= 200) rank = "B";
-            else if (totalScore >= 140) rank = "C";
-
-            let inputRate = elapsedPeriodDays > 0 ? (stats.recordDays.size / elapsedPeriodDays) * 100 : 0;
-
-            scoringData.push({
-                branch: b, totalScore: totalScore, rank: rank, scores: scoresArr,
-                isConfirmed: isConfirmed,
-                details: {
-                    targetCash: currentTargetCash, actualCash: stats.cashFlow, cashRatio: (cashRatio * 100).toFixed(1),
-                    targetInvLimit: currentInvLimit, actualInvChange: actualInvChange,
-                    targetMargin: target.marginRate, actualMargin: actualMarginRate.toFixed(1), marginRatio: (mRatio * 100).toFixed(1),
-                    inputRate: inputRate.toFixed(1), actualProd: Math.round(actualProd), breakevenProd: Math.round(breakevenProd),
-                    workHours: Math.round(actualWorkHours), targetHours: Math.round(periodTargetHours),
-                    goodInvRatio: (goodInvRatio * 100).toFixed(1), validInvMonths: validInvMonths
-                }
-            });
-        });
-
-        scoringData.sort((a, b) => b.totalScore - a.totalScore);
-        
-        let totalSgaHalfYearly = 0;
-        let totalRepayHalfYearly = 0;
-        if (fixedRes.data) {
-            fixedRes.data.forEach(r => {
-                totalSgaHalfYearly += (Number(r.total_sga || 0) * 10000 / 2); 
-                totalRepayHalfYearly += (Number(r.allocated_repay || 0) * 10000 / 2); 
-            });
-        }
-        const fixedInput = document.getElementById('sim_fixed_cost');
-        if (fixedInput && !fixedInput.value) fixedInput.value = totalSgaHalfYearly;
-        
-        const repayInput = document.getElementById('sim_repay');
-        if (repayInput && !repayInput.value) repayInput.value = totalRepayHalfYearly;
-
-        const lblEl = document.getElementById('scorePeriodDetailLabel');
-        if (lblEl) {
-            if (periodMode === 'semi') {
-                const mNum = parseInt(monthStr.substring(5, 7), 10);
-                const yStr = monthStr.substring(0, 4);
-                if (mNum >= 3 && mNum <= 8) {
-                    lblEl.innerText = `➔ 構成月: ${yStr}/03, 04, 05, 06, 07, 08 (上期)`;
-                } else {
-                    const bYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
-                    const nYear = String(parseInt(bYear, 10) + 1);
-                    lblEl.innerText = `➔ 構成月: ${bYear}/09, 10, 11, 12, ${nYear}/01, 02 (下期)`;
-                }
-            } else if (periodMode === 'annual') {
-                const mNum = parseInt(monthStr.substring(5, 7), 10);
-                const yStr = monthStr.substring(0, 4);
-                const bYear = (mNum === 1 || mNum === 2) ? String(parseInt(yStr, 10) - 1) : yStr;
-                const nYear = String(parseInt(bYear, 10) + 1);
-                lblEl.innerText = `➔ 構成月: ${bYear}/03 ～ ${nYear}/02 (通期12ヶ月)`;
-            } else {
-                lblEl.innerText = `➔ 構成月: ${monthStr.replace('-', '/')}`;
-            }
-        }
-
-      } catch(e) {
-        throw e;
-      }
     }
 
     // ==========================================
