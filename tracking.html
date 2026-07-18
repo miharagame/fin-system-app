@@ -371,6 +371,14 @@
                 <p class="text-lg font-mono font-black text-amber-500"><span id="monSumCash">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
              </div>
              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">キャッシュレス売上</p>
+                <p class="text-lg font-mono font-black text-sky-300"><span id="monSumCashless">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-500 font-bold mb-1">買取額</p>
+                <p class="text-lg font-mono font-black text-rose-300"><span id="monSumPurchase">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
+             </div>
+             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
                 <p class="text-[10px] text-slate-500 font-bold mb-1">在庫増減</p>
                 <p class="text-lg font-mono font-black text-fuchsia-400"><span id="monSumInv">0</span><span class="text-[10px] ml-1 text-slate-500">円</span></p>
              </div>
@@ -1367,7 +1375,7 @@
     }
 
     async function loadMonthlyApplicationData() {
-        let sumSales=0, sumGross=0, sumCash=0, sumInv=0, sumW=0;
+        let sumSales=0, sumGross=0, sumCash=0, sumInv=0, sumW=0, sumCashless=0, sumPurchase=0;
         
         allTrackingData.forEach(r => {
             if(r.branch === targetBranch && r.date.startsWith(currentMonthStr)) {
@@ -1378,6 +1386,8 @@
                 sumCash += Number(r.cashFlow) || 0;
                 sumInv += (Number(r.purchase)||0) - (netS - grossP);
                 sumW += Number(r.workHours) || 0;
+                sumCashless += Number(r.cashless) || 0;
+                sumPurchase += Number(r.purchase) || 0;
             }
         });
 
@@ -1396,6 +1406,8 @@
         document.getElementById('monSumInv').innerText = (sumInv >= 0 ? "+" : "") + Math.round(sumInv).toLocaleString();
         document.getElementById('monSumWork').innerText = sumW.toFixed(1);
         document.getElementById('monLaborProd').innerText = Math.round(laborProd).toLocaleString();
+        document.getElementById('monSumCashless').innerText = Math.round(sumCashless).toLocaleString();
+        document.getElementById('monSumPurchase').innerText = Math.round(sumPurchase).toLocaleString();
 
         const commentInput = document.getElementById('inpMonthlyComment');
         const btnSubmit = document.getElementById('btnSubmitMonthly');
