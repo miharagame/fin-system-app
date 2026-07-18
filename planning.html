@@ -282,7 +282,7 @@
             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
               <label class="text-xs text-slate-400 font-bold mb-2 block">1日の営業時間 (準備片付含む / h)</label>
               <div class="flex items-center gap-2">
-                <input type="text" id="sim_open_hours" value="11" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+                <input type="text" id="sim_open_hours" value="11" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftDec(this)">
                 <span class="text-xs text-slate-500 font-bold w-4">h</span>
               </div>
             </div>
@@ -298,7 +298,7 @@
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
             <label class="text-xs text-slate-400 font-bold mb-2 block">常時必要な最低人数 (ワンオペ回避等 / 名)</label>
             <div class="flex items-center gap-2">
-              <input type="text" id="sim_base_staff" value="2" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+              <input type="text" id="sim_base_staff" value="2" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftDec(this)">
               <span class="text-xs text-slate-500 font-bold w-4">名</span>
             </div>
           </div>
@@ -307,14 +307,14 @@
             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
               <label class="text-xs text-slate-400 font-bold mb-2 block">1日の混雑ピーク (h)</label>
               <div class="flex items-center gap-2">
-                <input type="text" id="sim_peak_hours" value="4" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftInt(this)">
+                <input type="text" id="sim_peak_hours" value="4" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftDec(this)">
                 <span class="text-xs text-slate-500 font-bold w-4">h</span>
               </div>
             </div>
             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
               <label class="text-xs text-slate-400 font-bold mb-2 block">ピーク時追加人数 (名)</label>
               <div class="flex items-center gap-2">
-                <input type="text" id="sim_peak_staff" value="1" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftInt(this)">
+                <input type="text" id="sim_peak_staff" value="1" class="w-full bg-slate-900 border border-slate-700 text-amber-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-amber-500" oninput="formatShiftDec(this)">
                 <span class="text-xs text-slate-500 font-bold w-4">名</span>
               </div>
             </div>
@@ -331,16 +331,17 @@
             <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
               <label class="text-xs text-slate-400 font-bold mb-2 block">月間のバックヤード作業時間 (品出し等 / h)</label>
               <div class="flex items-center gap-2">
-                <input type="text" id="sim_backyard_hours" value="60" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftInt(this)">
+                <input type="text" id="sim_backyard_hours" value="60" class="w-full bg-slate-900 border border-slate-700 text-white font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-emerald-500" oninput="formatShiftDec(this)">
                 <span class="text-xs text-slate-500 font-bold w-4">h</span>
               </div>
             </div>
             <div class="bg-slate-950 p-4 rounded-xl border border-rose-900/30">
-              <label class="text-xs text-rose-400 font-bold mb-2 block">対象店舗の月間固定費・販管費 (円) ※自動取得</label>
+              <label class="text-xs text-rose-400 font-bold mb-2 block">対象店舗の月間必須固定費 (販管費＋返済 / 円) ※自動取得</label>
               <div class="flex items-center gap-2">
                 <input type="text" id="sim_fixed_cost_shop" value="2,500,000" class="w-full bg-rose-950/30 border border-rose-900 text-rose-400 font-bold rounded-lg px-3 py-2 outline-none font-mono text-right transition-colors focus:border-rose-500" oninput="formatShiftInt(this)">
                 <span class="text-xs text-rose-400 font-bold w-4">円</span>
               </div>
+              <p id="fixedCostBreakdown" class="text-[10px] text-slate-500 mt-2 leading-relaxed">店舗を選択すると内訳を表示します</p>
             </div>
           </div>
         </div>
@@ -353,20 +354,24 @@
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
             <p class="text-[10px] text-slate-400 font-bold mb-1">月間基本運営時間</p>
             <p class="text-xl font-mono font-bold text-slate-300"><span id="res_base_time">0</span> <span class="text-xs font-sans">h</span></p>
+            <p class="text-[9px] text-slate-500 font-mono mt-1" id="res_base_formula">営業時間 × 営業日数 × 常時人数</p>
           </div>
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
             <p class="text-[10px] text-slate-400 font-bold mb-1">月間ピーク追加時間</p>
             <p class="text-xl font-mono font-bold text-amber-400"><span id="res_peak_time">0</span> <span class="text-xs font-sans">h</span></p>
+            <p class="text-[9px] text-slate-500 font-mono mt-1" id="res_peak_formula">ピークh × ピーク日数 × 追加人数</p>
           </div>
         </div>
 
         <div class="bg-emerald-950/30 p-5 rounded-2xl border border-emerald-900/50 shadow-inner text-center">
           <p class="text-xs text-emerald-400 font-bold mb-1">【確定基準値】 適正月間総労働時間</p>
-          <p class="text-5xl font-mono font-black text-white mb-4"><span id="res_total_time">0</span> <span class="text-base font-sans text-emerald-400">h / 月</span></p>
+          <p class="text-5xl font-mono font-black text-white mb-1"><span id="res_total_time">0</span> <span class="text-base font-sans text-emerald-400">h / 月</span></p>
+          <p class="text-[10px] text-slate-400 font-mono mb-4" id="res_total_formula">基本 + ピーク + バックヤード</p>
           
           <div class="inline-block bg-slate-950 border border-slate-800 rounded-xl p-3 text-left w-full max-w-sm">
             <p class="text-[10px] text-slate-400 font-bold mb-1">自動算出された 損益分岐点人時生産性</p>
             <p class="text-2xl font-mono font-black text-sky-400 text-center"><span id="res_breakeven">0</span> <span class="text-xs font-sans text-slate-500">円 / h</span></p>
+            <p class="text-[10px] text-slate-500 font-mono mt-1 text-center" id="res_breakeven_formula">必須固定費 ÷ 総労働時間</p>
           </div>
         </div>
 
@@ -1468,48 +1473,68 @@
       calcShiftPlan();
     }
 
+    function formatShiftDec(el) {
+      let v = toHalfWidth(el.value).replace(/,/g, '').replace(/[^\d.]/g, '');
+      const parts = v.split('.');
+      if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
+      el.value = v;
+      calcShiftPlan();
+    }
+
     function loadBranchFixedCost() {
       const branch = document.getElementById('sim_branch').value;
       if (!branch) return;
       
+      const bd = document.getElementById('fixedCostBreakdown');
       const found = branchFixedCostsMap[branch];
       if (found) {
-        const monthlyCost = Math.round((found.totalSga * 10000) / 12);
+        const sgaMonthly = Math.round((found.totalSga * 10000) / 12);
+        const repayMonthly = Math.round(((found.allocatedRepay || 0) * 10000) / 12);
+        const monthlyCost = sgaMonthly + repayMonthly;
         document.getElementById('sim_fixed_cost_shop').value = monthlyCost.toLocaleString();
+        if (bd) bd.innerHTML = `内訳: 販管費(直接＋本部按分) ${sgaMonthly.toLocaleString()}円 ＋ 返済按分 ${repayMonthly.toLocaleString()}円<br>※固定費マスタの年間値 ÷ 12ヶ月で算出`;
       } else {
         document.getElementById('sim_fixed_cost_shop').value = (2500000).toLocaleString();
+        if (bd) bd.innerText = "※マスタ未設定のため仮の値(250万円)です";
       }
       calcShiftPlan();
     }
 
     function calcShiftPlan() {
-      const getVal = (id) => parseInt((document.getElementById(id).value || "0").replace(/,/g, ''), 10) || 0;
+      const getInt = (id) => parseInt((document.getElementById(id).value || "0").replace(/,/g, ''), 10) || 0;
+      const getDec = (id) => parseFloat((document.getElementById(id).value || "0").replace(/,/g, '')) || 0;
       
-      const openHours = getVal('sim_open_hours');
-      const workDays = getVal('sim_work_days');
-      const baseStaff = getVal('sim_base_staff');
-      const peakHours = getVal('sim_peak_hours');
-      const peakStaff = getVal('sim_peak_staff');
-      const peakDays = getVal('sim_peak_days');
-      const backyardHours = getVal('sim_backyard_hours');
-      const fixedCost = getVal('sim_fixed_cost_shop');
+      const openHours = getDec('sim_open_hours');
+      const workDays = getInt('sim_work_days');
+      const baseStaff = getDec('sim_base_staff');
+      const peakHours = getDec('sim_peak_hours');
+      const peakStaff = getDec('sim_peak_staff');
+      const peakDays = getInt('sim_peak_days');
+      const backyardHours = getDec('sim_backyard_hours');
+      const fixedCost = getInt('sim_fixed_cost_shop');
 
       const baseTime = openHours * workDays * baseStaff;
       const peakTime = peakHours * peakDays * peakStaff;
       const totalTime = baseTime + peakTime + backyardHours;
       const breakeven = totalTime > 0 ? fixedCost / totalTime : 0;
 
-      document.getElementById('res_base_time').innerText = Math.round(baseTime).toLocaleString();
-      document.getElementById('res_peak_time').innerText = Math.round(peakTime).toLocaleString();
-      document.getElementById('res_total_time').innerText = Math.round(totalTime).toLocaleString();
+      const fmt1 = (n) => (Math.round(n * 10) / 10).toLocaleString();
+      document.getElementById('res_base_time').innerText = fmt1(baseTime);
+      document.getElementById('res_peak_time').innerText = fmt1(peakTime);
+      document.getElementById('res_total_time').innerText = fmt1(totalTime);
       document.getElementById('res_breakeven').innerText = Math.round(breakeven).toLocaleString();
+
+      document.getElementById('res_base_formula').innerText = `${openHours}h × ${workDays}日 × ${baseStaff}名`;
+      document.getElementById('res_peak_formula').innerText = `${peakHours}h × ${peakDays}日 × ${peakStaff}名`;
+      document.getElementById('res_total_formula').innerText = `基本 ${fmt1(baseTime)}h ＋ ピーク ${fmt1(peakTime)}h ＋ バックヤード ${fmt1(backyardHours)}h`;
+      document.getElementById('res_breakeven_formula').innerText = `必須固定費 ${fixedCost.toLocaleString()}円 ÷ 総労働時間 ${fmt1(totalTime)}h`;
     }
 
     async function saveShiftPlan() {
       const branch = document.getElementById('sim_branch').value;
       if (!branch) { alert("店舗を選択してください。"); return; }
       
-      const targetHours = parseInt(document.getElementById('res_total_time').innerText.replace(/,/g, ''), 10);
+      const targetHours = Math.round(parseFloat(document.getElementById('res_total_time').innerText.replace(/,/g, '')) || 0);
       if (targetHours <= 0) { alert("適正労働時間が計算されていません。"); return; }
 
       if(!confirm(`${branch} の適正月間総労働時間を【 ${targetHours} h 】として固定費マスタへ保存しますか？\n（スコアリングの人時生産性の基準値となります）`)) return;
