@@ -722,12 +722,21 @@
           if(activeBtn) activeBtn.classList.add('active', 'text-emerald-400', 'border-b-2', 'border-emerald-400');
           if(activeView) activeView.classList.add('flex');
           const shiftSel = document.getElementById('sim_branch');
+          const isShiftAdmin = currentUser.roleId === 'role_admin' || currentUser.permissions.editAll;
           if (shiftSel.options.length <= 1) {
-              globalBranches.forEach(b => {
-                  shiftSel.innerHTML += `<option value="${b}">${b}</option>`;
-              });
-              if (currentUser.branch !== "全店舗") {
+              if (isShiftAdmin) {
+                  globalBranches.forEach(b => {
+                      shiftSel.innerHTML += `<option value="${b}">${b}</option>`;
+                  });
+                  if (currentUser.branch !== "全店舗") {
+                      shiftSel.value = currentUser.branch;
+                      loadBranchFixedCost();
+                  }
+              } else {
+                  shiftSel.innerHTML += `<option value="${currentUser.branch}">${currentUser.branch}</option>`;
                   shiftSel.value = currentUser.branch;
+                  shiftSel.disabled = true;
+                  document.getElementById('btnSaveShift').classList.add('hidden');
                   loadBranchFixedCost();
               }
           }
@@ -1531,6 +1540,10 @@
     }
 
     async function saveShiftPlan() {
+      if (!(currentUser.roleId === 'role_admin' || currentUser.permissions.editAll)) {
+        alert("基準値のマスタ保存には本部権限が必要です。");
+        return;
+      }
       const branch = document.getElementById('sim_branch').value;
       if (!branch) { alert("店舗を選択してください。"); return; }
       
