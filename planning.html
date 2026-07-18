@@ -276,6 +276,7 @@
             <option value="">店舗を選択してください</option>
           </select>
         </div>
+        <p id="currentMasterInfo" class="text-[11px] text-emerald-300 font-bold -mt-3 mb-4 hidden"><i class="fa-solid fa-circle-check mr-1"></i>現在マスタに設定中の基準値: <span id="currentMasterHours">-</span> h / 月</p>
 
         <div class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -375,10 +376,20 @@
           </div>
         </div>
 
-        <div class="flex justify-end mt-2">
+        <div class="flex justify-end gap-3 mt-2">
+          <button onclick="saveShiftHistory()" id="btnSaveShiftHistory" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 px-6 rounded-xl border border-slate-700 shadow transition-all flex items-center gap-2">
+            <i class="fa-regular fa-folder-open"></i> シミュレーション履歴を保存
+          </button>
           <button onclick="saveShiftPlan()" id="btnSaveShift" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-xl shadow-lg transition-all flex items-center gap-2">
             <i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存
           </button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+        <h3 class="font-bold text-white border-b border-slate-800 pb-2 mb-4"><i class="fa-solid fa-clock-rotate-left text-emerald-400 mr-2"></i>保存履歴 <span class="text-[10px] text-slate-500 font-normal ml-2">(選択中の店舗)</span></h3>
+        <div id="shiftHistoryList" class="space-y-2">
+          <p class="text-xs text-slate-500 text-center py-4">店舗を選択すると履歴を表示します</p>
         </div>
       </div>
     </div>
@@ -1490,6 +1501,108 @@
       calcShiftPlan();
     }
 
+    let shiftHistoryCache = [];
+
+    function updateCurrentMasterInfo(branch) {
+      const info = document.getElementById('currentMasterInfo');
+      const val = document.getElementById('currentMasterHours');
+      if (!info || !val) return;
+      const found = branchFixedCostsMap[branch];
+      if (found && found.targetHours > 0) {
+        val.innerText = Number(found.targetHours).toLocaleString();
+        info.classList.remove('hidden');
+      } else {
+        info.classList.add('hidden');
+      }
+    }
+
+    function getShiftInputsForSave() {
+      const getInt = (id) => parseInt((document.getElementById(id).value || "0").replace(/,/g, ''), 10) || 0;
+      const getDec = (id) => parseFloat((document.getElementById(id).value || "0").replace(/,/g, '')) || 0;
+      const totalTime = parseFloat(document.getElementById('res_total_time').innerText.replace(/,/g, '')) || 0;
+      const breakeven = parseInt(document.getElementById('res_breakeven').innerText.replace(/,/g, ''), 10) || 0;
+      return {
+        branch: document.getElementById('sim_branch').value,
+        author: currentUser.name,
+        open_hours: getDec('sim_open_hours'),
+        work_days: getInt('sim_work_days'),
+        base_staff: getDec('sim_base_staff'),
+        peak_hours: getDec('sim_peak_hours'),
+        peak_staff: getDec('sim_peak_staff'),
+        peak_days: getInt('sim_peak_days'),
+        backyard_hours: getDec('sim_backyard_hours'),
+        fixed_cost: getInt('sim_fixed_cost_shop'),
+        total_time: totalTime,
+        breakeven: breakeven
+      };
+    }
+
+    async function saveShiftHistory() {
+      const branch = document.getElementById('sim_branch').value;
+      if (!branch) { alert("店舗を選択してください。"); return; }
+      const btn = document.getElementById('btnSaveShiftHistory');
+      btn.disabled = true;
+      try {
+        const payload = getShiftInputsForSave();
+        payload.applied = false;
+        const { error } = await db.from('fin_shift_plan_history').insert(payload);
+        if (error) throw new Error(error.message);
+        btn.disabled = false;
+        loadShiftHistory();
+      } catch (err) {
+        btn.disabled = false;
+        alert("履歴の保存に失敗しました: " + err.message);
+      }
+    }
+
+    async function loadShiftHistory() {
+      const branch = document.getElementById('sim_branch').value;
+      const list = document.getElementById('shiftHistoryList');
+      if (!branch || !list) return;
+      list.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">読み込み中...</p>';
+      try {
+        const { data, error } = await db.from('fin_shift_plan_history')
+          .select('*').eq('branch', branch)
+          .order('created_at', { ascending: false }).limit(30);
+        if (error) throw error;
+        shiftHistoryCache = data || [];
+        if (shiftHistoryCache.length === 0) {
+          list.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">この店舗の履歴はまだありません</p>';
+          return;
+        }
+        let html = "";
+        shiftHistoryCache.forEach((r, i) => {
+          const dt = new Date(r.created_at).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          const appliedBadge = r.applied ? '<span class="text-[9px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded ml-2">マスタ反映</span>' : '';
+          html += `
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 bg-slate-950 border ${r.applied ? 'border-emerald-800' : 'border-slate-800'} rounded-xl px-4 py-3">
+              <div>
+                <p class="text-xs text-white font-bold">${dt} <span class="text-slate-500 font-normal">/ ${r.author || '--'}</span>${appliedBadge}</p>
+                <p class="text-[10px] text-slate-400 font-mono mt-1">総労働 ${Number(r.total_time).toLocaleString()}h ・ 損益分岐 ${Math.round(r.breakeven).toLocaleString()}円/h ・ 固定費 ${Number(r.fixed_cost).toLocaleString()}円</p>
+              </div>
+              <button onclick="restoreShiftHistory(${i})" class="shrink-0 text-[10px] bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 font-bold px-3 py-1.5 rounded transition-all">この条件を呼び出す</button>
+            </div>`;
+        });
+        list.innerHTML = html;
+      } catch (err) {
+        list.innerHTML = `<p class="text-xs text-rose-400 text-center py-4">履歴の取得に失敗しました: ${err.message}</p>`;
+      }
+    }
+
+    function restoreShiftHistory(idx) {
+      const r = shiftHistoryCache[idx];
+      if (!r) return;
+      document.getElementById('sim_open_hours').value = r.open_hours ?? "";
+      document.getElementById('sim_work_days').value = Number(r.work_days || 0).toLocaleString();
+      document.getElementById('sim_base_staff').value = r.base_staff ?? "";
+      document.getElementById('sim_peak_hours').value = r.peak_hours ?? "";
+      document.getElementById('sim_peak_staff').value = r.peak_staff ?? "";
+      document.getElementById('sim_peak_days').value = Number(r.peak_days || 0).toLocaleString();
+      document.getElementById('sim_backyard_hours').value = r.backyard_hours ?? "";
+      document.getElementById('sim_fixed_cost_shop').value = Number(r.fixed_cost || 0).toLocaleString();
+      calcShiftPlan();
+    }
+
     function loadBranchFixedCost() {
       const branch = document.getElementById('sim_branch').value;
       if (!branch) return;
@@ -1507,6 +1620,8 @@
         if (bd) bd.innerText = "※マスタ未設定のため仮の値(250万円)です";
       }
       calcShiftPlan();
+      updateCurrentMasterInfo(branch);
+      loadShiftHistory();
     }
 
     function calcShiftPlan() {
@@ -1562,11 +1677,17 @@
         
         if (error) throw new Error(error.message);
 
+        const histPayload = getShiftInputsForSave();
+        histPayload.applied = true;
+        await db.from('fin_shift_plan_history').insert(histPayload);
+
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存';
         
         if (!branchFixedCostsMap[branch]) branchFixedCostsMap[branch] = {};
         branchFixedCostsMap[branch].targetHours = targetHours;
         
+        updateCurrentMasterInfo(branch);
+        loadShiftHistory();
         alert("正常にマスタへ保存されました！");
       } catch (err) {
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 基準値としてマスタに保存';
