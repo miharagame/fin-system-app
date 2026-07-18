@@ -234,6 +234,7 @@
                 <span class="text-xs text-slate-500 font-bold pr-1">pt</span>
               </div>
             </div>
+            <textarea id="dtlHqComment" class="input-box text-sm min-h-[80px] resize-y mt-2" placeholder="（本部用）査定コメントや講評を入力してください"></textarea>
             <p class="text-[10px] text-slate-500 leading-tight">※プラスは賞与加点、マイナスは減点として記録されます。<br>※確定すると変更できなくなります。</p>
           </div>
         </div>
@@ -546,6 +547,7 @@
           content: r.content,
           status: r.status,
           mgrComment: r.mgr_comment || "",
+          hqComment: r.hq_comment || "",
           points: r.points || 0,
           createdAt: new Date(r.created_at).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-')
         }));
@@ -657,8 +659,10 @@
 
       const mgrEl = document.getElementById('dtlMgrComment');
       const ptsEl = document.getElementById('dtlPoints');
+      const hqEl = document.getElementById('dtlHqComment');
       mgrEl.value = currentReport.mgrComment || "";
       ptsEl.value = currentReport.points || "";
+      hqEl.value = currentReport.hqComment || "";
 
       const isHQ = ["role_admin", "role_honbu"].includes(currentUser.roleId);
       const isManager = ["role_general"].includes(currentUser.roleId);
@@ -671,6 +675,7 @@
 
       document.getElementById('adminLockMask').classList.toggle('hidden', isHQ && !isLocked);
       ptsEl.disabled = !(isHQ && !isLocked);
+      hqEl.disabled = !(isHQ && !isLocked);
 
       buildActionButtons(isHQ, isBranchMgr, isLocked);
     }
@@ -708,6 +713,7 @@
       
       const mgrCommentVal = document.getElementById('dtlMgrComment').value;
       const pointsVal = Number(document.getElementById('dtlPoints').value) || 0;
+      const hqCommentVal = document.getElementById('dtlHqComment').value;
 
       const btns = document.querySelectorAll('#actionArea button');
       btns.forEach(b => b.disabled = true);
@@ -716,6 +722,7 @@
         const { error } = await db.from('business_reports').update({
           status: newStatus,
           mgr_comment: mgrCommentVal,
+          hq_comment: hqCommentVal,
           points: pointsVal,
           updated_at: new Date().toISOString()
         }).eq('id', currentReport.id);
