@@ -196,10 +196,10 @@
         <div id="kanbanPriorityContainer">
           <label class="text-xs text-slate-400 mb-1 block font-bold"><i class="fa-solid fa-flag mr-1"></i>優先度</label>
           <select id="newTaskPriority" class="input-box text-sm cursor-pointer">
-            <option value="4">4: 最優先（重要 × 緊急）</option>
-            <option value="3">3: 重要（重要 × 緊急でない）</option>
-            <option value="2" selected>2: 通常（緊急 × 重要でない）</option>
-            <option value="1">1: 不急（重要でも緊急でもない）</option>
+            <option value="4" class="bg-slate-900 text-rose-300">4: 最優先（重要 × 緊急）</option>
+            <option value="3" class="bg-slate-900 text-amber-300">3: 重要（重要 × 緊急でない）</option>
+            <option value="2" selected class="bg-slate-900 text-sky-300">2: 通常（緊急 × 重要でない）</option>
+            <option value="1" class="bg-slate-900 text-slate-400">1: 不急（重要でも緊急でもない）</option>
           </select>
         </div>
         
@@ -609,8 +609,13 @@
         }
 
         const container = document.getElementById('staffListContainer'); container.innerHTML = "";
-        storeStaffs.forEach(s => {
-            const isManager = s.level === "店長・副店長"; const iconColor = isManager ? "text-amber-400" : "text-indigo-400"; const bgColor = isManager ? "bg-amber-500/20" : "bg-indigo-500/20"; const bdColor = isManager ? "border-amber-500/50" : "border-indigo-500/50";
+        const levelOrder = { "店長・副店長": 0, "社員": 1, "一般スタッフ": 2 };
+        const sortedStaffs = [...storeStaffs].sort((a, b) => (levelOrder[a.level] ?? 2) - (levelOrder[b.level] ?? 2));
+        sortedStaffs.forEach(s => {
+            let iconColor, bgColor, bdColor;
+            if (s.level === "店長・副店長") { iconColor = "text-amber-400"; bgColor = "bg-amber-500/20"; bdColor = "border-amber-500/50"; }
+            else if (s.level === "社員") { iconColor = "text-emerald-400"; bgColor = "bg-emerald-500/20"; bdColor = "border-emerald-500/50"; }
+            else { iconColor = "text-indigo-400"; bgColor = "bg-indigo-500/20"; bdColor = "border-indigo-500/50"; }
             container.innerHTML += `<button onclick="selectStaffForAuth('${s.name}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-4 rounded-2xl flex flex-col items-center gap-2 transition-all active:scale-95 shadow-md"><div class="${bgColor} w-12 h-12 rounded-full flex items-center justify-center ${iconColor} text-xl border ${bdColor}"><i class="fa-solid fa-user"></i></div><span class="text-white font-bold text-xs whitespace-nowrap">${s.name}</span></button>`;
         });
         document.getElementById('staffSelectStep').classList.remove('hidden'); document.getElementById('pinInputStep').classList.add('hidden'); document.getElementById('staffAuthModal').classList.replace('hidden', 'flex');
