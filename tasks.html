@@ -195,12 +195,8 @@
         
         <div id="kanbanPriorityContainer">
           <label class="text-xs text-slate-400 mb-1 block font-bold"><i class="fa-solid fa-flag mr-1"></i>優先度</label>
-          <select id="newTaskPriority" class="input-box text-sm cursor-pointer">
-            <option value="4" class="bg-slate-900 text-rose-300">4: 最優先（重要 × 緊急）</option>
-            <option value="3" class="bg-slate-900 text-amber-300">3: 重要（重要 × 緊急でない）</option>
-            <option value="2" selected class="bg-slate-900 text-sky-300">2: 通常（緊急 × 重要でない）</option>
-            <option value="1" class="bg-slate-900 text-slate-400">1: 不急（重要でも緊急でもない）</option>
-          </select>
+          <div class="flex items-center gap-1 flex-wrap" id="newPrioButtons"></div>
+          <p class="text-[10px] text-slate-500 mt-1" id="newPrioCaption"></p>
         </div>
         
         <div id="routineDaysContainer" class="bg-indigo-950/20 p-4 rounded-xl border border-indigo-900/30">
@@ -957,8 +953,8 @@
       
       document.getElementById('chkPrivate').checked = false;
       document.getElementById('newTaskDue').value = ""; // ★追加: カレンダーの初期化
-      if (document.getElementById('newTaskPriority')) document.getElementById('newTaskPriority').value = "2";
-      document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
+      selectedNewPriority = 2;
+      renderNewPriority();
     }
     
     function closeAddTaskModal() { document.getElementById('addTaskModal').classList.replace('flex', 'hidden'); }
@@ -969,6 +965,23 @@
       2: { label: '2: 通常', cls: 'bg-sky-700 text-white border-sky-600' },
       1: { label: '1: 不急', cls: 'bg-slate-700 text-slate-300 border-slate-600' }
     };
+
+    const TASK_PRIO_CAPTION = { 4: '重要 × 緊急', 3: '重要 × 緊急でない', 2: '緊急 × 重要でない', 1: '重要でも緊急でもない' };
+    let selectedNewPriority = 2;
+
+    function renderNewPriority() {
+      const btns = document.getElementById('newPrioButtons');
+      const cap = document.getElementById('newPrioCaption');
+      if (!btns) return;
+      let html = "";
+      [4, 3, 2, 1].forEach(p => {
+          const d = TASK_PRIO_DEF[p];
+          const activeCls = p === selectedNewPriority ? d.cls : 'bg-slate-950 text-slate-500 border-slate-800';
+          html += `<button onclick="selectedNewPriority=${p}; renderNewPriority();" class="${activeCls} cursor-pointer text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition-all">${d.label}</button>`;
+      });
+      btns.innerHTML = html;
+      if (cap) cap.innerText = "アイゼンハワー基準: " + TASK_PRIO_CAPTION[selectedNewPriority];
+    }
 
     function renderDetailPriority(task, canEdit) {
       const cont = document.getElementById('detailTaskPrioContainer');
@@ -1054,7 +1067,7 @@
                   assignee: assigneeData, status: 'todo',
                   is_private: isPrivate, created_by: currentTaskStaff.name,
                   due_date: dueVal, // ★追加
-                  priority: parseInt(document.getElementById('newTaskPriority').value, 10) || 2
+                  priority: selectedNewPriority
               }]);
               if (error) throw error;
           }
