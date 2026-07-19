@@ -168,7 +168,7 @@
   </main>
   
   <div id="addTaskModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden flex-col justify-center items-center z-50 p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
       <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950">
         <h3 class="text-white font-black"><i class="fa-solid fa-plus text-indigo-400 mr-2"></i>新規タスクの追加</h3>
         <button onclick="closeAddTaskModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
@@ -1014,13 +1014,18 @@
       }
     }
 
+    function sortedStaffList() {
+      const levelOrder = { "店長・副店長": 0, "社員": 1, "一般スタッフ": 2 };
+      return [...storeStaffs].sort((a, b) => (levelOrder[a.level] ?? 2) - (levelOrder[b.level] ?? 2));
+    }
+
     function renderAssigneeButtons() {
       const container = document.getElementById('assigneeButtonsContainer'); const msg = document.getElementById('assigneeLockMsg'); container.innerHTML = "";
       if (currentTaskStaff.level === "一般スタッフ") { selectedAssignees = [currentTaskStaff.name]; container.innerHTML = `<button class="bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm opacity-50 cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>${currentTaskStaff.name}</button>`; msg.classList.remove('hidden'); } 
       else {
           msg.classList.add('hidden'); const isUndeclared = selectedAssignees.length === 0;
           container.innerHTML += `<button onclick="toggleAssignee('未定')" class="${isUndeclared ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">未定(全員)</button>`;
-          storeStaffs.forEach(s => { const isSelected = selectedAssignees.includes(s.name); const colorClass = isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'; const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : ''; container.innerHTML += `<button onclick="toggleAssignee('${s.name}')" class="${colorClass} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">${iconHtml}${s.name}</button>`; });
+          sortedStaffList().forEach(s => { const isSelected = selectedAssignees.includes(s.name); const colorClass = isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'; const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : ''; container.innerHTML += `<button onclick="toggleAssignee('${s.name}')" class="${colorClass} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">${iconHtml}${s.name}</button>`; });
       }
     }
     function toggleAssignee(name) { if (name === '未定') selectedAssignees = []; else { if (selectedAssignees.includes(name)) selectedAssignees = selectedAssignees.filter(n => n !== name); else selectedAssignees.push(name); } renderAssigneeButtons(); }
@@ -1767,7 +1772,7 @@
       } else {
           const isUndeclared = selectedSubAssignees.length === 0;
           container.innerHTML += `<button onclick="toggleSubAssignee('未定')" class="${isUndeclared ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'} font-bold px-4 py-2 rounded-xl border text-xs shadow-sm">未定 (全員)</button>`;
-          storeStaffs.forEach(s => {
+          sortedStaffList().forEach(s => {
               const isSelected = selectedSubAssignees.includes(s.name);
               const colorClass = isSelected ? 'bg-sky-600 text-white border-sky-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
               const iconHtml = isSelected ? '<i class="fa-solid fa-check mr-1"></i>' : '';
