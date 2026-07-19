@@ -477,6 +477,21 @@
         <div class="bg-indigo-950/30 p-6 rounded-xl border border-indigo-900/50 shadow-lg mb-6">
           <label class="text-sm text-indigo-300 font-bold mb-3 block"><i class="fa-solid fa-box-open mr-1"></i>今月末の「確定在庫額」を入力 (円)</label>
           <input type="text" id="hqCurrentInv" oninput="calcHqPreview()" class="w-full bg-slate-950 border-2 border-indigo-500/50 text-white text-2xl font-black font-mono rounded-xl px-4 py-3 outline-none focus:border-indigo-400 transition-colors shadow-inner" placeholder="0">
+          
+          <div class="bg-fuchsia-950/20 p-4 rounded-xl border border-fuchsia-900/40 mt-4">
+            <label class="text-sm text-fuchsia-300 font-bold mb-1 block"><i class="fa-solid fa-handshake mr-1"></i>委託販売の補正入力 (委託がない店舗・月は0のまま)</label>
+            <p class="text-[10px] text-slate-500 mb-3">当月の委託商品の販売総額と手数料率を入力すると、スコアリングの粗利率・現金化力が自動補正されます。※確定在庫額・買取額には委託分を含めないでください</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <p class="text-[10px] text-slate-400 font-bold mb-1">委託販売額 (円)</p>
+                <input type="text" id="hqConsignSales" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="0">
+              </div>
+              <div>
+                <p class="text-[10px] text-slate-400 font-bold mb-1">委託粗利率 (%) ※自社取り分</p>
+                <input type="text" id="hqConsignRate" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="10">
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="bg-emerald-950/20 p-6 rounded-xl border border-emerald-900/50 shadow-lg mb-6">
@@ -923,10 +938,13 @@
             statsRes.data.forEach(r => {
                 let rowMStr = String(r.target_month).substring(0, 7);
                 if (targetMonthsList.includes(rowMStr)) {
-                    if (!confirmedStats[r.branch]) confirmedStats[r.branch] = { totalPurchase: 0, cogs: 0, grossProfit: 0 };
+                    if (!confirmedStats[r.branch]) confirmedStats[r.branch] = { totalPurchase: 0, cogs: 0, grossProfit: 0, consignSales: 0, consignProfit: 0 };
                     confirmedStats[r.branch].totalPurchase += Number(r.total_purchase) || 0;
                     confirmedStats[r.branch].cogs += Number(r.cogs) || 0;
                     confirmedStats[r.branch].grossProfit += Number(r.gross_profit) || 0;
+                    let cS = Number(r.consignment_sales) || 0;
+                    confirmedStats[r.branch].consignSales += cS;
+                    confirmedStats[r.branch].consignProfit += cS * ((Number(r.consignment_margin_rate) || 10) / 100);
                 }
             });
         }
@@ -975,20 +993,32 @@
             let actualWorkHours = stats.workHours; 
             let isConfirmed = false;
 
+            // ★委託販売の補正値(確定入力がある月のみ有効)
+            let consignSales = cStats ? cStats.consignSales : 0;
+            let consignProfit = cStats ? cStats.consignProfit : 0;
+            let consignPayout = consignSales - consignProfit; // 委託元へ支払う分(例: 0.9×C)
+
             if (cStats) {
-                actualGrossProfit = cStats.grossProfit;
+                // 確定粗利は在庫ベース計算のため委託売上分が膨らむ → 実質(自社+委託取り分)に補正
+                actualGrossProfit = cStats.grossProfit - consignPayout;
                 actualInvChange = cStats.totalPurchase - cStats.cogs;
                 isConfirmed = true;
             }
 
-            let actualMarginRate = actualNetSales > 0 ? (actualGrossProfit / actualNetSales) * 100 : 0;
+            // 粗利率は委託を完全に除外した「自社商品ベース」で評価
+            let marginNetSales = actualNetSales - consignSales;
+            let marginGrossProfit = actualGrossProfit - consignProfit;
+            let actualMarginRate = marginNetSales > 0 ? (marginGrossProfit / marginNetSales) * 100 : 0;
+            
+            // 現金化は預かり分(支払い予定額)を除いた実質で評価
+            let correctedCashFlow = stats.cashFlow - consignPayout;
             let monthsCount = targetMonthsList.length;
             let periodFixedCost = (fcObj.monthlySga + fcObj.monthlyRepay) * monthsCount;
             let periodTargetHours = fcObj.targetHours * monthsCount;
 
             let scoreCash = 0; let currentTargetCash = target.cash * periodDaysRatio; let cashRatio = 0;
-            if (currentTargetCash > 0) { cashRatio = stats.cashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 150); } 
-            else if (currentTargetCash <= 0 && stats.cashFlow > 0) { scoreCash = 150; cashRatio = 1; }
+            if (currentTargetCash > 0) { cashRatio = correctedCashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 150); } 
+            else if (currentTargetCash <= 0 && correctedCashFlow > 0) { scoreCash = 150; cashRatio = 1; }
 
             let scoreInv = 0; let currentInvLimit = target.invLimit * periodDaysRatio;
             if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 100; } 
@@ -1042,7 +1072,7 @@
                 branch: b, totalScore: totalScore, rank: rank, scores: scoresArr,
                 isConfirmed: isConfirmed, hasMaster: hasMaster,
                 details: {
-                    targetCash: currentTargetCash, actualCash: stats.cashFlow, cashRatio: (cashRatio * 100).toFixed(1),
+                    targetCash: currentTargetCash, actualCash: correctedCashFlow, cashRatio: (cashRatio * 100).toFixed(1),
                     targetInvLimit: currentInvLimit, actualInvChange: actualInvChange,
                     targetMargin: target.marginRate, actualMargin: actualMarginRate.toFixed(1), marginRatio: (mRatio * 100).toFixed(1),
                     inputRate: inputRate.toFixed(1), actualProd: Math.round(actualProd), breakevenProd: Math.round(breakevenProd),
@@ -1557,6 +1587,10 @@
           document.getElementById('hqTotalPurchase').innerText = Math.round(hqBaseData.totalPurchase).toLocaleString();
           document.getElementById('hqTotalSales').innerText = Math.round(hqBaseData.totalSales).toLocaleString();
           
+          const curStatData = statsRes.data ? statsRes.data.find(r => String(r.target_month).startsWith(month)) : null;
+          document.getElementById('hqConsignSales').value = (curStatData && curStatData.consignment_sales) ? Number(curStatData.consignment_sales).toLocaleString() : "0";
+          document.getElementById('hqConsignRate').value = (curStatData && curStatData.consignment_margin_rate != null) ? curStatData.consignment_margin_rate : 10;
+          
           const prevStatData = statsRes.data ? statsRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           const prevSummaryData = invSummaryRes.data ? invSummaryRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           let prevInvVal = "";
@@ -1755,6 +1789,8 @@
               total_purchase: hqBaseData.totalPurchase,
               cogs: cogs,
               gross_profit: grossProfit,
+              consignment_sales: parseInt((document.getElementById('hqConsignSales').value || "0").replace(/,/g, ''), 10) || 0,
+              consignment_margin_rate: parseFloat(document.getElementById('hqConsignRate').value) || 10,
               updated_by: currentUser.name,
               updated_at: new Date().toISOString()
           };
