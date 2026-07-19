@@ -955,6 +955,7 @@
       document.getElementById('newTaskDue').value = ""; // ★追加: カレンダーの初期化
       selectedNewPriority = 2;
       renderNewPriority();
+      document.getElementById('addTaskModal').classList.replace('hidden', 'flex'); 
     }
     
     function closeAddTaskModal() { document.getElementById('addTaskModal').classList.replace('flex', 'hidden'); }
