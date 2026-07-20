@@ -1187,6 +1187,7 @@
         const size = t.status === 'done' ? 15 : 21;
         html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yv}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.55;':''}"></div>`;
       });
+      layer.innerHTML = html || '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">この月の単発タスクはありません</div>';
     }
 
     function showAnalysisPopup(e, id) {
