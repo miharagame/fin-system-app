@@ -86,7 +86,8 @@
           <button onclick="switchTab('kanban')" id="tab_kanban" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all">単発タスク</button>
           <button onclick="switchTab('project')" id="tab_project" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-diagram-project mr-1"></i>長期プロジェクト</button>
           <button onclick="switchTab('routineMaster')" id="tab_routineMaster" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-gear mr-1"></i>ルーティン設定</button>
-          <button onclick="switchTab('analysis')" id="tab_analysis" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-chart-scatter mr-1"></i>優先度分析</button>
+          <!-- ★一時非表示: 優先度分析タブ（本部タスクが全店に露出する問題のため封鎖中。修正完了後に hidden を外して再開） -->
+          <button onclick="switchTab('analysis')" id="tab_analysis" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all hidden"><i class="fa-solid fa-chart-scatter mr-1"></i>優先度分析</button>
         </div>
         
         <div class="hidden lg:block border-l border-slate-700 h-6 mx-2"></div>
@@ -558,6 +559,8 @@
     }
 
     function switchTab(tab) {
+      // ★一時封鎖: 優先度分析は問題修正まで開けないようにする（本部タスク露出防止）
+      if (tab === 'analysis') { tab = 'routine'; }
       ['routine', 'kanban', 'project', 'routineMaster', 'analysis'].forEach(t => {
         const tBtn = document.getElementById('tab_' + t);
         const tView = document.getElementById('view_' + t);
