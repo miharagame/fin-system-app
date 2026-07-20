@@ -1130,11 +1130,11 @@
       const nextStart = nextM + "-01";
 
       const cols = 'id,name,priority,status,due_date,assignee,target_date,updated_at';
+      // 3ヶ月前まで遡って target_date で取得(updated_at範囲クエリは固まるため使わない)
       const back = new Date(monthStart);
       back.setMonth(back.getMonth() - 3);
       const backStr = back.getFullYear() + '-' + String(back.getMonth() + 1).padStart(2, '0') + '-01';
 
-      const reqToken = (window.__analysisReq = (window.__analysisReq || 0) + 1);
       let resp;
       try {
         resp = await db.from('tasks').select(cols)
@@ -1145,9 +1145,6 @@
         layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">通信エラー: ${ex.message}</div>`;
         return;
       }
-      if (reqToken !== window.__analysisReq) { return; }
-      const tabBtn = document.getElementById('tab_analysis');
-      if (!tabBtn || !tabBtn.classList.contains('active')) { return; }
       if (resp.error) {
         layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${resp.error.message}</div>`;
         return;
@@ -1190,6 +1187,7 @@
         const size = t.status === 'done' ? 15 : 21;
         html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yv}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.55;':''}"></div>`;
       });
+      layer.innerHTML = html || '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">この月の単発タスクはありません</div>';
     }
 
     function showAnalysisPopup(e, id) {
