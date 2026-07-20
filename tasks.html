@@ -86,6 +86,7 @@
           <button onclick="switchTab('kanban')" id="tab_kanban" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all">単発タスク</button>
           <button onclick="switchTab('project')" id="tab_project" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-diagram-project mr-1"></i>長期プロジェクト</button>
           <button onclick="switchTab('routineMaster')" id="tab_routineMaster" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-gear mr-1"></i>ルーティン設定</button>
+          <button onclick="switchTab('analysis')" id="tab_analysis" class="tab-btn text-sm text-slate-400 pb-1 px-2 transition-all"><i class="fa-solid fa-chart-scatter mr-1"></i>優先度分析</button>
         </div>
         
         <div class="hidden lg:block border-l border-slate-700 h-6 mx-2"></div>
@@ -164,6 +165,38 @@
         <div id="routineMasterContainer" class="space-y-3"></div>
       </div>
     </div>
+
+    <div id="view_analysis" class="hidden w-full flex-col">
+          <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
+            <div class="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+              <button onclick="changeAnalysisMonth(-1)" class="text-slate-400 hover:text-white px-2"><i class="fa-solid fa-chevron-left"></i></button>
+              <span id="analysisMonthLabel" class="text-white font-bold text-sm w-28 text-center">—</span>
+              <button onclick="changeAnalysisMonth(1)" class="text-slate-400 hover:text-white px-2"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+            <button id="analysisDoneToggle" onclick="toggleAnalysisDone()" class="text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800 text-white transition-all"><i class="fa-solid fa-check mr-1"></i>完了を表示</button>
+          </div>
+
+          <div id="analysisPlotArea" class="relative w-full select-none" style="height:420px; border-left:2px solid #334155; border-bottom:2px solid #334155;">
+            <div class="absolute inset-0 grid grid-cols-2 grid-rows-2 pointer-events-none">
+              <div class="bg-pink-500/5 border-r border-b border-slate-800 flex items-start justify-start p-2"><span class="text-[10px] text-pink-400/70 font-bold">第2領域・重要（緊急でない）</span></div>
+              <div class="bg-rose-500/5 border-b border-slate-800 flex items-start justify-end p-2"><span class="text-[10px] text-rose-400/70 font-bold">第1領域・最優先</span></div>
+              <div class="bg-green-500/5 border-r border-slate-800 flex items-end justify-start p-2"><span class="text-[10px] text-green-400/70 font-bold">第4領域・不急</span></div>
+              <div class="bg-amber-500/5 flex items-end justify-end p-2"><span class="text-[10px] text-amber-400/70 font-bold">第3領域・通常</span></div>
+            </div>
+            <div id="analysisDots"></div>
+            <div id="analysisPopup" class="hidden absolute z-20 bg-slate-800 border rounded-xl p-3 shadow-2xl text-xs" style="width:180px;"></div>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-500 mt-1">
+            <span>← 緊急度 低</span><span class="text-slate-400">ドットをクリックで詳細</span><span>緊急度 高 →</span>
+          </div>
+          <div class="flex gap-3 flex-wrap text-[11px] text-slate-400 mt-3">
+            <span><i class="fa-solid fa-circle text-rose-500"></i> 最優先</span>
+            <span><i class="fa-solid fa-circle text-pink-400"></i> 重要</span>
+            <span><i class="fa-solid fa-circle text-sky-500"></i> 通常</span>
+            <span><i class="fa-solid fa-circle text-slate-500"></i> 不急</span>
+            <span><i class="fa-solid fa-circle text-slate-600"></i> 完了</span>
+          </div>
+        </div>
 
   </main>
   
@@ -525,7 +558,7 @@
     }
 
     function switchTab(tab) {
-      ['routine', 'kanban', 'project', 'routineMaster'].forEach(t => {
+      ['routine', 'kanban', 'project', 'routineMaster', 'analysis'].forEach(t => {
         const tBtn = document.getElementById('tab_' + t);
         const tView = document.getElementById('view_' + t);
         if(tBtn) tBtn.classList.remove('active');
@@ -550,6 +583,7 @@
       
       if (tab === 'project') { renderProjects(); }
       else if (tab === 'routineMaster') { renderRoutineMasters(); }
+      else if (tab === 'analysis') { renderAnalysis(); }
     }
 
     // ★修正: HTMLに依存しない安全なローディング制御
@@ -1015,6 +1049,120 @@
           alert("優先度の更新に失敗しました: " + err.message);
       }
     }
+
+    let analysisMonth = null;
+    let analysisShowDone = true;
+
+    function ymOf(dateLike) {
+      if (!dateLike) return "";
+      const d = new Date(dateLike);
+      if (isNaN(d)) return String(dateLike).substring(0, 7);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    function taskAnalysisMonth(t) {
+      const base = t.id && t.id.startsWith('T') ? Number(t.id.substring(1, 14)) : null;
+      if (base && !isNaN(base)) return ymOf(new Date(base));
+      return t.dueDate ? ymOf(t.dueDate) : "";
+    }
+
+    function changeAnalysisMonth(delta) {
+      if (!analysisMonth) analysisMonth = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0');
+      let [y, m] = analysisMonth.split('-').map(Number);
+      m += delta;
+      if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+      analysisMonth = y + "-" + String(m).padStart(2, '0');
+      renderAnalysis();
+    }
+
+    function toggleAnalysisDone() {
+      analysisShowDone = !analysisShowDone;
+      const btn = document.getElementById('analysisDoneToggle');
+      if (analysisShowDone) {
+        btn.className = "text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800 text-white transition-all";
+        btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>完了を表示';
+      } else {
+        btn.className = "text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-950 text-slate-500 transition-all";
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash mr-1"></i>完了を非表示';
+      }
+      renderAnalysis();
+    }
+
+    function urgencyX(t) {
+      if (!t.dueDate) return 42;
+      const days = Math.floor((new Date(t.dueDate) - new Date(new Date().toISOString().slice(0,10))) / 86400000);
+      if (days < 0) return 92;
+      if (days <= 3) return 80;
+      if (days <= 7) return 66;
+      if (days <= 14) return 54;
+      return 40;
+    }
+
+    function importanceY(p) {
+      if (p === 4) return 16;
+      if (p === 3) return 34;
+      if (p === 2) return 66;
+      return 84;
+    }
+
+    function renderAnalysis() {
+      if (!analysisMonth) analysisMonth = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0');
+      const [y, m] = analysisMonth.split('-');
+      document.getElementById('analysisMonthLabel').innerText = y + "年" + Number(m) + "月";
+      document.getElementById('analysisPopup').classList.add('hidden');
+
+      const targets = tasksData.filter(t => t.type === 'kanban' && taskAnalysisMonth(t) === analysisMonth && (analysisShowDone || t.status !== 'done'));
+      const layer = document.getElementById('analysisDots');
+      const colorOf = (t) => t.status === 'done' ? '#475569' : ({4:'#f43f5e',3:'#f472b6',2:'#0ea5e9',1:'#64748b'})[Number(t.priority)||2];
+
+      const placed = [];
+      let html = "";
+      targets.forEach((t, i) => {
+        let x = urgencyX(t), yy = importanceY(Number(t.priority) || 2);
+        let tries = 0;
+        while (placed.some(p => Math.abs(p.x - x) < 4 && Math.abs(p.y - yy) < 5) && tries < 12) {
+          x += (tries % 2 === 0 ? 3.5 : -3.5); yy += (tries % 3 === 0 ? 4 : -2); tries++;
+        }
+        x = Math.max(3, Math.min(95, x)); yy = Math.max(4, Math.min(94, yy));
+        placed.push({ x, y: yy });
+        const size = t.status === 'done' ? 16 : 22;
+        html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yy}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.5;':''}"></div>`;
+      });
+      layer.innerHTML = html || '';
+      if (targets.length === 0) {
+        layer.innerHTML = '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">この月の単発タスクはありません</div>';
+      }
+    }
+
+    function showAnalysisPopup(e, id) {
+      e.stopPropagation();
+      const t = tasksData.find(x => x.id === id);
+      if (!t) return;
+      const pop = document.getElementById('analysisPopup');
+      const prMap = { 4: ['最優先', 'text-rose-400', 'border-rose-500'], 3: ['重要', 'text-pink-400', 'border-pink-500'], 2: ['通常', 'text-sky-400', 'border-sky-500'], 1: ['不急', 'text-slate-400', 'border-slate-600'] };
+      const pr = prMap[Number(t.priority) || 2];
+      const assignee = (t.assignee && t.assignee !== '未定') ? t.assignee : '未定(全員)';
+      const dueTxt = t.dueDate ? t.dueDate : '期日なし';
+      const doneTxt = t.status === 'done' ? '<span class="text-emerald-400 font-bold">✓ 完了済み</span><br>' : '';
+      pop.className = `absolute z-20 bg-slate-800 border ${pr[2]} rounded-xl p-3 shadow-2xl text-xs`;
+      pop.style.width = '180px';
+      pop.innerHTML = `<p class="font-bold text-white mb-1">${t.name || ''}</p><p class="${pr[0]?pr[1]:''} font-bold mb-1">優先度: ${pr[0]}</p>${doneTxt}<p class="text-slate-400">期日: ${dueTxt}<br>担当: ${assignee}</p>`;
+      const area = document.getElementById('analysisPlotArea');
+      const dot = e.currentTarget;
+      let left = dot.offsetLeft + 16;
+      if (left + 180 > area.clientWidth) left = dot.offsetLeft - 190;
+      let top = dot.offsetTop + 10;
+      pop.style.left = Math.max(0, left) + 'px';
+      pop.style.top = Math.min(top, area.clientHeight - 90) + 'px';
+      pop.classList.remove('hidden');
+    }
+
+    document.addEventListener('click', (e) => {
+      const pop = document.getElementById('analysisPopup');
+      if (pop && !pop.classList.contains('hidden') && !e.target.closest('#analysisDots') && !e.target.closest('#analysisPopup')) {
+        pop.classList.add('hidden');
+      }
+    });
 
     function sortedStaffList() {
       const levelOrder = { "店長・副店長": 0, "社員": 1, "一般スタッフ": 2 };
