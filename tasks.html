@@ -1114,22 +1114,37 @@
       const layer = document.getElementById('analysisDots');
       layer.innerHTML = '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">読み込み中...</div>';
 
-      const monthStart = analysisMonth + "-01";
       const [yy2, mm2] = analysisMonth.split('-').map(Number);
-      const nextM = mm2 === 12 ? (yy2 + 1) + "-01-01" : yy2 + "-" + String(mm2 + 1).padStart(2, '0') + "-01";
+      const nextM = mm2 === 12 ? (yy2 + 1) + "-01" : yy2 + "-" + String(mm2 + 1).padStart(2, '0');
+      const monthStart = analysisMonth + "-01";
+      const nextStart = nextM + "-01";
 
       const { data, error } = await db.from('tasks')
         .select('*').eq('branch', targetBranch).eq('type', 'kanban')
-        .neq('status', 'deleted')
-        .gte('target_date', monthStart).lt('target_date', nextM);
+        .neq('status', 'deleted');
 
       if (error) { layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${error.message}</div>`; return; }
 
+      const inMonth = (dstr) => dstr && dstr >= monthStart && dstr < nextStart;
+
       analysisCache = {};
-      const targets = (data || []).filter(t => analysisShowDone || t.status !== 'done').map(t => {
+      const seen = {};
+      const targets = [];
+      (data || []).forEach(t => {
+        let belongs = false;
+        if (t.status === 'done') {
+          if (!analysisShowDone) return;
+          const doneDay = (t.updated_at ? String(t.updated_at) : String(t.target_date || "")).substring(0, 10);
+          belongs = inMonth(doneDay);
+        } else {
+          belongs = inMonth(String(t.target_date || "").substring(0, 10));
+        }
+        if (!belongs) return;
+        const dedupKey = t.name + "|" + t.status + "|" + (t.due_date || "");
+        if (t.status === 'done') { if (seen[dedupKey]) return; seen[dedupKey] = true; }
         const obj = { id: t.id, name: t.name, priority: Number(t.priority) || 2, status: t.status, dueDate: t.due_date || "", assignee: t.assignee || "未定" };
         analysisCache[t.id] = obj;
-        return obj;
+        targets.push(obj);
       });
 
       const colorOf = (t) => t.status === 'done' ? '#475569' : ({4:'#f43f5e',3:'#f472b6',2:'#0ea5e9',1:'#64748b'})[t.priority];
