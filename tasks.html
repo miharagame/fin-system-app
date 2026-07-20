@@ -1130,8 +1130,11 @@
       const nextStart = nextM + "-01";
 
       const { data, error } = await db.from('tasks')
-        .select('*').eq('branch', targetBranch).eq('type', 'kanban')
-        .neq('status', 'deleted');
+        .select('id,name,priority,status,due_date,assignee,target_date,updated_at')
+        .eq('branch', targetBranch).eq('type', 'kanban')
+        .neq('status', 'deleted')
+        .or(`and(target_date.gte.${monthStart},target_date.lt.${nextStart}),and(updated_at.gte.${monthStart},updated_at.lt.${nextStart}T23:59:59)`)
+        .limit(2000);
 
       if (error) { layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${error.message}</div>`; return; }
 
