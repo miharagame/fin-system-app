@@ -1089,14 +1089,24 @@
       renderAnalysis();
     }
 
+    function seededRand(id, salt) {
+      let str = String(id) + "_" + salt;
+      let h = 0;
+      for (let k = 0; k < str.length; k++) { h = (h * 31 + str.charCodeAt(k)) & 0xffffffff; }
+      return (Math.abs(h) % 1000) / 1000;
+    }
+
     function urgencyX(t) {
-      if (!t.dueDate) return 42;
-      const days = Math.floor((new Date(t.dueDate) - new Date(new Date().toISOString().slice(0,10))) / 86400000);
-      if (days < 0) return 92;
-      if (days <= 3) return 80;
-      if (days <= 7) return 66;
-      if (days <= 14) return 54;
-      return 40;
+      let base;
+      if (!t.dueDate) {
+        base = 30;
+      } else {
+        const days = Math.floor((new Date(t.dueDate) - new Date(new Date().toISOString().slice(0,10))) / 86400000);
+        if (days < 0) base = 90;
+        else if (days > 30) base = 40;
+        else base = 88 - (days / 30) * 50;
+      }
+      return base;
     }
 
     function importanceY(p) {
@@ -1148,28 +1158,19 @@
       });
 
       const colorOf = (t) => t.status === 'done' ? '#475569' : ({4:'#f43f5e',3:'#f472b6',2:'#0ea5e9',1:'#64748b'})[t.priority];
-      const groups = {};
-      targets.forEach(t => {
-        const key = urgencyX(t) + "_" + importanceY(t.priority);
-        (groups[key] = groups[key] || []).push(t);
-      });
-
       let html = "";
-      Object.keys(groups).forEach(key => {
-        const g = groups[key];
-        const [baseX, baseY] = key.split('_').map(Number);
-        const cols = Math.ceil(Math.sqrt(g.length));
-        const rows = Math.ceil(g.length / cols);
-        g.forEach((t, gi) => {
-          const col = gi % cols, row = Math.floor(gi / cols);
-          let x = baseX + (col - (cols - 1) / 2) * 4.2;
-          let yv = baseY + (row - (rows - 1) / 2) * 6;
-          x = Math.max(3, Math.min(95, x)); yv = Math.max(4, Math.min(94, yv));
-          const size = t.status === 'done' ? 16 : 22;
-          html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yv}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.5;':''}"></div>`;
-        });
+      targets.forEach(t => {
+        const baseX = urgencyX(t);
+        const baseY = importanceY(t.priority);
+        const jx = (seededRand(t.id, 'x') - 0.5) * 9;
+        const jy = (seededRand(t.id, 'y') - 0.5) * (baseY < 50 ? 26 : 26);
+        let x = baseX + jx;
+        let yv = baseY + jy;
+        x = Math.max(3, Math.min(95, x));
+        yv = Math.max(4, Math.min(94, yv));
+        const size = t.status === 'done' ? 15 : 21;
+        html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yv}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.55;':''}"></div>`;
       });
-      layer.innerHTML = html || '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">この月の単発タスクはありません</div>';
     }
 
     function showAnalysisPopup(e, id) {
