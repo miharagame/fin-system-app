@@ -1129,14 +1129,27 @@
       const monthStart = analysisMonth + "-01";
       const nextStart = nextM + "-01";
 
-      const { data, error } = await db.from('tasks')
-        .select('id,name,priority,status,due_date,assignee,target_date,updated_at')
-        .eq('branch', targetBranch).eq('type', 'kanban')
-        .neq('status', 'deleted')
-        .or(`and(target_date.gte.${monthStart},target_date.lt.${nextStart}),and(updated_at.gte.${monthStart},updated_at.lt.${nextStart}T23:59:59)`)
-        .limit(2000);
+      const cols = 'id,name,priority,status,due_date,assignee,target_date,updated_at';
+      const q1 = db.from('tasks').select(cols).eq('branch', targetBranch).eq('type', 'kanban').neq('status', 'deleted')
+        .gte('target_date', monthStart).lt('target_date', nextStart).limit(3000);
+      const q2 = db.from('tasks').select(cols).eq('branch', targetBranch).eq('type', 'kanban').eq('status', 'done')
+        .gte('updated_at', monthStart).lt('updated_at', nextStart + 'T23:59:59').limit(3000);
 
-      if (error) { layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${error.message}</div>`; return; }
+      let res1, res2;
+      try {
+        [res1, res2] = await Promise.all([q1, q2]);
+      } catch (ex) {
+        layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">通信エラー: ${ex.message}</div>`;
+        return;
+      }
+      if (res1.error || res2.error) {
+        const em = (res1.error || res2.error).message;
+        layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${em}</div>`;
+        return;
+      }
+      const mergedById = {};
+      (res1.data || []).concat(res2.data || []).forEach(r => { mergedById[r.id] = r; });
+      const data = Object.values(mergedById);
 
       const inMonth = (dstr) => dstr && dstr >= monthStart && dstr < nextStart;
 
