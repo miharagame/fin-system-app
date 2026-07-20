@@ -1130,26 +1130,26 @@
       const nextStart = nextM + "-01";
 
       const cols = 'id,name,priority,status,due_date,assignee,target_date,updated_at';
-      const q1 = db.from('tasks').select(cols).eq('branch', targetBranch).eq('type', 'kanban').neq('status', 'deleted')
-        .gte('target_date', monthStart).lt('target_date', nextStart).limit(3000);
-      const q2 = db.from('tasks').select(cols).eq('branch', targetBranch).eq('type', 'kanban').eq('status', 'done')
-        .gte('updated_at', monthStart).lt('updated_at', nextStart + 'T23:59:59').limit(3000);
+      // 3ヶ月前まで遡って target_date で取得(updated_at範囲クエリは固まるため使わない)
+      const back = new Date(monthStart);
+      back.setMonth(back.getMonth() - 3);
+      const backStr = back.getFullYear() + '-' + String(back.getMonth() + 1).padStart(2, '0') + '-01';
 
-      let res1, res2;
+      let resp;
       try {
-        [res1, res2] = await Promise.all([q1, q2]);
+        resp = await db.from('tasks').select(cols)
+          .eq('branch', targetBranch).eq('type', 'kanban').neq('status', 'deleted')
+          .gte('target_date', backStr).lt('target_date', nextStart)
+          .limit(5000);
       } catch (ex) {
         layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">通信エラー: ${ex.message}</div>`;
         return;
       }
-      if (res1.error || res2.error) {
-        const em = (res1.error || res2.error).message;
-        layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${em}</div>`;
+      if (resp.error) {
+        layer.innerHTML = `<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#f87171; font-size:12px;">読み込みエラー: ${resp.error.message}</div>`;
         return;
       }
-      const mergedById = {};
-      (res1.data || []).concat(res2.data || []).forEach(r => { mergedById[r.id] = r; });
-      const data = Object.values(mergedById);
+      const data = resp.data || [];
 
       const inMonth = (dstr) => dstr && dstr >= monthStart && dstr < nextStart;
 
