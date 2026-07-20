@@ -1110,10 +1110,10 @@
     }
 
     function importanceY(p) {
-      if (p === 4) return 16;
-      if (p === 3) return 34;
-      if (p === 2) return 66;
-      return 84;
+      if (p === 4) return 15;
+      if (p === 3) return 38;
+      if (p === 2) return 62;
+      return 85;
     }
 
     async function renderAnalysis() {
@@ -1178,16 +1178,15 @@
       targets.forEach(t => {
         const baseX = urgencyX(t);
         const baseY = importanceY(t.priority);
-        const jx = (seededRand(t.id, 'x') - 0.5) * 9;
-        const jy = (seededRand(t.id, 'y') - 0.5) * (baseY < 50 ? 26 : 26);
+        const jx = (seededRand(t.id, 'x') - 0.5) * 12;
+        const jy = (seededRand(t.id, 'y') - 0.5) * 15;
         let x = baseX + jx;
         let yv = baseY + jy;
         x = Math.max(3, Math.min(95, x));
-        yv = Math.max(4, Math.min(94, yv));
+        if (baseY < 50) { yv = Math.max(4, Math.min(47, yv)); } else { yv = Math.max(53, Math.min(94, yv)); }
         const size = t.status === 'done' ? 15 : 21;
         html += `<div onclick="showAnalysisPopup(event, '${t.id}')" title="${(t.name||'').replace(/'/g,'')}" style="position:absolute; left:${x}%; top:${yv}%; width:${size}px; height:${size}px; margin-left:-${size/2}px; margin-top:-${size/2}px; border-radius:50%; background:${colorOf(t)}; border:2px solid #0f172a; cursor:pointer; ${t.status==='done'?'opacity:0.55;':''}"></div>`;
       });
-      layer.innerHTML = html || '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#64748b; font-size:12px;">この月の単発タスクはありません</div>';
     }
 
     function showAnalysisPopup(e, id) {
