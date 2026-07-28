@@ -240,7 +240,7 @@
             <div>
               <p class="text-blue-400 font-bold mb-1">【個人評価ポイントの引用元】</p>
               <ul class="list-disc pl-4 space-y-1">
-                <li>人事評価スコア: <span class="text-white">人事評価シート(hr_evaluations)</span></li>
+                <li>人事評価スコア: <span class="text-white">人事評価シート(hr_evaluations)</span> ※確定済みシートは条件達成得点(最大200点)を自動加算</li>
                 <li>レポート加点: <span class="text-white">業務レポート(business_reports)</span> の「確定」ステータスの累計ポイント</li>
                 <li>役職・所属: <span class="text-white">システムアカウント(system_users)</span></li>
               </ul>
@@ -423,6 +423,7 @@
                   <th class="py-2">所属店舗</th>
                   <th class="py-2">氏名 (役職)</th>
                   <th class="py-2 text-center">人事評価</th>
+                  <th class="py-2 text-center text-amber-400">条件PT</th>
                   <th class="py-2 text-center">レポPT</th>
                   <th class="py-2 text-right">係数換算点</th>
                   <th class="py-2 text-right">店舗内比率</th>
@@ -431,7 +432,7 @@
                 </tr>
               </thead>
               <tbody id="bonusUserTbody" class="divide-y divide-slate-800/50">
-                <tr><td colspan="8" class="text-center py-6 text-slate-500">シミュレーションを実行してください</td></tr>
+                <tr><td colspan="9" class="text-center py-6 text-slate-500">シミュレーションを実行してください</td></tr>
               </tbody>
             </table>
           </div>
@@ -562,6 +563,36 @@
     let hqReportsList = [];
     let adminUsersList = [];
     let parsedAttendanceRows = []; 
+
+    // ==========================================
+    // ★条件達成得点 (hr.htmlと同一ロジック / 8条件・最大200点)
+    // 幹部評価(executive_eval)の項目スコアで判定し、評価確定後のみ加点する
+    // ==========================================
+    const HR_COND_ITEM_GROUPS = [
+      ["s01","s02","s03","s04","s05","s06","s07","s08"],   // 実務・業務スキル
+      ["c01","c02","c03","c04","c05","c06","c07"],          // 課題対応・思考力
+      ["m01","m02","m03","m04","m05"]                       // 規律・マネジメント
+    ];
+    function calcHrConditionBonus(execEvalRaw, status) {
+      if (status !== 'S4_DONE' && status !== 'S5_DONE') return 0; // 幹部評価の確定後のみ
+      let ee = execEvalRaw || {};
+      if (typeof ee === 'string') { try { ee = JSON.parse(ee) || {}; } catch (e) { ee = {}; } }
+      if (typeof ee !== 'object' || ee === null) ee = {};
+      const g = id => (ee[id] && ee[id].score !== undefined) ? Number(ee[id].score) : 10;
+      const byCat = HR_COND_ITEM_GROUPS.map(grp => grp.map(g));
+      const all = byCat.reduce((a, arr) => a.concat(arr), []);
+      const cnt20 = all.filter(v => v >= 20).length;
+      const min10 = all.every(v => v >= 10);
+      const min14 = all.every(v => v >= 14);
+      let total = 0;
+      if (min10) total += 20;                 // 全項目10点以上
+      if (min14) total += 30;                 // 全項目14点以上
+      if (min10 && cnt20 >= 5) total += 25;   // 全項目10点以上 かつ 20点項目5つ以上
+      if (min10 && cnt20 >= 10) total += 25;  // 全項目10点以上 かつ 20点項目10個以上
+      if (min14 && cnt20 >= 15) total += 25;  // 全項目14点以上 かつ 20点項目15個以上
+      byCat.forEach(scores => { if (scores.every(v => v >= 17)) total += 25; }); // 各大項目すべて17点以上
+      return total;
+    }
 
     // 表記揺れを自動クレンジングしてマスタ名に変換
     function cleanShopName(x) {
@@ -1358,8 +1389,9 @@
                 adminUsersList = usersRes.data.map(u => ({ 
                     id: u.id, name: u.name, roleId: u.role_id, branch: u.branch, roleLevel: u.role_level 
                 }));
-                hrEvaluationsList = hrRes.data.map(e => ({ 
-                    userId: e.user_id, period: e.period, finalScore: e.final_score || 0 
+                hrEvaluationsList = hrRes.data.map(e => ({
+                    userId: e.user_id, period: e.period, finalScore: e.final_score || 0,
+                    conditionPT: calcHrConditionBonus(e.executive_eval, e.status) // ★条件達成得点
                 }));
                 hqReportsList = repRes.data.map(r => ({ 
                     author: r.author, points: r.points || 0 
@@ -1503,15 +1535,16 @@
         let userPointsMap = []; let branchUserPointsSum = 0;
 
         usersInStore.forEach(u => {
-          const hrEval = hrEvaluationsList.find(e => e.userId === u.id && e.period === hrPeriod); 
+          const hrEval = hrEvaluationsList.find(e => e.userId === u.id && e.period === hrPeriod);
           const baseHrScore = hrEval ? (hrEval.finalScore || 0) : 0;
+          const condPT = hrEval ? (hrEval.conditionPT || 0) : 0; // ★条件達成得点（確定済みのみ）
           let repPT = 0; hqReportsList.forEach(r => { if (r.author === u.name) repPT += (r.points || 0); });
 
           let k = K_staff; let roleLabel = u.roleLevel || "一般";
           if (roleLabel === "店長") { k = K_mgr; } else if (roleLabel === "副店長") { k = K_sub; }
-          const userPoints = (baseHrScore + repPT) * k;
+          const userPoints = (baseHrScore + condPT + repPT) * k; // ★基礎評価＋条件達成＋レポPTを合算して係数換算
 
-          userPointsMap.push({ userObj: u, roleLabel: roleLabel, hrScore: baseHrScore, repPT: repPT, points: userPoints, branchName: bName, finalBonus: 0, ratioInBranch: 0, isMinGuaranteed: false });
+          userPointsMap.push({ userObj: u, roleLabel: roleLabel, hrScore: baseHrScore, condPT: condPT, repPT: repPT, points: userPoints, branchName: bName, finalBonus: 0, ratioInBranch: 0, isMinGuaranteed: false });
           branchUserPointsSum += userPoints;
         });
 
@@ -1533,6 +1566,7 @@
             <td class="py-2 px-1 text-slate-400">${row.branchName}</td>
             <td class="py-2 px-1 text-white font-bold">${row.userObj.name} <span class="text-[10px] text-slate-500 font-normal">(${row.roleLabel})</span></td>
             <td class="py-2 px-1 text-center font-mono">${row.hrScore}</td>
+            <td class="py-2 px-1 text-center font-mono ${row.condPT > 0 ? 'text-amber-400' : 'text-slate-600'}">${row.condPT > 0 ? '+' + row.condPT : '-'}</td>
             <td class="py-2 px-1 text-center font-mono ${row.repPT >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${row.repPT > 0 ? '+' : ''}${row.repPT}</td>
             <td class="py-2 px-1 text-right font-mono text-slate-400">${Math.round(row.points).toLocaleString()}</td>
             <td class="py-2 px-1 text-right font-mono text-slate-500">${(row.ratioInBranch * 100).toFixed(1)}%</td>
@@ -1542,7 +1576,7 @@
         `;
       });
       const userTbody = document.getElementById('bonusUserTbody');
-      if (userTbody) userTbody.innerHTML = userHtml || '<tr><td colspan="8" class="text-center py-6 text-slate-500">対象スタッフがいません。</td></tr>';
+      if (userTbody) userTbody.innerHTML = userHtml || '<tr><td colspan="9" class="text-center py-6 text-slate-500">対象スタッフがいません。</td></tr>';
     }
 
     // ==========================================
