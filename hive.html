@@ -53,6 +53,7 @@
         <div class="flex gap-6 px-2">
             <button onclick="switchTab('knowledge')" id="tab-knowledge" class="tab-btn active pb-3 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors"><i class="fa-solid fa-book-open mr-1"></i>ナレッジ一覧</button>
             <button onclick="switchTab('approval')" id="tab-approval" class="tab-btn hidden pb-3 text-sm font-bold text-amber-500 hover:text-amber-400 transition-colors relative"><i class="fa-solid fa-inbox mr-1"></i>承認トレイ <span id="pendingBadge" class="hidden absolute top-0 -right-3 bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span></button>
+            <button onclick="switchTab('mystatus')" id="tab-mystatus" class="tab-btn pb-3 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors relative"><i class="fa-solid fa-list-check mr-1"></i>申請状況 <span id="returnedBadge" class="hidden absolute top-0 -right-3 bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span></button>
             <button onclick="switchTab('create')" id="tab-create" class="tab-btn pb-3 text-sm font-bold text-slate-400 hover:text-sky-300 transition-colors"><i class="fa-solid fa-pen-to-square mr-1"></i>新規報告</button>
         </div>
     </header>
@@ -103,6 +104,17 @@
             </div>
         </div>
 
+        <!-- ==================== タブ: 申請状況（自店の申請一覧・差戻し対応） ==================== -->
+        <div id="content-mystatus" class="hidden space-y-4">
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                <h2 class="text-sky-400 font-bold text-sm flex items-center"><i class="fa-solid fa-list-check mr-2"></i>自店の申請状況</h2>
+                <p class="text-[10px] text-slate-400 mt-1">申請したナレッジの承認状況を確認できます。<span class="text-rose-400 font-bold">差戻し</span>された報告は本部コメントを確認し、「修正して再申請」を行ってください。</p>
+            </div>
+            <div id="myStatusList" class="space-y-3">
+                <!-- 自店の申請カードがここに描画されます -->
+            </div>
+        </div>
+
         <!-- ==================== タブ3: 新規報告 ==================== -->
         <div id="content-create" class="hidden">
             <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-3xl mx-auto mt-4">
@@ -110,7 +122,19 @@
                     <h2 class="text-lg font-black text-white flex items-center"><i class="fa-solid fa-bullhorn text-sky-400 mr-2"></i>新しい知見を投稿する</h2>
                     <p class="text-xs text-slate-400 mt-1">店舗で起きた事象や対応策を入力し、本部へ送信してください。本部の承認後、全店舗へ共有されます。</p>
                 </div>
-                
+
+                <!-- ★追加: 差戻し報告の修正モード表示 -->
+                <div id="editBanner" class="hidden bg-rose-950/30 border border-rose-900/50 p-4 rounded-xl mb-6">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="min-w-0">
+                            <p class="text-xs text-rose-400 font-bold"><i class="fa-solid fa-rotate-left mr-1"></i>差戻しされた報告を修正中: <span id="editBannerTitle" class="text-white break-all"></span></p>
+                            <p class="text-[10px] text-indigo-300 font-bold mt-3 mb-1"><i class="fa-solid fa-comment-dots mr-1"></i>本部からの差戻し理由</p>
+                            <p id="editBannerComment" class="text-xs text-slate-300 bg-slate-950 p-2.5 rounded-lg border border-slate-800 whitespace-pre-wrap"></p>
+                        </div>
+                        <button onclick="cancelEdit()" class="shrink-0 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors">修正をやめる</button>
+                    </div>
+                </div>
+
                 <div class="bg-amber-950/30 border border-amber-900/50 p-3 rounded-xl mb-6 shadow-inner">
                     <p class="text-xs text-amber-500 font-bold flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>注意: お客様の個人情報（氏名・連絡先など）は絶対に記載しないでください。</p>
                 </div>
@@ -163,6 +187,7 @@
 
         let currentUser = null;
         let allReports = [];
+        let editingReportId = null; // ★差戻し報告の修正中ID（nullなら新規投稿モード）
 
         window.onload = () => {
             const savedUser = sessionStorage.getItem('finUser');
@@ -200,11 +225,13 @@
             
             document.getElementById('content-knowledge').classList.add('hidden');
             document.getElementById('content-approval').classList.add('hidden');
+            document.getElementById('content-mystatus').classList.add('hidden');
             document.getElementById('content-create').classList.add('hidden');
-            
+
             document.getElementById('content-' + tabId).classList.remove('hidden');
 
             if(tabId === 'knowledge') applyFilters();
+            if(tabId === 'mystatus') renderMyStatus();
         }
 
         // データ取得
@@ -225,6 +252,7 @@
 
                 applyFilters();
                 renderApprovalList();
+                renderMyStatus();
             } catch (err) {
                 console.error(err);
                 alert("データの取得に失敗しました。");
@@ -346,12 +374,24 @@
             }
         }
 
+        // カテゴリー色の共通ヘルパー
+        function getCatColor(cat) {
+            if (cat === "クレーム") return "text-rose-400 bg-rose-950/30 border-rose-900/50";
+            if (cat === "トラブル") return "text-amber-400 bg-amber-950/30 border-amber-900/50";
+            if (cat === "改善提案") return "text-emerald-400 bg-emerald-950/30 border-emerald-900/50";
+            if (cat === "その他") return "text-fuchsia-400 bg-fuchsia-950/30 border-fuchsia-900/50";
+            return "text-slate-400 bg-slate-950 border-slate-700";
+        }
+
         // ==================== タブ2: 承認トレイロジック ====================
+        // ★修正: pending(承認待ち)とreturned(差戻し済み)を分離して表示する
         function renderApprovalList() {
             if (!currentUser.permissions || !currentUser.permissions.editAll) return;
 
-            const pending = allReports.filter(r => r.status === 'pending' || r.status === 'returned');
-            
+            const pending = allReports.filter(r => r.status === 'pending');
+            const returned = allReports.filter(r => r.status === 'returned');
+
+            // バッジ件数は「承認待ち」のみカウント（差戻し済みは店舗の修正待ちのため除外）
             const badge = document.getElementById('pendingBadge');
             if (pending.length > 0) {
                 badge.innerText = pending.length;
@@ -362,8 +402,8 @@
 
             const listEl = document.getElementById('approvalList');
             listEl.innerHTML = "";
-            
-            if (pending.length === 0) {
+
+            if (pending.length === 0 && returned.length === 0) {
                 listEl.innerHTML = `
                     <div class="bg-slate-900 border border-slate-800 p-10 rounded-2xl text-center">
                         <i class="fa-solid fa-mug-hot text-4xl text-slate-700 mb-3"></i>
@@ -372,19 +412,37 @@
                 return;
             }
 
-            pending.forEach(r => {
-                let catColor = "text-slate-400 bg-slate-950 border-slate-700";
-                if (r.category === "クレーム") catColor = "text-rose-400 bg-rose-950/30 border-rose-900/50";
-                else if (r.category === "トラブル") catColor = "text-amber-400 bg-amber-950/30 border-amber-900/50";
-                else if (r.category === "改善提案") catColor = "text-emerald-400 bg-emerald-950/30 border-emerald-900/50";
-                else if (r.category === "その他") catColor = "text-fuchsia-400 bg-fuchsia-950/30 border-fuchsia-900/50";
+            if (pending.length === 0) {
+                listEl.innerHTML = `<p class="text-slate-500 text-xs font-bold text-center py-4"><i class="fa-solid fa-mug-hot mr-1"></i>承認待ちの報告はありません。</p>`;
+            }
+            pending.forEach(r => listEl.appendChild(buildApprovalCard(r, false)));
 
-                const card = document.createElement('div');
-                card.className = "bg-slate-900 border border-slate-700 p-5 rounded-2xl shadow-lg";
-                card.innerHTML = `
+            if (returned.length > 0) {
+                const secHeader = document.createElement('div');
+                secHeader.className = "border-t border-slate-800 pt-5 mt-8";
+                secHeader.innerHTML = `
+                    <h3 class="text-rose-400 font-bold text-xs flex items-center mb-1"><i class="fa-solid fa-rotate-left mr-2"></i>差戻し済み（店舗の修正・再申請待ち: ${returned.length}件）</h3>
+                    <p class="text-[10px] text-slate-500">店舗が修正して再申請すると、上の「承認待ち」に戻ってきます。</p>`;
+                listEl.appendChild(secHeader);
+                returned.forEach(r => listEl.appendChild(buildApprovalCard(r, true)));
+            }
+        }
+
+        // 承認トレイのカード生成（isReturned: 差戻し済みカードかどうか）
+        function buildApprovalCard(r, isReturned) {
+            const catColor = getCatColor(r.category);
+            const returnedBadgeHtml = isReturned
+                ? `<span class="text-[10px] px-2 py-0.5 rounded border bg-rose-950/50 border-rose-800 text-rose-300 font-bold mr-2"><i class="fa-solid fa-rotate-left mr-1"></i>差戻し済み</span>`
+                : '';
+
+            const card = document.createElement('div');
+            card.className = isReturned
+                ? "bg-slate-900/60 border border-rose-900/40 p-5 rounded-2xl shadow-lg"
+                : "bg-slate-900 border border-slate-700 p-5 rounded-2xl shadow-lg";
+            card.innerHTML = `
                     <div class="flex justify-between items-start mb-4 border-b border-slate-800 pb-3">
                         <div>
-                            <span class="text-[10px] px-2 py-0.5 rounded border ${catColor} font-bold mr-2">${r.category}</span>
+                            ${returnedBadgeHtml}<span class="text-[10px] px-2 py-0.5 rounded border ${catColor} font-bold mr-2">${r.category}</span>
                             <span class="text-sm font-black text-white">${r.title}</span>
                         </div>
                         <div class="text-[10px] text-slate-400 font-mono text-right shrink-0 ml-4">
@@ -392,7 +450,7 @@
                             <p>発生日: ${r.incident_date}</p>
                         </div>
                     </div>
-                    
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
                             <span class="text-[10px] font-bold text-sky-400 block mb-1">【事象】</span>
@@ -418,14 +476,118 @@
                                 <textarea id="comment_${r.id}" rows="2" class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 focus:border-sky-500 outline-none resize-y">${r.hq_comment || ''}</textarea>
                             </div>
                             <div class="w-full md:w-auto flex gap-2 shrink-0">
-                                <button onclick="processApproval('${r.id}', 'returned')" class="flex-1 md:flex-none bg-rose-950/50 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold py-2.5 px-4 rounded-lg transition">差戻し</button>
+                                ${isReturned ? '' : `<button onclick="processApproval('${r.id}', 'returned')" class="flex-1 md:flex-none bg-rose-950/50 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold py-2.5 px-4 rounded-lg transition">差戻し</button>`}
                                 <button onclick="processApproval('${r.id}', 'approved')" class="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black py-2.5 px-6 rounded-lg shadow-lg transition"><i class="fa-solid fa-check mr-1"></i>承認して共有</button>
                             </div>
                         </div>
                     </div>
                 `;
+            return card;
+        }
+
+        // ==================== タブ: 申請状況（自店の申請一覧・差戻し対応） ====================
+        function renderMyStatus() {
+            const listEl = document.getElementById('myStatusList');
+            if (!listEl || !currentUser) return;
+            const isHq = currentUser.permissions && currentUser.permissions.editAll;
+
+            // 自店の申請のみ表示（本部権限は全店舗分を表示）
+            const mine = allReports.filter(r => isHq || r.branch === currentUser.branch);
+
+            // タブの差戻し件数バッジ
+            const returnedCnt = mine.filter(r => r.status === 'returned').length;
+            const badge = document.getElementById('returnedBadge');
+            if (badge) {
+                if (returnedCnt > 0) { badge.innerText = returnedCnt; badge.classList.remove('hidden'); }
+                else { badge.classList.add('hidden'); }
+            }
+
+            listEl.innerHTML = "";
+            if (mine.length === 0) {
+                listEl.innerHTML = `<p class="text-slate-500 text-sm text-center py-10">申請履歴がありません。</p>`;
+                return;
+            }
+
+            // 差戻し → 承認待ち → 承認済み の順に表示
+            const orderMap = { returned: 0, pending: 1, approved: 2 };
+            const sorted = mine.slice().sort((a, b) => (orderMap[a.status] ?? 3) - (orderMap[b.status] ?? 3));
+
+            sorted.forEach(r => {
+                const catColor = getCatColor(r.category);
+                let stBadge = `<span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-slate-800 border-slate-700 text-slate-400">${r.status}</span>`;
+                let cardBorder = "border-slate-800";
+                if (r.status === 'pending') {
+                    stBadge = `<span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-950 border-amber-900 text-amber-500"><i class="fa-solid fa-hourglass-half mr-1"></i>本部承認待ち</span>`;
+                } else if (r.status === 'returned') {
+                    stBadge = `<span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-950 border-rose-900 text-rose-400"><i class="fa-solid fa-rotate-left mr-1"></i>差戻し</span>`;
+                    cardBorder = "border-rose-900/50";
+                } else if (r.status === 'approved') {
+                    stBadge = `<span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-950 border-emerald-900 text-emerald-400"><i class="fa-solid fa-check mr-1"></i>承認済み・共有中</span>`;
+                }
+
+                // 差戻し理由と再申請ボタン（同店舗の誰でも修正・再申請可能）
+                const canEdit = (r.status === 'returned') && (isHq || r.branch === currentUser.branch);
+                const returnedBlock = (r.status === 'returned') ? `
+                    <div class="bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30 mt-3">
+                        <p class="text-[10px] text-indigo-400 font-bold mb-1"><i class="fa-solid fa-comment-dots mr-1"></i>本部からの差戻し理由</p>
+                        <p class="text-xs text-indigo-100/80 whitespace-pre-wrap leading-relaxed">${r.hq_comment || '（コメントなし）'}</p>
+                    </div>
+                    ${canEdit ? `
+                    <div class="mt-3 text-right">
+                        <button onclick="startEditReport('${r.id}')" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-black py-2.5 px-5 rounded-lg shadow-lg transition"><i class="fa-solid fa-pen-to-square mr-1"></i>修正して再申請する</button>
+                    </div>` : ''}` : '';
+
+                const card = document.createElement('div');
+                card.className = `bg-slate-900 border ${cardBorder} p-4 rounded-2xl shadow-sm`;
+                card.innerHTML = `
+                    <div class="flex flex-wrap justify-between items-start gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            ${stBadge}
+                            <span class="text-[10px] px-2 py-0.5 rounded border ${catColor} font-bold shrink-0">${r.category}</span>
+                            <span class="text-sm font-black text-white truncate">${r.title}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono text-right shrink-0">
+                            <span class="mr-3"><i class="fa-solid fa-store mr-1"></i>${r.branch} / ${r.created_by}</span>
+                            <span><i class="fa-solid fa-calendar mr-1"></i>${r.incident_date}</span>
+                        </div>
+                    </div>
+                    ${returnedBlock}
+                `;
                 listEl.appendChild(card);
             });
+        }
+
+        // 差戻し報告の修正モード開始（フォームに内容を復元して新規報告タブへ）
+        function startEditReport(reportId) {
+            const r = allReports.find(x => x.id === reportId);
+            if (!r || r.status !== 'returned') return;
+
+            editingReportId = r.id;
+            document.getElementById('reportTitle').value = r.title || "";
+            document.getElementById('reportCategory').value = r.category || "トラブル";
+            document.getElementById('reportDate').value = r.incident_date || "";
+            document.getElementById('reportContent').value = r.content || "";
+            document.getElementById('reportAction').value = r.action_taken || "";
+
+            document.getElementById('editBannerTitle').innerText = r.title || "";
+            document.getElementById('editBannerComment').innerText = r.hq_comment || "（コメントなし）";
+            document.getElementById('editBanner').classList.remove('hidden');
+            document.getElementById('btnSubmitReport').innerHTML = '<i class="fa-solid fa-rotate-right mr-2"></i>修正して再申請する';
+
+            switchTab('create');
+            window.scrollTo(0, 0);
+        }
+
+        // 修正モードの解除（フォームを新規投稿状態に戻す）
+        function cancelEdit() {
+            editingReportId = null;
+            document.getElementById('editBanner').classList.add('hidden');
+            document.getElementById('reportTitle').value = "";
+            document.getElementById('reportContent').value = "";
+            document.getElementById('reportAction').value = "";
+            document.getElementById('reportCategory').value = "トラブル";
+            document.getElementById('reportDate').value = new Date().toLocaleDateString('en-CA');
+            document.getElementById('btnSubmitReport').innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>本部へ申請する';
         }
 
         async function processApproval(reportId, newStatus) {
@@ -480,36 +642,57 @@
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>送信中...';
 
             try {
-                const newId = "HIVE" + new Date().getTime();
-                const { error } = await db.from('hive_reports').insert([{
-                    id: newId,
-                    branch: currentUser.branch,
-                    created_by: currentUser.name,
-                    title: title,
-                    category: category,
-                    incident_date: incidentDate,
-                    content: content,
-                    action_taken: actionTaken,
-                    status: 'pending',
-                    score: 0
-                }]);
+                if (editingReportId) {
+                    // ★差戻し報告の修正・再申請: 既存レコードを更新して承認待ちに戻す
+                    const { error } = await db.from('hive_reports').update({
+                        title: title,
+                        category: category,
+                        incident_date: incidentDate,
+                        content: content,
+                        action_taken: actionTaken,
+                        status: 'pending'
+                    }).eq('id', editingReportId);
 
-                if (error) throw error;
+                    if (error) throw error;
 
-                alert("ナレッジを申請しました！本部の確認をお待ちください。");
-                
-                document.getElementById('reportTitle').value = "";
-                document.getElementById('reportContent').value = "";
-                document.getElementById('reportAction').value = "";
-                
-                await fetchReports();
-                switchTab('knowledge');
+                    alert("修正した内容で再申請しました！本部の確認をお待ちください。");
+                    cancelEdit();
+                    await fetchReports();
+                    switchTab('mystatus');
+                } else {
+                    const newId = "HIVE" + new Date().getTime();
+                    const { error } = await db.from('hive_reports').insert([{
+                        id: newId,
+                        branch: currentUser.branch,
+                        created_by: currentUser.name,
+                        title: title,
+                        category: category,
+                        incident_date: incidentDate,
+                        content: content,
+                        action_taken: actionTaken,
+                        status: 'pending',
+                        score: 0
+                    }]);
+
+                    if (error) throw error;
+
+                    alert("ナレッジを申請しました！本部の確認をお待ちください。");
+
+                    document.getElementById('reportTitle').value = "";
+                    document.getElementById('reportContent').value = "";
+                    document.getElementById('reportAction').value = "";
+
+                    await fetchReports();
+                    switchTab('knowledge');
+                }
             } catch (err) {
                 console.error(err);
                 alert("送信に失敗しました。");
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>本部へ申請する';
+                btn.innerHTML = editingReportId
+                    ? '<i class="fa-solid fa-rotate-right mr-2"></i>修正して再申請する'
+                    : '<i class="fa-solid fa-paper-plane mr-2"></i>本部へ申請する';
             }
         }
     </script>
