@@ -177,12 +177,26 @@
             <p class="text-[10px] text-emerald-400 font-bold mb-1 border border-emerald-500/50 bg-emerald-950/50 px-2 py-1 rounded">
               <i class="fa-solid fa-file-contract mr-1"></i>業務レポート加算PT: <span id="reportBonusDisp" class="font-mono font-black text-sm ml-1">+0</span>
             </p>
-            
+
+            <p class="text-[10px] text-amber-400 font-bold mb-1 mt-1 border border-amber-500/50 bg-amber-950/50 px-2 py-1 rounded">
+              <i class="fa-solid fa-trophy mr-1"></i>条件達成得点: <span id="conditionBonusDisp" class="font-mono font-black text-sm ml-1">+0</span><span id="conditionBonusNote" class="ml-1 font-normal text-amber-500/80 text-[9px]"></span>
+            </p>
+
             <p class="text-[10px] text-slate-500 font-bold mt-2 mb-1">現在の総合スコア</p>
-            <p class="text-4xl font-black font-mono text-emerald-400"><span id="totalScoreDisp">0</span> <span class="text-sm text-slate-500">/ 400</span></p>
+            <p class="text-4xl font-black font-mono text-emerald-400"><span id="totalScoreDisp">0</span> <span class="text-sm text-slate-500" id="totalScoreDenom">/ 400</span></p>
             <button onclick="saveCurrentEval('save')" class="mt-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-lg border border-slate-600 transition-all"><i class="fa-solid fa-floppy-disk mr-1"></i>一時保存</button>
           </div>
         </div>
+      </div>
+
+      <!-- ★追加: 条件達成得点パネル -->
+      <div class="bg-white rounded-2xl p-6 border border-amber-200 shadow-sm mt-4">
+        <div class="flex justify-between items-center border-b-2 border-amber-400 pb-2 mb-3">
+          <h3 class="text-base font-black text-slate-800"><i class="fa-solid fa-trophy text-amber-500 mr-2"></i>条件達成得点</h3>
+          <span class="text-sm font-black text-slate-700"><span id="condPanelTotal" class="font-mono text-amber-600">+0</span> <span class="text-xs text-slate-400 font-bold">/ 200</span></span>
+        </div>
+        <p id="condPanelNote" class="text-[11px] text-slate-500 font-bold mb-3"></p>
+        <div id="conditionChecklist" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
       </div>
 
       <div id="evaluationFormContainer" class="space-y-6 mt-4"></div>
@@ -331,6 +345,48 @@
             try { return JSON.parse(val) || {}; } catch(e) { return {}; }
         }
         return (typeof val === 'object') ? val : {};
+    }
+
+    // ==========================================
+    // ★条件達成得点 (8条件 / 最大200点)
+    // ==========================================
+    // all: 全20項目のスコア配列, byCat: 大項目ごとのスコア配列, cnt20: 20点項目の数
+    const CONDITION_RULES = [
+      { label: "全項目10点以上", pt: 20, test: (all, byCat, cnt20) => all.every(v => v >= 10) },
+      { label: "全項目14点以上", pt: 30, test: (all, byCat, cnt20) => all.every(v => v >= 14) },
+      { label: "全項目10点以上、かつ20点項目5つ以上", pt: 25, test: (all, byCat, cnt20) => all.every(v => v >= 10) && cnt20 >= 5 },
+      { label: "全項目10点以上、かつ20点項目10個以上", pt: 25, test: (all, byCat, cnt20) => all.every(v => v >= 10) && cnt20 >= 10 },
+      { label: "全項目14点以上、かつ20点項目15個以上", pt: 25, test: (all, byCat, cnt20) => all.every(v => v >= 14) && cnt20 >= 15 },
+      { label: "「実務・業務スキル」内すべて17点以上", pt: 25, test: (all, byCat, cnt20) => byCat[0].every(v => v >= 17) },
+      { label: "「課題対応・思考力」内すべて17点以上", pt: 25, test: (all, byCat, cnt20) => byCat[1].every(v => v >= 17) },
+      { label: "「規律・マネジメント」内すべて17点以上", pt: 25, test: (all, byCat, cnt20) => byCat[2].every(v => v >= 17) }
+    ];
+
+    // getScore(itemId) を受け取り、条件ごとの達成状況と合計加点を返す
+    function calcConditionResults(getScore) {
+      const all = []; const byCat = [];
+      EVAL_CRITERIA.forEach((cat, ci) => {
+        byCat[ci] = [];
+        cat.items.forEach(it => {
+          const v = Number(getScore(it.id)) || 0;
+          all.push(v); byCat[ci].push(v);
+        });
+      });
+      const cnt20 = all.filter(v => v >= 20).length;
+      const results = CONDITION_RULES.map(r => ({ label: r.label, pt: r.pt, achieved: r.test(all, byCat, cnt20) }));
+      const total = results.reduce((a, r) => a + (r.achieved ? r.pt : 0), 0);
+      return { total, results, cnt20 };
+    }
+
+    // 評価確定済み（幹部評価完了）かどうか
+    function isConfirmedStatus(status) { return status === 'S4_DONE' || status === 'S5_DONE'; }
+
+    // 確定済みシートの条件達成得点（幹部評価の項目スコアで判定 / 未確定は0）
+    function calcConditionBonusForEval(ev) {
+      if (!ev || !isConfirmedStatus(ev.status)) return 0;
+      return calcConditionResults(id =>
+        (ev.executiveEval && ev.executiveEval[id] && ev.executiveEval[id].score !== undefined) ? Number(ev.executiveEval[id].score) : 10
+      ).total;
     }
 
     function inputSecKey(num) {
@@ -573,7 +629,8 @@ window.onload = async () => {
         myEmpty.classList.add('hidden');
         const st = getStatusConfig(myEval.status);
         const bonusPT = calculateReportBonus(myEval.name);
-        const displayScore = (myEval.finalScore || 0) + bonusPT;
+        const condPT = calcConditionBonusForEval(myEval); // ★確定後のみ加算される条件達成得点
+        const displayScore = (myEval.finalScore || 0) + condPT + bonusPT;
 
         myCards.innerHTML = `
           <div onclick="openEvaluation('${myEval.id}')" class="bg-white border border-slate-200 hover:border-blue-500 p-5 rounded-2xl cursor-pointer transition-all shadow-md group relative">
@@ -587,7 +644,7 @@ window.onload = async () => {
             <div class="flex justify-between items-end mt-4">
               <p class="text-[10px] text-slate-400 font-mono">ID: ${myEval.id.substring(0,8)}...</p>
               <div class="text-right">
-                <p class="text-[10px] font-bold text-slate-400 mb-0.5">Report: <span class="${bonusPT >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${bonusPT > 0 ? '+' : ''}${bonusPT}</span>pt</p>
+                <p class="text-[10px] font-bold text-slate-400 mb-0.5">Report: <span class="${bonusPT >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${bonusPT > 0 ? '+' : ''}${bonusPT}</span>pt${condPT > 0 ? ` <span class="text-amber-500 ml-1"><i class="fa-solid fa-trophy text-[8px]"></i> 条件+${condPT}</span>` : ''}</p>
                 <p class="text-xs font-bold text-slate-500">Score: <span class="text-xl font-black font-mono text-emerald-500">${displayScore}</span></p>
               </div>
             </div>
@@ -603,14 +660,15 @@ window.onload = async () => {
           if(e.period !== currentPeriod) return;
           const st = getStatusConfig(e.status);
           const bonusPT = calculateReportBonus(e.name);
-          const displayScore = (e.finalScore || 0) + bonusPT;
+          const condPT = calcConditionBonusForEval(e); // ★確定後のみ加算される条件達成得点
+          const displayScore = (e.finalScore || 0) + condPT + bonusPT;
 
           html += `
             <tr class="hover:bg-slate-50 transition-colors cursor-pointer" onclick="openEvaluation('${e.id}')">
               <td class="py-3 pr-4"><span class="status-badge ${st.class}">${st.label}</span></td>
               <td class="py-3 px-4 font-bold text-slate-800">${e.name}</td>
               <td class="py-3 px-4 text-slate-500">${e.branch}</td>
-              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}</td>
+              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}${condPT > 0 ? `<span class="block text-[9px] text-amber-500 font-bold">条件+${condPT}</span>` : ''}</td>
               <td class="py-3 pl-4 text-center text-blue-500 font-bold"><i class="fa-solid fa-chevron-right"></i></td>
             </tr>
           `;
@@ -625,14 +683,15 @@ window.onload = async () => {
           if(e.period !== currentPeriod) return;
           const st = getStatusConfig(e.status);
           const bonusPT = calculateReportBonus(e.name);
-          const displayScore = (e.finalScore || 0) + bonusPT;
+          const condPT = calcConditionBonusForEval(e); // ★確定後のみ加算される条件達成得点
+          const displayScore = (e.finalScore || 0) + condPT + bonusPT;
 
           html += `
             <tr class="hover:bg-slate-50 transition-colors cursor-pointer" onclick="openEvaluation('${e.id}')">
               <td class="py-3 pr-4"><span class="status-badge ${st.class}">${st.label}</span></td>
               <td class="py-3 px-4 font-bold text-slate-800">${e.name}</td>
               <td class="py-3 px-4 text-slate-500">${e.branch}</td>
-              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}</td>
+              <td class="py-3 px-4 text-center font-mono font-bold text-blue-600">${displayScore > 0 ? displayScore : '-'}${condPT > 0 ? `<span class="block text-[9px] text-amber-500 font-bold">条件+${condPT}</span>` : ''}</td>
               <td class="py-3 pl-4 text-center text-blue-500 font-bold"><i class="fa-solid fa-chevron-right"></i></td>
             </tr>
           `;
@@ -834,11 +893,48 @@ window.onload = async () => {
         });
 
         const bonusPT = calculateReportBonus(ev.name);
-        document.getElementById('totalScoreDisp').innerText = total + bonusPT;
-        ev.finalScore = total; 
+
+        // ★条件達成得点: 現在の実効スコアで判定（確定前は「見込み」表示のみ、確定後に総合へ加算）
+        const condRes = calcConditionResults(id => getEffectiveScore(ev, id, perms));
+        const confirmed = isConfirmedStatus(ev.status);
+        const condPT = confirmed ? condRes.total : 0;
+
+        document.getElementById('totalScoreDisp').innerText = total + condPT + bonusPT;
+        const denomEl = document.getElementById('totalScoreDenom');
+        if (denomEl) denomEl.innerText = confirmed ? "/ 600" : "/ 400";
+
+        const condDisp = document.getElementById('conditionBonusDisp');
+        if (condDisp) condDisp.innerText = "+" + condRes.total;
+        const condNote = document.getElementById('conditionBonusNote');
+        if (condNote) condNote.innerText = confirmed ? "(加算済)" : "(確定後に加算)";
+
+        renderConditionPanel(condRes, confirmed);
+
+        ev.finalScore = total;
       } catch (err) {
         console.error("Score Calc Error: ", err);
       }
+    }
+
+    // ★条件達成得点パネルの描画
+    function renderConditionPanel(condRes, confirmed) {
+      const list = document.getElementById('conditionChecklist');
+      if (!list) return;
+      const totalEl = document.getElementById('condPanelTotal');
+      if (totalEl) totalEl.innerText = "+" + condRes.total;
+      const noteEl = document.getElementById('condPanelNote');
+      if (noteEl) {
+        noteEl.innerText = confirmed
+          ? "評価確定済みのため、条件達成得点は総合スコアに加算されています。"
+          : "※現在表示中の評点に基づく達成見込みです。幹部評価の確定後に総合スコアへ加算されます。";
+      }
+      list.innerHTML = condRes.results.map(r => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl border text-xs font-bold ${r.achieved ? 'bg-amber-50 border-amber-200 text-slate-700' : 'bg-slate-50 border-slate-200 text-slate-400'}">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid ${r.achieved ? 'fa-circle-check text-amber-500' : 'fa-circle text-slate-300'}"></i>${r.label}
+          </span>
+          <span class="font-mono font-black ${r.achieved ? 'text-amber-600' : 'text-slate-300'}">+${r.pt}</span>
+        </div>`).join('');
     }
 
     function renderEvaluationForm(ev) {
