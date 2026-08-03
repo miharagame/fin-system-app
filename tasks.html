@@ -737,23 +737,39 @@
         if (currentUser && isTasksTab) loadTasks(true); 
     }
 
+    // ★追加: Supabaseの1リクエスト1000件上限を回避する全件ページング取得ヘルパー
+    // (tasksテーブルはルーティンの自動生成で毎日行が増えるため、1000件を超えると
+    //  新規タスクが取得結果から漏れて「登録したのに一覧に出ない」症状が発生する)
+    async function fetchAllRows(tableName, applyFilters) {
+        const PAGE_SIZE = 1000;
+        let all = [];
+        let from = 0;
+        while (true) {
+            const { data, error } = await applyFilters(db.from(tableName).select('*')).range(from, from + PAGE_SIZE - 1);
+            if (error) throw error;
+            if (data && data.length > 0) all = all.concat(data);
+            if (!data || data.length < PAGE_SIZE) break;
+            from += PAGE_SIZE;
+        }
+        return all;
+    }
+
     async function loadTasks(isSilent = false) {
       if (!isSilent) showLoading("タスク同期中...");
       const tDate = document.getElementById('targetDate').value;
-      const requestTime = new Date().getTime(); 
+      const requestTime = new Date().getTime();
 
       try {
-          if (requestTime < lastActionTime) return; 
+          if (requestTime < lastActionTime) return;
 
-          const [resTasks, resProj, resRM, resStaffs] = await Promise.all([
-              db.from('tasks').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
-              db.from('projects').select('*').eq('branch', targetBranch).neq('status', 'deleted'),
+          // ★修正: tasks/projects は1000件超に備えてページング全件取得（新しい日付順）
+          const [tasksRows, projRows, resRM, resStaffs] = await Promise.all([
+              fetchAllRows('tasks', q => q.eq('branch', targetBranch).neq('status', 'deleted').order('target_date', { ascending: false })),
+              fetchAllRows('projects', q => q.eq('branch', targetBranch).neq('status', 'deleted')),
               db.from('routine_master').select('*').eq('branch', targetBranch).eq('status', 'active'),
               db.from('store_staffs').select('*').eq('branch', targetBranch)
           ]);
 
-          if (resTasks.error) throw resTasks.error;
-          if (resProj.error) throw resProj.error;
           if (resRM.error) throw resRM.error;
           if (resStaffs.error) throw resStaffs.error;
 
@@ -789,7 +805,7 @@
 
           const activeRoutineNames = resRM.data.map(rm => rm.name);
 
-          const validTasks = resTasks.data.filter(t => {
+          const validTasks = tasksRows.filter(t => {
               const d = t.target_date ? String(t.target_date).substring(0, 10) : "";
               if (t.type === 'kanban') {
                   return t.status !== 'done' || (t.status === 'done' && d === tDate);
@@ -885,12 +901,12 @@
               });
           }
 
-          projectsData = resProj.data.filter(p => p.type === 'project').map(p => ({
+          projectsData = projRows.filter(p => p.type === 'project').map(p => ({
               id: p.id, parentId: p.parent_id, branch: p.branch, type: p.type, name: p.name,
               startDate: p.start_date, dueDate: p.due_date, progress: p.progress, assignee: p.assignee,
               realAssignee: p.real_assignee, memo: p.memo, status: p.status
           }));
-          subtasksData = resProj.data.filter(p => p.type === 'subtask').map(p => ({
+          subtasksData = projRows.filter(p => p.type === 'subtask').map(p => ({
               id: p.id, parentId: p.parent_id, branch: p.branch, type: p.type, name: p.name,
               dueDate: p.due_date, progress: p.progress, assignee: p.assignee,
               realAssignee: p.real_assignee, memo: p.memo, status: p.status
