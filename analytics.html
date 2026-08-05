@@ -626,12 +626,9 @@
         document.getElementById('tab_hq_entry').classList.remove('hidden');
       }
 
-      // ★追加: 閲覧専用アカウント（税理士等）にはP/L分析のみ表示し、
-      // 個人の賞与試算を含む「店舗スコアリング」「賞与シミュレータ」タブは非表示にする
-      if (perms.readOnly) {
-        document.getElementById('tab_scoring').classList.add('hidden');
-        document.getElementById('tab_bonus_sim').classList.add('hidden');
-      }
+      // ★方針変更: 閲覧専用アカウント（税理士等）にも店舗スコアリング・賞与シミュレータを表示する
+      // （シミュレータは画面上の試算のみでDBへの書き込みは行わないため閲覧専用でも安全。
+      //   本部専用の「月次データ確定」タブのみ従来通り editAll 権限が必要）
       
       document.getElementById('userNameHeader').innerText = currentUser.name;
       
