@@ -21,6 +21,8 @@
     .tab-btn-rose.active { color: #fb7185; border-bottom: 2px solid #fb7185; font-weight: 900; }
     .tab-btn-amber.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 900; }
     input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+    .input-num { background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.5rem; font-weight: bold; outline: none; color: #f8fafc; transition: all 0.2s; }
+    .input-num:focus { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
   </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -51,19 +53,45 @@
     </div>
     
     <div id="view_finance" class="flex flex-col gap-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
         <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
           <p class="text-xs text-sky-400 font-bold mb-1"><i class="fa-solid fa-flag text-[10px] mr-1"></i>最新期 売上高</p>
-          <p class="text-3xl font-black font-mono"><span id="kpiSales">--</span> <span class="text-sm font-sans font-bold text-slate-400">円</span></p>
+          <p class="text-2xl font-black font-mono"><span id="kpiSales">--</span> <span class="text-xs font-sans font-bold text-slate-400">円</span></p>
+          <p id="kpiSalesYoY" class="text-[10px] font-bold text-slate-500 mt-1"></p>
+        </div>
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
+          <p class="text-xs text-emerald-400 font-bold mb-1"><i class="fa-solid fa-percent text-[10px] mr-1"></i>最新期 粗利率</p>
+          <p class="text-2xl font-black font-mono"><span id="kpiGrossMargin">--</span> <span class="text-xs font-sans font-bold text-slate-400">%</span></p>
+          <p id="kpiGrossMarginYoY" class="text-[10px] font-bold text-slate-500 mt-1"></p>
         </div>
         <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
           <p class="text-xs text-emerald-400 font-bold mb-1"><i class="fa-solid fa-piggy-bank text-[10px] mr-1"></i>最新期 営業利益率</p>
-          <p class="text-3xl font-black font-mono"><span id="kpiOpMargin">--</span> <span class="text-sm font-sans font-bold text-slate-400">%</span></p>
+          <p class="text-2xl font-black font-mono"><span id="kpiOpMargin">--</span> <span class="text-xs font-sans font-bold text-slate-400">%</span></p>
+          <p id="kpiOpMarginYoY" class="text-[10px] font-bold text-slate-500 mt-1"></p>
         </div>
         <div class="bg-slate-900 rounded-3xl p-6 border border-amber-900/50 shadow-xl relative overflow-hidden">
           <p class="text-xs text-amber-500 font-bold mb-1"><i class="fa-solid fa-shield-halved text-[10px] mr-1"></i>経営安全率</p>
-          <p class="text-3xl font-black font-mono text-amber-500"><span id="kpiSafety">--</span> <span class="text-sm font-sans font-bold text-amber-500/50">%</span></p>
+          <p class="text-2xl font-black font-mono text-amber-500"><span id="kpiSafety">--</span> <span class="text-xs font-sans font-bold text-amber-500/50">%</span></p>
         </div>
+        <div id="kpiEquityCard" class="hidden bg-slate-900 rounded-3xl p-6 border border-indigo-900/50 shadow-xl relative overflow-hidden">
+          <p class="text-xs text-indigo-400 font-bold mb-1"><i class="fa-solid fa-building-columns text-[10px] mr-1"></i>自己資本比率</p>
+          <p class="text-2xl font-black font-mono text-indigo-300"><span id="kpiEquity">--</span> <span class="text-xs font-sans font-bold text-slate-400">%</span></p>
+        </div>
+      </div>
+
+      <!-- ★追加: 財務健全性の自動診断 -->
+      <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+        <h2 class="font-bold text-white text-sm mb-3"><i class="fa-solid fa-stethoscope text-emerald-400 mr-2"></i>財務健全性の自動診断 <span class="text-[10px] text-slate-500 font-normal ml-2">最新期の決算数値に基づくルール判定</span></h2>
+        <div id="finDiagnosis" class="flex flex-col gap-2"></div>
+      </div>
+
+      <!-- ★追加: 今期のリアルタイム着地予測 -->
+      <div class="bg-slate-900 rounded-3xl p-6 border border-indigo-900/50 shadow-xl">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-4 border-b border-slate-800 pb-2">
+          <h2 class="font-bold text-indigo-400 text-sm"><i class="fa-solid fa-plane-arrival mr-2"></i>今期のリアルタイム着地予測 <span id="fcPeriodLabel" class="text-[10px] text-slate-500 font-mono ml-2"></span></h2>
+          <span class="text-[10px] text-slate-500">日次実績(日報)の年換算 + 固定費マスタから自動算出</span>
+        </div>
+        <div id="fcBody" class="text-xs text-slate-500 font-bold">計算中...</div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -105,12 +133,77 @@
         </div>
       </div>
 
+      <!-- ★追加: 利益構造ウォーターフォール -->
+      <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-4 border-b border-slate-800 pb-2">
+          <h2 class="font-bold text-white text-sm"><i class="fa-solid fa-chart-column text-sky-400 mr-2"></i>利益構造ウォーターフォール <span class="text-[10px] text-slate-500 font-normal ml-2">売上がどこで削られて営業利益になるか</span></h2>
+          <select id="wfPeriod" onchange="drawWaterfall()" class="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none cursor-pointer"></select>
+        </div>
+        <div class="w-full h-[300px] relative"><canvas id="waterfallChart"></canvas></div>
+      </div>
+
+      <!-- ★追加: 決算期の2期比較 -->
       <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
-        <h2 class="font-bold text-white mb-4"><i class="fa-solid fa-table text-sky-400 mr-2"></i>選択項目の推移データ</h2>
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4 border-b border-slate-800 pb-2">
+          <h2 class="font-bold text-white text-sm"><i class="fa-solid fa-scale-balanced text-amber-400 mr-2"></i>決算期の2期比較</h2>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="cmpA" onchange="renderComparison()" class="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none cursor-pointer"></select>
+            <span class="text-slate-500 text-xs font-bold">vs</span>
+            <select id="cmpB" onchange="renderComparison()" class="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none cursor-pointer"></select>
+            <button onclick="exportCmpCSV()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 text-xs font-bold px-3 py-2 rounded-lg transition-colors"><i class="fa-solid fa-download mr-1"></i>CSV出力</button>
+          </div>
+        </div>
+        <table class="w-full text-xs text-left whitespace-nowrap">
+          <thead><tr class="border-b border-slate-700 text-slate-400 font-bold"><th class="py-2 px-3">項目</th><th class="py-2 px-3 text-right" id="cmpHeadA">--</th><th class="py-2 px-3 text-right" id="cmpHeadB">--</th><th class="py-2 px-3 text-right">増減額</th><th class="py-2 px-3 text-right">増減率</th></tr></thead>
+          <tbody id="cmpTbody" class="divide-y divide-slate-800/50"></tbody>
+        </table>
+      </div>
+
+      <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl overflow-x-auto">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+          <h2 class="font-bold text-white"><i class="fa-solid fa-table text-sky-400 mr-2"></i>選択項目の推移データ</h2>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-400 cursor-pointer hover:text-white transition-colors"><input type="checkbox" id="chkYoY" checked onchange="drawTable()" class="accent-sky-500">前期比を表示</label>
+            <button onclick="exportTrendCSV()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"><i class="fa-solid fa-download mr-1"></i>CSV出力</button>
+          </div>
+        </div>
         <table class="w-full text-sm text-left whitespace-nowrap">
           <thead><tr id="tHead" class="border-b border-slate-700 text-xs text-slate-400 font-bold"></tr></thead>
           <tbody id="tBody" class="divide-y divide-slate-800/50"></tbody>
         </table>
+      </div>
+
+      <!-- ★追加: 決算データの入力・編集 (本部専用) -->
+      <div id="finEditorPanel" class="hidden bg-slate-900 rounded-3xl p-6 border border-fuchsia-900/50 shadow-xl">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4 border-b border-fuchsia-900/50 pb-3">
+          <div>
+            <h2 class="font-bold text-fuchsia-400 text-sm"><i class="fa-solid fa-pen-to-square mr-2"></i>決算データの入力・編集 (本部専用)</h2>
+            <p class="text-[10px] text-slate-400 mt-1">P/L(損益計算書)とB/S(貸借対照表サマリ)を決算期ごとに登録します。保存すると同じ決算期の既存データは上書きされます。</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="finEdPeriod" onchange="onFinPeriodChange()" class="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none cursor-pointer"></select>
+            <div id="finEdNewPeriodWrap" class="hidden"><input type="text" id="finEdNewPeriod" class="input-num text-xs w-36" placeholder="例: 2026年2月期"></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <div class="flex justify-between items-center mb-3">
+              <p class="text-xs font-bold text-sky-400"><i class="fa-solid fa-file-invoice mr-1"></i>P/L (損益計算書)</p>
+              <button onclick="addFinPlRow('', '')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors"><i class="fa-solid fa-plus mr-1"></i>行を追加</button>
+            </div>
+            <div id="finEdPlRows"></div>
+            <p class="text-[10px] text-slate-500 mt-2">※「売上高」「売上原価」「販管費」「営業利益」の項目名で入力すると、粗利率・損益分岐点などの指標が自動計算されます。人件費など任意の項目も追加できます。</p>
+          </div>
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <p class="text-xs font-bold text-emerald-400 mb-3"><i class="fa-solid fa-scale-balanced mr-1"></i>B/S (貸借対照表サマリ)</p>
+            <div id="finEdBsRows"></div>
+            <p class="text-[10px] text-slate-500 mt-2">※入力すると自己資本比率・流動比率・ROA・在庫回転日数・交叉比率が自動計算されます。空欄のままでも保存できます。</p>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-5 pt-4 border-t border-slate-800">
+          <button id="btnFinDelete" onclick="deleteFinPeriod()" class="hidden bg-rose-950/50 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold py-2.5 px-5 rounded-xl transition">この決算期を削除</button>
+          <button onclick="saveFinPeriod()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-xs font-black py-2.5 px-8 rounded-xl shadow-lg transition"><i class="fa-solid fa-floppy-disk mr-1"></i>この決算期を保存</button>
+        </div>
       </div>
     </div>
 
@@ -734,6 +827,14 @@
         try {
             const { data, error } = await db.from('fin_historical_pl').select('*').order('sort_order', { ascending: true });
             if (error) throw error;
+            plRawRows = data || []; // ★追加: 入力エディタ用に生データを保持
+
+            // ★追加: B/S(貸借対照表サマリ)の取得。テーブル未作成でも動作を止めない
+            bsRawRows = [];
+            try {
+                const { data: bsData, error: bsErr } = await db.from('fin_historical_bs').select('*').order('sort_order', { ascending: true });
+                if (!bsErr && bsData) bsRawRows = bsData;
+            } catch (e) { console.warn("B/Sデータ未取得(テーブル未作成の可能性):", e); }
 
             if (!data || data.length === 0) {
                 rawData = { headers: ["データなし"], items: { "売上高": [0], "営業利益": [0], "販管費": [0] }, itemNames: ["売上高", "営業利益", "販管費"] };
@@ -759,38 +860,100 @@
             hideLoading();
             document.getElementById('content').classList.remove('hidden');
             buildUI();
+            initFinanceExtras();    // ★追加: 診断・ウォーターフォール・2期比較・入力エディタ
+            loadFinanceForecast();  // ★追加: 今期の着地予測(非同期で後から描画)
         } catch(e) {
             hideLoading();
             alert("財務データの取得に失敗しました: " + e.message);
         }
     }
 
+    // ==========================================
+    // ★追加: 財務分析の拡張用グローバル
+    // ==========================================
+    let plRawRows = [];   // fin_historical_pl の生データ（入力エディタ用）
+    let bsRawRows = [];   // fin_historical_bs の生データ
+    let wfChartObj = null;
+    const BS_PRESET_ITEMS = ['現金・預金','売掛金・未収金','棚卸資産(商品在庫)','その他流動資産','固定資産','流動負債(買掛・未払等)','借入金','その他固定負債','純資産(自己資本)'];
+    const PL_PRESET_ITEMS = ['売上高','売上原価','販管費','営業利益','人件費(販管費内数)'];
+
+    // 指定した決算期(index)のP/L基礎数値を導出する共通関数
+    // 「売上原価」が入力されていれば 粗利 = 売上 − 原価、なければ従来通り 粗利 = 営業利益 + 販管費
+    function derivePeriodPl(i) {
+      const items = rawData.items;
+      const sales = (items["売上高"] && items["売上高"][i]) ? Number(items["売上高"][i]) : 0;
+      const op = (items["営業利益"] && items["営業利益"][i]) ? Number(items["営業利益"][i]) : 0;
+      let sga = 0;
+      if (items["販管費"] && items["販管費"][i]) sga = Number(items["販管費"][i]);
+      else if (items["固定費"] && items["固定費"][i]) sga = Number(items["固定費"][i]);
+      else sga = Math.max(0, (sales * 0.3) - op);
+      let gross, cogs;
+      if (items["売上原価"] && items["売上原価"][i]) { cogs = Number(items["売上原価"][i]); gross = sales - cogs; }
+      else { gross = op + sga; cogs = sales - gross; }
+      return { sales, cogs, gross, sga, op };
+    }
+
     function processData() {
       const h = rawData.headers; const items = rawData.items; const len = h.length;
-      let bepArr = new Array(len).fill(0); let safetyArr = new Array(len).fill(0); let opMarginArr = new Array(len).fill(0);
+      let bepArr = [], safetyArr = [], opMarginArr = [], grossArr = [], gMarginArr = [];
 
       for (let i = 0; i < len; i++) {
-        let sales = (items["売上高"] && items["売上高"][i]) ? items["売上高"][i] : 0;
-        let opProfit = (items["営業利益"] && items["営業利益"][i]) ? items["営業利益"][i] : 0;
-        let sga = 0;
-        if (items["販管費"] && items["販管費"][i]) sga = items["販管費"][i];
-        else if (items["固定費"] && items["固定費"][i]) sga = items["固定費"][i]; 
-        else sga = Math.max(0, (sales * 0.3) - opProfit);
+        const d = derivePeriodPl(i);
+        const gMargin = d.sales > 0 ? (d.gross / d.sales) : 0;
+        const oMargin = d.sales > 0 ? (d.op / d.sales) : 0;
+        const bep = gMargin > 0 ? (d.sga / gMargin) : 0;
+        const safety = d.sales > 0 ? ((d.sales - bep) / d.sales) : 0;
 
-        let grossProfit = opProfit + sga;
-        let gMargin = sales > 0 ? (grossProfit / sales) : 0;
-        let oMargin = sales > 0 ? (opProfit / sales) : 0;
-        let bep = gMargin > 0 ? (sga / gMargin) : 0;
-        let safety = sales > 0 ? ((sales - bep) / sales) : 0;
-
-        bepArr[i] = Math.round(bep); safetyArr[i] = Number((safety * 100).toFixed(1)); opMarginArr[i] = Number((oMargin * 100).toFixed(1));
+        bepArr.push(Math.round(bep)); safetyArr.push(Number((safety * 100).toFixed(1))); opMarginArr.push(Number((oMargin * 100).toFixed(1)));
+        grossArr.push(Math.round(d.gross)); gMarginArr.push(Number((gMargin * 100).toFixed(1)));
 
         Object.keys(items).forEach(key => {
           if (items[key][i]) items[key][i] = Math.round(items[key][i]);
         });
       }
+      rawData.items['粗利額'] = grossArr; rawData.items['粗利率(%)'] = gMarginArr;
       rawData.items['営業利益率(%)'] = opMarginArr; rawData.items['損益分岐点売上高'] = bepArr; rawData.items['経営安全率(%)'] = safetyArr;
-      ['営業利益率(%)', '損益分岐点売上高', '経営安全率(%)'].forEach(newKey => { if(!rawData.itemNames.includes(newKey)) rawData.itemNames.push(newKey); });
+      ['粗利額', '粗利率(%)', '営業利益率(%)', '損益分岐点売上高', '経営安全率(%)'].forEach(newKey => { if(!rawData.itemNames.includes(newKey)) rawData.itemNames.push(newKey); });
+
+      mergeBsData(); // ★追加: B/Sデータの合流と財務指標の自動計算
+    }
+
+    // ★追加: B/Sデータをマージし、自己資本比率・流動比率・ROA・在庫回転日数・交叉比率を算出
+    function mergeBsData() {
+      rawData.hasBs = false;
+      if (!bsRawRows || bsRawRows.length === 0) return;
+      const h = rawData.headers, items = rawData.items;
+
+      const byPeriod = {};
+      bsRawRows.forEach(r => { (byPeriod[r.period] = byPeriod[r.period] || {})[r.item_name] = Number(r.amount) || 0; });
+
+      // B/Sの生項目もグラフ・表で選択できるように追加（B/S未入力の期は null = 表示しない）
+      const bsNames = [...new Set(bsRawRows.map(r => r.item_name))];
+      bsNames.forEach(n => {
+        items[n] = h.map(p => (byPeriod[p] && byPeriod[p][n] !== undefined) ? Math.round(byPeriod[p][n]) : null);
+        if (!rawData.itemNames.includes(n)) rawData.itemNames.push(n);
+      });
+
+      const g = (p, n) => (byPeriod[p] && byPeriod[p][n] !== undefined) ? Number(byPeriod[p][n]) : 0;
+      const eqArr = [], curArr = [], roaArr = [], invDaysArr = [], crossArr = [];
+      h.forEach((p, i) => {
+        if (!byPeriod[p]) { eqArr.push(null); curArr.push(null); roaArr.push(null); invDaysArr.push(null); crossArr.push(null); return; }
+        const currentAssets = g(p,'現金・預金') + g(p,'売掛金・未収金') + g(p,'棚卸資産(商品在庫)') + g(p,'その他流動資産');
+        const totalAssets = currentAssets + g(p,'固定資産');
+        const currentLiab = g(p,'流動負債(買掛・未払等)');
+        const equity = g(p,'純資産(自己資本)');
+        const inv = g(p,'棚卸資産(商品在庫)');
+        const d = derivePeriodPl(i);
+        eqArr.push(totalAssets > 0 ? Number((equity / totalAssets * 100).toFixed(1)) : null);
+        curArr.push(currentLiab > 0 ? Number((currentAssets / currentLiab * 100).toFixed(1)) : null);
+        roaArr.push(totalAssets > 0 ? Number((d.op / totalAssets * 100).toFixed(1)) : null);
+        invDaysArr.push((inv > 0 && d.cogs > 0) ? Number((365 / (d.cogs / inv)).toFixed(1)) : null);
+        crossArr.push((inv > 0 && d.sales > 0) ? Number(((d.gross / d.sales * 100) * (d.sales / inv)).toFixed(1)) : null);
+      });
+      items['自己資本比率(%)'] = eqArr; items['流動比率(%)'] = curArr; items['ROA(%)'] = roaArr;
+      items['在庫回転日数'] = invDaysArr; items['交叉比率'] = crossArr;
+      ['自己資本比率(%)','流動比率(%)','ROA(%)','在庫回転日数','交叉比率'].forEach(k => { if (!rawData.itemNames.includes(k)) rawData.itemNames.push(k); });
+      rawData.hasBs = true;
     }
 
     function buildUI() {
@@ -814,8 +977,36 @@
         document.getElementById('kpiSafety').innerText = latestSafety;
         document.getElementById('txtBEP').innerText = latestBEP.toLocaleString();
         document.getElementById('txtFixedRatio').innerText = latestFixedRatio.toFixed(1);
+
+        // ★追加: 粗利率KPIと前期比バッジ
+        const gmEl = document.getElementById('kpiGrossMargin');
+        if (gmEl && rawData.items['粗利率(%)']) gmEl.innerText = rawData.items['粗利率(%)'][lastIdx];
+        setKpiYoY('kpiSalesYoY', rawData.items['売上高'], lastIdx, false);
+        setKpiYoY('kpiGrossMarginYoY', rawData.items['粗利率(%)'], lastIdx, true);
+        setKpiYoY('kpiOpMarginYoY', rawData.items['営業利益率(%)'], lastIdx, true);
+
+        // ★追加: B/Sデータがあれば自己資本比率カードを表示
+        if (rawData.hasBs && rawData.items['自己資本比率(%)']) {
+          const eq = rawData.items['自己資本比率(%)'][lastIdx];
+          if (eq !== null && eq !== undefined) {
+            document.getElementById('kpiEquityCard').classList.remove('hidden');
+            document.getElementById('kpiEquity').innerText = eq;
+          }
+        }
       }
       drawChart(); drawTable();
+    }
+
+    // ★追加: KPIカードの前期比バッジ描画
+    function setKpiYoY(id, arr, li, isPct) {
+      const el = document.getElementById(id);
+      if (!el || !arr || li < 1) return;
+      const cur = arr[li], prev = arr[li - 1];
+      if (cur === null || cur === undefined || prev === null || prev === undefined) return;
+      if (!isPct && Number(prev) === 0) return;
+      const diff = isPct ? (cur - prev) : ((cur - prev) / Math.abs(prev) * 100);
+      el.innerText = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}${isPct ? 'pt' : '%'} (前期比)`;
+      el.className = `text-[10px] font-bold mt-1 ${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
     }
 
     function toggle(el) { if(el.checked) { if(!sel.includes(el.value)) sel.push(el.value); } else { sel = sel.filter(v => v !== el.value); } drawChart(); drawTable(); }
@@ -846,19 +1037,388 @@
     }
 
     function drawTable() {
+      const showYoY = document.getElementById('chkYoY') ? document.getElementById('chkYoY').checked : false;
       let headHtml = '<th class="py-3 px-4 w-40">決算期</th>';
       rawData.headers.forEach(term => { headHtml += `<th class="py-3 px-4 text-right">${term}</th>`; });
       document.getElementById('tHead').innerHTML = headHtml;
       let bodyHtml = '';
       sel.forEach(itemName => {
+        const arr = rawData.items[itemName];
+        if (!arr) return;
+        const isPct = itemName.includes('(%)') || itemName.includes('率');
         let rowHtml = `<tr><td class="py-3 px-4 font-bold text-slate-300 bg-slate-900/50">${itemName}</td>`;
-        rawData.items[itemName].forEach(val => {
-          let displayVal = (itemName.includes('(%)') || itemName.includes('率')) ? val.toFixed(1) : Math.round(val).toLocaleString();
-          rowHtml += `<td class="py-3 px-4 text-right font-mono text-slate-300">${displayVal}</td>`;
+        arr.forEach((val, i) => {
+          // ★修正: B/S未入力期(null)は「--」表示
+          let displayVal = (val === null || val === undefined) ? '--' : (isPct ? Number(val).toFixed(1) : Math.round(val).toLocaleString());
+          // ★追加: 前期比の表示（金額系は増減率%、比率系は増減pt）
+          let yoyHtml = '';
+          if (showYoY && i > 0) {
+            const prev = arr[i - 1];
+            if (val !== null && val !== undefined && prev !== null && prev !== undefined && (isPct || Number(prev) !== 0)) {
+              const diff = isPct ? (val - prev) : ((val - prev) / Math.abs(prev) * 100);
+              yoyHtml = `<span class="block text-[10px] font-bold ${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${diff >= 0 ? '+' : ''}${diff.toFixed(1)}${isPct ? 'pt' : '%'}</span>`;
+            }
+          }
+          rowHtml += `<td class="py-3 px-4 text-right font-mono text-slate-300">${displayVal}${yoyHtml}</td>`;
         });
         rowHtml += `</tr>`; bodyHtml += rowHtml;
       });
       document.getElementById('tBody').innerHTML = bodyHtml;
+    }
+
+    // ==========================================
+    // ★追加: 財務分析タブの拡張機能群
+    // ==========================================
+    function initFinanceExtras() {
+      // ウォーターフォール・2期比較の決算期セレクタ初期化
+      const wf = document.getElementById('wfPeriod');
+      if (wf) {
+        wf.innerHTML = rawData.headers.map(p => `<option value="${p}">${p}</option>`).join('');
+        if (rawData.headers.length > 0) wf.value = rawData.headers[rawData.headers.length - 1];
+      }
+      const ca = document.getElementById('cmpA'), cb = document.getElementById('cmpB');
+      if (ca && cb) {
+        const opts = rawData.headers.map(p => `<option value="${p}">${p}</option>`).join('');
+        ca.innerHTML = opts; cb.innerHTML = opts;
+        if (rawData.headers.length >= 2) {
+          ca.value = rawData.headers[rawData.headers.length - 2];
+          cb.value = rawData.headers[rawData.headers.length - 1];
+        }
+      }
+      renderDiagnosis();
+      drawWaterfall();
+      renderComparison();
+      initFinEditor();
+    }
+
+    // ---------- 財務健全性の自動診断 ----------
+    function renderDiagnosis() {
+      const el = document.getElementById('finDiagnosis');
+      if (!el) return;
+      const li = rawData.headers.length - 1;
+      if (li < 0 || rawData.headers[0] === 'データなし') { el.innerHTML = '<p class="text-xs text-slate-500 font-bold">決算データがありません。</p>'; return; }
+      const g = (n, i) => (rawData.items[n] && rawData.items[n][i] !== null && rawData.items[n][i] !== undefined) ? Number(rawData.items[n][i]) : null;
+      const results = [];
+      const add = (level, text) => results.push({ level, text });
+
+      const op = g('営業利益', li), opM = g('営業利益率(%)', li), safety = g('経営安全率(%)', li);
+      const sales = g('売上高', li), prevSales = li > 0 ? g('売上高', li - 1) : null;
+      const gm = g('粗利率(%)', li), prevGm = li > 0 ? g('粗利率(%)', li - 1) : null;
+
+      if (op !== null && op < 0) add('danger', `最新期は営業赤字です (営業利益 ${Math.round(op).toLocaleString()}円)。固定費構造の見直しが必要な水準です。`);
+      else if (opM !== null && opM < 5) add('warn', `営業利益率が ${opM}% と低水準です (目安: 5%以上)。粗利率か販管費のどちらかに改善余地があります。`);
+      if (safety !== null) {
+        if (safety < 10) add('danger', `経営安全率が ${safety}% です。売上が1割落ちると赤字転落する水準のため要注意です。`);
+        else if (safety < 20) add('warn', `経営安全率が ${safety}% です (目安: 20%以上)。もう一段の粗利改善か固定費圧縮が望まれます。`);
+      }
+      if (sales !== null && prevSales !== null && prevSales > 0 && sales < prevSales) add('warn', `売上高が前期比 ${((sales - prevSales) / prevSales * 100).toFixed(1)}% と減収です。`);
+      if (gm !== null && prevGm !== null && (gm - prevGm) <= -1) add('warn', `粗利率が前期から ${(gm - prevGm).toFixed(1)}pt 低下しています。仕入・価格設定の点検を推奨します。`);
+      if (li > 0) {
+        const fr = i => { const d = derivePeriodPl(i); return d.sales > 0 ? d.sga / d.sales * 100 : null; };
+        const cur = fr(li), prev = fr(li - 1);
+        if (cur !== null && prev !== null && (cur - prev) >= 2) add('warn', `固定費負担率が前期から ${(cur - prev).toFixed(1)}pt 上昇しています (${prev.toFixed(1)}% → ${cur.toFixed(1)}%)。`);
+      }
+      if (rawData.hasBs) {
+        const eq = g('自己資本比率(%)', li), cr = g('流動比率(%)', li);
+        const invD = g('在庫回転日数', li), prevInvD = li > 0 ? g('在庫回転日数', li - 1) : null;
+        if (eq !== null) {
+          if (eq < 10) add('danger', `自己資本比率が ${eq}% と非常に低い水準です (目安: 20%以上)。`);
+          else if (eq < 20) add('warn', `自己資本比率が ${eq}% です (目安: 20%以上)。内部留保の積み上げを推奨します。`);
+        }
+        if (cr !== null) {
+          if (cr < 100) add('danger', `流動比率が ${cr}% と100%を下回っています。短期の支払能力に注意が必要です。`);
+          else if (cr < 120) add('warn', `流動比率が ${cr}% です (目安: 120%以上)。`);
+        }
+        if (invD !== null && prevInvD !== null && (invD - prevInvD) >= 15) add('warn', `在庫回転日数が前期から ${(invD - prevInvD).toFixed(0)}日 悪化しています (${prevInvD.toFixed(0)}日 → ${invD.toFixed(0)}日)。滞留在庫の増加が疑われます。`);
+      } else {
+        add('info', 'B/S(貸借対照表)データが未入力のため、自己資本比率・流動比率・在庫回転などの診断はスキップしました。ページ下部の「決算データ入力」から登録できます。');
+      }
+      if (results.filter(r => r.level === 'danger' || r.level === 'warn').length === 0) {
+        add('good', `最新期(${rawData.headers[li]})の主要指標に大きな問題は検出されませんでした。`);
+      }
+
+      const style = { danger: 'bg-rose-950/30 border-rose-900/50 text-rose-300', warn: 'bg-amber-950/30 border-amber-900/50 text-amber-300', good: 'bg-emerald-950/30 border-emerald-900/50 text-emerald-300', info: 'bg-slate-950 border-slate-800 text-slate-400' };
+      const icon = { danger: 'fa-circle-exclamation', warn: 'fa-triangle-exclamation', good: 'fa-circle-check', info: 'fa-circle-info' };
+      el.innerHTML = results.map(r => `<div class="flex items-start gap-2 p-3 rounded-xl border ${style[r.level]} text-xs font-bold leading-relaxed"><i class="fa-solid ${icon[r.level]} mt-0.5"></i><span>${r.text}</span></div>`).join('');
+    }
+
+    // ---------- 利益構造ウォーターフォール ----------
+    function drawWaterfall() {
+      const selEl = document.getElementById('wfPeriod');
+      if (!selEl || !selEl.value) return;
+      const i = rawData.headers.indexOf(selEl.value);
+      if (i < 0) return;
+      const d = derivePeriodPl(i);
+      if (wfChartObj) wfChartObj.destroy();
+      const ctx = document.getElementById('waterfallChart').getContext('2d');
+      const colors = ['rgba(56,189,248,0.85)', 'rgba(244,63,94,0.55)', 'rgba(52,211,153,0.85)', 'rgba(244,63,94,0.55)', d.op >= 0 ? 'rgba(129,140,248,0.9)' : 'rgba(244,63,94,0.9)'];
+      wfChartObj = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['売上高', '売上原価', '粗利', '販管費', '営業利益'],
+          datasets: [{
+            data: [[0, d.sales], [d.gross, d.sales], [0, d.gross], [Math.min(d.op, d.gross), d.gross], [0, d.op]],
+            backgroundColor: colors, borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (c) => { const v = c.raw; const amt = Array.isArray(v) ? (v[1] - v[0]) : v; return Math.round(Math.abs(amt)).toLocaleString() + ' 円'; } } }
+          },
+          scales: { x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { weight: 'bold' } } }, y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } } }
+        }
+      });
+    }
+
+    // ---------- 決算期の2期比較 ----------
+    function renderComparison() {
+      const aEl = document.getElementById('cmpA'), bEl = document.getElementById('cmpB');
+      if (!aEl || !bEl) return;
+      const a = aEl.value, b = bEl.value;
+      const ia = rawData.headers.indexOf(a), ib = rawData.headers.indexOf(b);
+      document.getElementById('cmpHeadA').innerText = a || '--';
+      document.getElementById('cmpHeadB').innerText = b || '--';
+      const tbody = document.getElementById('cmpTbody');
+      if (ia < 0 || ib < 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-500 font-bold">比較する2つの決算期を選択してください</td></tr>'; return; }
+      let html = '';
+      rawData.itemNames.forEach(n => {
+        const arr = rawData.items[n];
+        if (!arr) return;
+        const va = arr[ia], vb = arr[ib];
+        if ((va === null || va === undefined) && (vb === null || vb === undefined)) return;
+        const isPct = n.includes('(%)') || n.includes('率');
+        const fmt = v => (v === null || v === undefined) ? '--' : (isPct ? Number(v).toFixed(1) : Math.round(v).toLocaleString());
+        let diffStr = '--', rateStr = '--', cls = 'text-slate-500';
+        if (va !== null && va !== undefined && vb !== null && vb !== undefined) {
+          const diff = vb - va;
+          cls = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
+          diffStr = (diff >= 0 ? '+' : '') + (isPct ? diff.toFixed(1) + 'pt' : Math.round(diff).toLocaleString());
+          rateStr = (!isPct && Number(va) !== 0) ? ((diff >= 0 ? '+' : '') + (diff / Math.abs(va) * 100).toFixed(1) + '%') : '--';
+        }
+        html += `<tr class="hover:bg-slate-800/40 transition-colors"><td class="py-2 px-3 font-bold text-slate-300">${n}</td><td class="py-2 px-3 text-right font-mono">${fmt(va)}</td><td class="py-2 px-3 text-right font-mono">${fmt(vb)}</td><td class="py-2 px-3 text-right font-mono font-bold ${cls}">${diffStr}</td><td class="py-2 px-3 text-right font-mono ${cls}">${rateStr}</td></tr>`;
+      });
+      tbody.innerHTML = html;
+    }
+
+    // ---------- CSV出力 ----------
+    function downloadCSV(filename, rows) {
+      const csvStr = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvStr], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    }
+    function exportTrendCSV() {
+      const rows = [['項目', ...rawData.headers]];
+      sel.forEach(n => { const arr = rawData.items[n]; if (arr) rows.push([n, ...arr.map(v => (v === null || v === undefined) ? '' : v)]); });
+      downloadCSV('財務推移データ.csv', rows);
+    }
+    function exportCmpCSV() {
+      const a = document.getElementById('cmpA').value, b = document.getElementById('cmpB').value;
+      const ia = rawData.headers.indexOf(a), ib = rawData.headers.indexOf(b);
+      if (ia < 0 || ib < 0) { alert('比較する2つの決算期を選択してください。'); return; }
+      const rows = [['項目', a, b, '増減額']];
+      rawData.itemNames.forEach(n => {
+        const arr = rawData.items[n]; if (!arr) return;
+        const va = arr[ia], vb = arr[ib];
+        if ((va === null || va === undefined) && (vb === null || vb === undefined)) return;
+        rows.push([n, va ?? '', vb ?? '', (va !== null && va !== undefined && vb !== null && vb !== undefined) ? (vb - va) : '']);
+      });
+      downloadCSV(`決算比較_${a}_vs_${b}.csv`, rows);
+    }
+
+    // ---------- 今期のリアルタイム着地予測 ----------
+    async function loadFinanceForecast() {
+      const body = document.getElementById('fcBody');
+      if (!body) return;
+      try {
+        const now = new Date();
+        const fyStartYear = (now.getMonth() + 1) >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const fyStart = fyStartYear + '-03-01';
+        const lblEl = document.getElementById('fcPeriodLabel');
+        if (lblEl) lblEl.innerText = `${fyStartYear}年度 (${fyStartYear}/3〜${fyStartYear + 1}/2)`;
+
+        // 日次実績をページング全件取得（1000件上限対策）
+        let rows = [], from = 0;
+        const PAGE = 1000;
+        while (true) {
+          const { data, error } = await db.from('daily_records').select('target_date,sales,discount,gross_profit').gte('target_date', fyStart).range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (data && data.length > 0) rows = rows.concat(data);
+          if (!data || data.length < PAGE) break;
+          from += PAGE;
+        }
+        if (rows.length === 0) { body.innerHTML = '<p class="text-xs text-slate-500 font-bold">今期の日次実績データがまだありません。</p>'; return; }
+
+        let cumSales = 0, cumGross = 0;
+        rows.forEach(r => { cumSales += (Number(r.sales) || 0) - (Number(r.discount) || 0); cumGross += Number(r.gross_profit) || 0; });
+        const elapsedDays = Math.max(1, Math.floor((now - new Date(fyStart.replace(/-/g, '/'))) / 86400000) + 1);
+        const projSales = cumSales / elapsedDays * 365;
+        const projGross = cumGross / elapsedDays * 365;
+
+        const { data: fcData } = await db.from('fin_branch_fixed_costs').select('total_sga');
+        const sgaAnnual = (fcData || []).reduce((acc, r) => acc + (Number(r.total_sga) || 0), 0);
+        const projOp = projGross - sgaAnnual;
+
+        const li = rawData.headers.length - 1;
+        const lastSales = (li >= 0 && rawData.items['売上高']) ? Number(rawData.items['売上高'][li]) : 0;
+        const lastOp = (li >= 0 && rawData.items['営業利益']) ? Number(rawData.items['営業利益'][li]) : 0;
+        const yoyBadge = (v, base) => (base && Math.abs(base) > 0)
+          ? `<span class="block text-[10px] font-bold mt-1 ${v - base >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${v - base >= 0 ? '+' : ''}${((v - base) / Math.abs(base) * 100).toFixed(1)}% vs ${rawData.headers[li]}</span>` : '';
+
+        const card = (label, val, color, extra) => `
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <p class="text-[10px] text-slate-500 font-bold mb-1">${label}</p>
+            <p class="text-lg font-mono font-black ${color}">${Math.round(val).toLocaleString()} <span class="text-[10px] font-sans text-slate-500">円</span></p>
+            ${extra || ''}
+          </div>`;
+
+        body.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <p class="text-[10px] text-slate-500 font-bold mb-1">経過日数</p>
+              <p class="text-lg font-mono font-black text-white">${elapsedDays} <span class="text-[10px] font-sans text-slate-500">/ 365日</span></p>
+              <div class="w-full bg-slate-900 h-1.5 rounded-full mt-2 overflow-hidden"><div class="bg-indigo-500 h-full rounded-full" style="width:${Math.min(100, elapsedDays / 365 * 100).toFixed(0)}%"></div></div>
+            </div>
+            ${card('今期 累計売上 (実績)', cumSales, 'text-sky-400')}
+            ${card('今期 累計粗利 (実績)', cumGross, 'text-emerald-400')}
+            ${card('着地予測 売上高', projSales, 'text-sky-400', yoyBadge(projSales, lastSales))}
+            ${card('着地予測 粗利額', projGross, 'text-emerald-400')}
+            ${card('着地予測 営業利益', projOp, projOp >= 0 ? 'text-indigo-300' : 'text-rose-400', yoyBadge(projOp, lastOp))}
+          </div>
+          <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">※売上・粗利は今期の日次実績（値引後）を365日換算した単純ランレート、営業利益は「粗利予測 − 固定費マスタの全社販管費年額 (${Math.round(sgaAnnual).toLocaleString()}円)」の概算です。季節変動は考慮していません。</p>
+        `;
+      } catch (e) {
+        body.innerHTML = `<p class="text-xs text-slate-500 font-bold">着地予測を計算できませんでした (${e.message})</p>`;
+      }
+    }
+
+    // ---------- 決算データの入力・編集 (本部専用) ----------
+    function initFinEditor() {
+      const panel = document.getElementById('finEditorPanel');
+      if (!panel) return;
+      const canEdit = currentUser && (currentUser.permissions.editAll || currentUser.roleId === 'role_admin');
+      if (!canEdit) { panel.classList.add('hidden'); return; }
+      panel.classList.remove('hidden');
+      const selEl = document.getElementById('finEdPeriod');
+      let html = '<option value="__new__">＋ 新しい決算期を追加</option>';
+      if (rawData.headers[0] !== 'データなし') {
+        rawData.headers.forEach(p => { html += `<option value="${p}">${p}</option>`; });
+      }
+      selEl.innerHTML = html;
+      if (rawData.headers.length > 0 && rawData.headers[0] !== 'データなし') selEl.value = rawData.headers[rawData.headers.length - 1];
+      onFinPeriodChange();
+    }
+
+    function onFinPeriodChange() {
+      const selEl = document.getElementById('finEdPeriod');
+      const isNew = selEl.value === '__new__';
+      document.getElementById('finEdNewPeriodWrap').classList.toggle('hidden', !isNew);
+      document.getElementById('btnFinDelete').classList.toggle('hidden', isNew);
+      const period = isNew ? null : selEl.value;
+
+      const plRows = document.getElementById('finEdPlRows');
+      plRows.innerHTML = '';
+      const existingPl = period ? plRawRows.filter(r => r.period === period) : [];
+      if (existingPl.length > 0) existingPl.forEach(r => addFinPlRow(r.item_name, Math.round(Number(r.amount) || 0)));
+      else PL_PRESET_ITEMS.forEach(n => addFinPlRow(n, ''));
+
+      const bsRows = document.getElementById('finEdBsRows');
+      bsRows.innerHTML = '';
+      BS_PRESET_ITEMS.forEach(n => {
+        const row = period ? bsRawRows.find(r => r.period === period && r.item_name === n) : null;
+        bsRows.innerHTML += `<div class="flex items-center gap-2 mb-2"><span class="w-44 shrink-0 text-[11px] font-bold text-slate-400">${n}</span><input type="text" data-bsname="${n}" value="${row ? Math.round(Number(row.amount) || 0).toLocaleString() : ''}" oninput="formatFinAmount(this)" class="input-num w-full text-right text-xs" placeholder="未入力"><span class="text-[10px] text-slate-500 shrink-0">円</span></div>`;
+      });
+    }
+
+    function addFinPlRow(name, amount) {
+      const wrap = document.createElement('div');
+      wrap.className = 'flex items-center gap-2 mb-2';
+      const amtStr = (amount !== '' && amount !== null && amount !== undefined) ? Number(amount).toLocaleString() : '';
+      wrap.innerHTML = `<input type="text" value="${name || ''}" class="fin-pl-name input-num text-left text-xs w-44 shrink-0" placeholder="項目名">
+        <input type="text" value="${amtStr}" oninput="formatFinAmount(this)" class="fin-pl-amount input-num w-full text-right text-xs" placeholder="0">
+        <span class="text-[10px] text-slate-500 shrink-0">円</span>
+        <button onclick="this.parentElement.remove()" class="text-slate-500 hover:text-rose-400 text-xs px-1 shrink-0" title="この行を削除"><i class="fa-solid fa-xmark"></i></button>`;
+      document.getElementById('finEdPlRows').appendChild(wrap);
+    }
+
+    function formatFinAmount(el) {
+      let v = String(el.value).replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
+      const neg = v.trim().startsWith('-');
+      v = v.replace(/[^\d]/g, '');
+      el.value = v !== '' ? (neg ? '-' : '') + parseInt(v, 10).toLocaleString() : (neg ? '-' : '');
+    }
+
+    async function saveFinPeriod() {
+      const selEl = document.getElementById('finEdPeriod');
+      const isNew = selEl.value === '__new__';
+      const period = isNew ? document.getElementById('finEdNewPeriod').value.trim() : selEl.value;
+      if (!period) { alert('決算期の名称を入力してください。(例: 2026年2月期)'); return; }
+      if (isNew && rawData.headers.includes(period)) { alert('同じ名称の決算期が既に存在します。プルダウンから選択して編集してください。'); return; }
+
+      const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? 0 : n; };
+      const plInsert = [];
+      document.querySelectorAll('#finEdPlRows > div').forEach(div => {
+        const name = div.querySelector('.fin-pl-name').value.trim();
+        const amtStr = div.querySelector('.fin-pl-amount').value.trim();
+        if (name && amtStr !== '' && amtStr !== '-') plInsert.push({ period: period, item_name: name, amount: num(amtStr) });
+      });
+      if (plInsert.length === 0) { alert('P/L項目を1つ以上入力してください。'); return; }
+
+      const bsInsert = [];
+      document.querySelectorAll('#finEdBsRows input[data-bsname]').forEach(inp => {
+        const v = inp.value.trim();
+        if (v !== '' && v !== '-') bsInsert.push({ period: period, item_name: inp.getAttribute('data-bsname'), amount: num(v) });
+      });
+
+      if (!confirm(`決算期「${period}」のデータを保存します。\n(この期の既存データは上書きされます)\nよろしいですか？`)) return;
+      showLoading('決算データを保存中...');
+      try {
+        // sort_order: 既存期はその値を維持、新規は最大値+1（グラフの並び順になる）
+        let sortOrder;
+        const existing = plRawRows.find(r => r.period === period);
+        if (existing) sortOrder = Number(existing.sort_order) || 0;
+        else sortOrder = plRawRows.reduce((m, r) => Math.max(m, Number(r.sort_order) || 0), 0) + 1;
+        plInsert.forEach(r => r.sort_order = sortOrder);
+        bsInsert.forEach(r => r.sort_order = sortOrder);
+
+        const { error: delErr } = await db.from('fin_historical_pl').delete().eq('period', period);
+        if (delErr) throw delErr;
+        const { error: insErr } = await db.from('fin_historical_pl').insert(plInsert);
+        if (insErr) throw insErr;
+
+        if (bsInsert.length > 0) {
+          const { error: bsDelErr } = await db.from('fin_historical_bs').delete().eq('period', period);
+          if (bsDelErr) throw new Error('B/Sの保存に失敗しました。fin_historical_bs テーブルが未作成の可能性があります (付属のSQLをSupabaseで実行してください): ' + bsDelErr.message);
+          const { error: bsInsErr } = await db.from('fin_historical_bs').insert(bsInsert);
+          if (bsInsErr) throw bsInsErr;
+        }
+        hideLoading();
+        alert('保存しました。');
+        await fetchFinancialData();
+      } catch (e) {
+        hideLoading();
+        alert('保存エラー: ' + e.message);
+      }
+    }
+
+    async function deleteFinPeriod() {
+      const selEl = document.getElementById('finEdPeriod');
+      if (selEl.value === '__new__') return;
+      const period = selEl.value;
+      if (!confirm(`決算期「${period}」のP/L・B/Sデータをすべて削除します。\n元に戻せません。よろしいですか？`)) return;
+      showLoading('削除中...');
+      try {
+        const { error } = await db.from('fin_historical_pl').delete().eq('period', period);
+        if (error) throw error;
+        try { await db.from('fin_historical_bs').delete().eq('period', period); } catch (e) { console.warn(e); }
+        hideLoading();
+        await fetchFinancialData();
+      } catch (e) {
+        hideLoading();
+        alert('削除エラー: ' + e.message);
+      }
     }
 
     // ==========================================
