@@ -345,6 +345,7 @@
     let toolPermissions = { analytics: false, planning: false, tracking: false, inventory: false, tasks: false, hr: false, report: false };
     
     let allRecords = [];
+    let internalConsignAll = []; // ★追加: 社内委託記録（B案・粗利按分）
     let targetBranches = [];
     let currentPeriodMode = 'monthly'; 
     let currentMonthStr = "";
@@ -551,7 +552,7 @@
         while (hasMoreData) {
           const { data: chunkData, error: recErr } = await db
             .from('daily_records')
-            .select('branch, target_date, sales, purchase, gross_profit, cash_flow, inv_change, discount, work_hours')
+            .select('branch, target_date, sales, purchase, gross_profit, cash_flow, inv_change, discount, work_hours, consignment_sales')
             .order('target_date', { ascending: true })
             .range(fromIndex, fromIndex + limitSize - 1);
 
@@ -577,21 +578,44 @@
           cashFlow: Number(r.cash_flow) || 0,
           invChange: Number(r.inv_change) || 0,
           discount: Number(r.discount) || 0,
-          workHours: Number(r.work_hours) || 0
+          workHours: Number(r.work_hours) || 0,
+          consign: Number(r.consignment_sales) || 0 // ★追加: 外部委託販売額(日次)
         }));
+
+        // ★追加: 社内委託記録の取得（テーブル未作成でも動作継続）
+        internalConsignAll = [];
+        try {
+          let icFrom = 0;
+          while (true) {
+            const { data: icChunk, error: icErr } = await db.from('internal_consign_records').select('*').range(icFrom, icFrom + limitSize - 1);
+            if (icErr) break;
+            if (icChunk && icChunk.length > 0) internalConsignAll = internalConsignAll.concat(icChunk);
+            if (!icChunk || icChunk.length < limitSize) break;
+            icFrom += limitSize;
+          }
+        } catch (e) { console.warn('社内委託記録の取得スキップ:', e); }
         
         targetBranches = [...new Set(allRecords.map(r => r.branch))];
         if (targetBranches.length === 0) targetBranches = globalBranches; 
         
-        const { data: summaryDataRes, error: summaryErr } = await db.from('fin_monthly_stats').select('*').eq('target_month', currentMonthStr);
+        // ★修正: 当月分だけでなく全確定月を取得し、半期・年間・全期間の集計でも補正できるようにする
+        const { data: summaryDataRes, error: summaryErr } = await db.from('fin_monthly_stats').select('*');
 
         monthlySummaryFromServer = [];
         if (summaryDataRes) {
             summaryDataRes.forEach(d => {
+                // ★追加: 委託販売の補正値（analyticsのスコアリングと同一ロジック）
+                const consignSales = Number(d.consignment_sales) || 0;
+                const consignProfit = consignSales * ((Number(d.consignment_margin_rate) || 10) / 100);
+                const consignPayout = consignSales - consignProfit; // 委託元へ支払う預かり分
                 monthlySummaryFromServer.push({
+                    month: String(d.target_month).substring(0, 7), // ★追加: 対象月 (yyyy-mm)
                     branch: d.branch,
                     grossProfit: Number(d.gross_profit) || 0,
                     invChange: (Number(d.total_purchase) || 0) - (Number(d.cogs) || 0),
+                    consignSales: consignSales,
+                    consignProfit: consignProfit,
+                    consignPayout: consignPayout,
                     isConfirmed: true
                 });
             });
@@ -946,8 +970,9 @@
         if (elPeriodDisplay) elPeriodDisplay.innerText = `${displayStart} ～ ${displayEnd}`;
 
         let totalSales = 0, totalGross = 0, totalCash = 0, totalInv = 0;
+        const dailyByBranchMonth = {}; // ★追加: 店舗×月ごとの日報ベース集計（確定月との差し替え用）
         allRecords.forEach(r => {
-            if(!bStats[r.branch]) return; 
+            if(!bStats[r.branch]) return;
             if (r.date >= startDate && r.date <= endDate) {
                 bStats[r.branch].sales += r.sales;
                 bStats[r.branch].grossProfit += r.grossProfit;
@@ -956,29 +981,113 @@
                 bStats[r.branch].invChange += r.invChange;
                 bStats[r.branch].discount += r.discount || 0;
                 bStats[r.branch].workHours += r.workHours || 0;
-                
+
                 totalSales += r.sales;
                 totalGross += r.grossProfit;
                 totalCash += r.cashFlow;
                 totalInv += r.invChange;
+
+                const mKey = r.branch + '|' + r.date.substring(0, 7);
+                if (!dailyByBranchMonth[mKey]) dailyByBranchMonth[mKey] = { gross: 0, inv: 0, ext: 0 };
+                dailyByBranchMonth[mKey].gross += r.grossProfit;
+                dailyByBranchMonth[mKey].inv += r.invChange;
+                dailyByBranchMonth[mKey].ext += r.consign || 0; // ★追加: 外部委託販売額(日次累計)
             }
         });
 
-        if (currentPeriodMode === 'monthly' && monthlySummaryFromServer.length > 0) {
+        // ★修正: 確定月の補正をすべての期間モード（当月・半期・年間・全期間・期間指定）に拡張。
+        // 選択期間に「丸ごと含まれる」確定月について、日報ベースの粗利・在庫増減を
+        // 確定値(委託補正済み)へ差し替え、現金化額から委託元へ支払う預かり分を控除する。
+        // 月の途中までしか期間に含まれない場合（進行中の月など）は従来通り日報ベースのまま。
+        const swappedKeys = new Set(); // ★追加: 確定値に差し替えた「店舗|月」の集合
+        if (monthlySummaryFromServer.length > 0) {
             monthlySummaryFromServer.forEach(cStats => {
-                if (bStats[cStats.branch]) {
-                    totalGross -= bStats[cStats.branch].grossProfit;
-                    totalInv -= bStats[cStats.branch].invChange;
-                    
-                    bStats[cStats.branch].grossProfit = cStats.grossProfit;
-                    bStats[cStats.branch].invChange = cStats.invChange;
-                    bStats[cStats.branch].isConfirmed = true; 
-                    
-                    totalGross += cStats.grossProfit;
-                    totalInv += cStats.invChange;
-                }
+                if (!bStats[cStats.branch] || !cStats.month) return;
+                const [my, mm] = cStats.month.split('-').map(Number);
+                if (!my || !mm) return;
+                const dim = new Date(my, mm, 0).getDate();
+                const monthStart = `${cStats.month}-01`;
+                const monthEnd = `${cStats.month}-${String(dim).padStart(2, '0')}`;
+                if (!(monthStart >= startDate && monthEnd <= endDate)) return;
+
+                const daily = dailyByBranchMonth[cStats.branch + '|' + cStats.month] || { gross: 0, inv: 0, ext: 0 };
+                // 確定粗利は在庫ベース計算のため委託売上分が膨らむ
+                // → 委託元への支払分を控除した「実質粗利(自社+委託取り分)」に補正する
+                const correctedGross = cStats.grossProfit - (cStats.consignPayout || 0);
+
+                // その月の日報ベース値を除外し、確定値(補正済み)を加算
+                bStats[cStats.branch].grossProfit += correctedGross - daily.gross;
+                bStats[cStats.branch].invChange += cStats.invChange - daily.inv;
+                totalGross += correctedGross - daily.gross;
+                totalInv += cStats.invChange - daily.inv;
+
+                // 現金化額から委託元へ支払う預かり分を控除（実質の手残りに補正）
+                bStats[cStats.branch].cashFlow -= (cStats.consignPayout || 0);
+                totalCash -= (cStats.consignPayout || 0);
+
+                // 粗利率の自社ベース計算用に委託額を期間内で累積
+                bStats[cStats.branch].consignSales = (bStats[cStats.branch].consignSales || 0) + (cStats.consignSales || 0);
+                bStats[cStats.branch].consignProfit = (bStats[cStats.branch].consignProfit || 0) + (cStats.consignProfit || 0);
+                bStats[cStats.branch].isConfirmed = true; // 期間内に確定月を含む店舗として表示
+                swappedKeys.add(cStats.branch + '|' + cStats.month);
             });
         }
+
+        // ==========================================
+        // ★追加: 日次委託データによるリアルタイム補正（B案）
+        // ==========================================
+        const tkRate = (Number(globalSettingsMap['consign_external_take_rate']) || 10) / 100;   // 外部委託の自社取り分率
+        const shRate = (Number(globalSettingsMap['consign_internal_owner_share']) || 50) / 100; // 社内委託の在庫元按分率
+
+        // (1) 外部委託: 未確定月のみ日次入力から補正（確定月は月次確定値で補正済みのためスキップ）
+        Object.keys(dailyByBranchMonth).forEach(key => {
+            const ext = dailyByBranchMonth[key].ext || 0;
+            if (ext === 0 || swappedKeys.has(key)) return;
+            const branch = key.split('|')[0];
+            if (!bStats[branch]) return;
+            const payout = ext * (1 - tkRate);
+            bStats[branch].cashFlow -= payout; totalCash -= payout;      // 預かり分は委託元へ支払う
+            bStats[branch].invChange += payout; totalInv += payout;      // POS原価混入による在庫減の見かけを戻す
+            bStats[branch].consignSales = (bStats[branch].consignSales || 0) + ext;
+            bStats[branch].consignProfit = (bStats[branch].consignProfit || 0) + ext * tkRate;
+        });
+
+        // (2) 社内委託(B案・粗利按分): 販売側と在庫元の両店舗に反映
+        internalConsignAll.forEach(r => {
+            const d = String(r.target_date).substring(0, 10);
+            if (!(d >= startDate && d <= endDate)) return;
+            const X = Number(r.sales_amount) || 0;
+            const C = Number(r.cost_amount) || 0;
+            if (X === 0) return;
+            const m = d.substring(0, 7);
+            const ownerShare = (X - C) * shRate;
+            const sellerShare = (X - C) - ownerShare;
+            const sellerConfirmed = swappedKeys.has(r.seller_branch + '|' + m);
+            const ownerConfirmed = swappedKeys.has(r.owner_branch + '|' + m);
+
+            // --- 販売側: POS/確定補正に埋まっている取り分(tk×X)を按分後の取り分に置換し、在庫元への支払を控除 ---
+            if (bStats[r.seller_branch]) {
+                const s = bStats[r.seller_branch];
+                const gAdj = sellerShare - X * tkRate;
+                const cAdj = sellerConfirmed ? (X * (1 - tkRate) - (C + ownerShare)) : -(C + ownerShare);
+                const iAdj = sellerConfirmed ? 0 : X * (1 - tkRate);
+                s.grossProfit += gAdj; totalGross += gAdj;
+                s.cashFlow += cAdj; totalCash += cAdj;
+                s.invChange += iAdj; totalInv += iAdj;
+                if (sellerConfirmed) { s.consignProfit = (s.consignProfit || 0) + gAdj; }
+                else { s.consignSales = (s.consignSales || 0) + X; s.consignProfit = (s.consignProfit || 0) + sellerShare; }
+            }
+            // --- 在庫元側: 按分粗利と精算金(原価+按分粗利)を加算、未確定月は在庫減も反映 ---
+            if (bStats[r.owner_branch]) {
+                const o = bStats[r.owner_branch];
+                const gAdj = ownerConfirmed ? (C + ownerShare) : ownerShare;
+                const iAdj = ownerConfirmed ? 0 : -C;
+                o.grossProfit += gAdj; totalGross += gAdj;
+                o.cashFlow += (C + ownerShare); totalCash += (C + ownerShare);
+                o.invChange += iAdj; totalInv += iAdj;
+                o.consignProfit = (o.consignProfit || 0) + ownerShare;
+            }
+        });
 
         document.getElementById('totSales').innerText = Math.round(totalSales).toLocaleString();
         document.getElementById('totGross').innerText = Math.round(totalGross).toLocaleString();
@@ -1144,7 +1253,10 @@
             }
 
             let netS = stats.sales - stats.discount;
-            let mRate = netS > 0 ? (stats.grossProfit / netS) * 100 : 0;
+            // ★修正: 粗利率は委託販売を除外した「自社商品ベース」で算出（スコアリングと同一基準）
+            let marginNetS = netS - (stats.consignSales || 0);
+            let marginGross = stats.grossProfit - (stats.consignProfit || 0);
+            let mRate = marginNetS > 0 ? (marginGross / marginNetS) * 100 : 0;
             let laborProd = stats.workHours > 0 ? stats.grossProfit / stats.workHours : 0;
             
             summaryData.push({
