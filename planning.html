@@ -581,6 +581,11 @@
       
       currentUser = JSON.parse(userStr);
 
+      // ★追加: 経営計画ツールの権限ゲート（従来はチェック漏れで直URLアクセスが可能だった）
+      if (currentUser.permissions && currentUser.permissions.canPlanning === false) {
+        document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>"; return;
+      }
+
       try {
         const accToken = sessionStorage.getItem('sb_access');
         const refToken = sessionStorage.getItem('sb_refresh');
