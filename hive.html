@@ -193,6 +193,13 @@
             const savedUser = sessionStorage.getItem('finUser');
             if (savedUser) {
                 currentUser = JSON.parse(savedUser);
+
+                // ★追加: 閲覧専用アカウント（税理士等）は現場系のHIVEにアクセス不可
+                if (currentUser.permissions && currentUser.permissions.readOnly) {
+                    document.body.innerHTML = "<h1 style='color:white;text-align:center;margin-top:20%'>アクセス権限がありません。</h1>";
+                    return;
+                }
+
                 document.getElementById('headerBranch').innerText = `${currentUser.name} (${currentUser.branch})`;
                 
                 // 本部権限（全店舗編集権限）の判定
