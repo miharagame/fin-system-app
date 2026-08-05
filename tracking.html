@@ -131,6 +131,23 @@
             </div>
           </div>
 
+          <!-- ★追加: 委託・社内販売の日次入力 (B案) -->
+          <div class="space-y-3 border-t border-slate-800 pt-4">
+            <p class="text-xs font-bold text-fuchsia-400"><i class="fa-solid fa-handshake mr-1"></i>委託・社内販売 (該当店舗のみ / なければ空欄のまま)</p>
+            <div>
+              <label class="text-[10px] font-bold text-slate-400 block mb-1">外部委託販売額 (円) ※外部委託元の商品を販売した当日合計</label>
+              <input type="text" id="inpConsignExt" oninput="formatNumber(this)" class="input-box text-fuchsia-300 text-sm">
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-fuchsia-900/30">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] font-bold text-fuchsia-300"><i class="fa-solid fa-store mr-1"></i>社内委託 (他店舗の在庫を販売した分)</label>
+                <button onclick="addInternalConsignRow()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-fuchsia-300 text-[10px] font-bold px-2.5 py-1 rounded transition-colors"><i class="fa-solid fa-plus mr-1"></i>行を追加</button>
+              </div>
+              <div id="internalConsignRows" class="space-y-2"></div>
+              <p class="text-[10px] text-slate-500 mt-2">在庫元店舗・販売額・在庫元での買取原価を入力すると、粗利が設定の按分率で在庫元と自動シェアされます。</p>
+            </div>
+          </div>
+
           <div class="space-y-3 border-t border-slate-800 pt-4">
             <p class="text-xs font-bold text-slate-300"><i class="fa-regular fa-comment-dots mr-1"></i>定性報告</p>
             <div><input type="text" id="inpCount" placeholder="万札数、ツイート数 など" class="text-area-box text-left"></div>
@@ -167,6 +184,7 @@
               </div>
               <div class="mt-3 text-right">
                 <p class="text-[9px] text-slate-500 font-mono tracking-widest">(純売上 － 買取 － 決済手数料)</p>
+                <p id="previewCashAdj" class="hidden text-[10px] text-fuchsia-300 font-bold mt-1"></p>
               </div>
             </div>
             
@@ -398,8 +416,8 @@
          <div class="space-y-4">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-950 p-4 rounded-xl border border-slate-800 gap-4">
                <div>
-                  <p class="font-bold text-slate-200 text-sm">ジョブカンの勤怠入力の修正</p>
-                  <p class="text-[10px] text-slate-500 mt-0.5">ジョブカン上でのシフトと実際の打刻ズレをすべて修正し、確定させます</p>
+                  <p class="font-bold text-slate-200 text-sm">勤怠入力の修正</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">シフトと実際の打刻ズレをすべて修正し、確定させます</p>
                </div>
                <button id="btn_attendance_check" onclick="completeAppCheck('attendance_checked')" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-6 rounded-lg text-xs transition-all shadow shrink-0"><i class="fa-solid fa-check mr-1"></i>完了にする</button>
             </div>
@@ -440,6 +458,8 @@
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let allTrackingData = [], trackingData = [], chartObj = null, currentUser = null;
+    let internalConsignData = []; // ★追加: 当月の社内委託記録（自店が販売側のもの）
+    let consignRates = { tk: 10, sh: 50 }; // ★追加: 外部取り分率% / 社内の在庫元按分率%
     let storeTarget = { margin: 0, cash: 0, invLimit: 0 };
     let todayStr = "", currentMonthStr = "", targetBranch = ""; 
     let analysisMode = "progress"; 
@@ -638,13 +658,59 @@
         document.getElementById('inpMemoSales').value = record.memoSales || "";
         document.getElementById('inpMemoPurchase').value = record.memoPurchase || "";
         document.getElementById('inpMemoDaily').value = record.memoDaily || "";
+        document.getElementById('inpConsignExt').value = (record.consignmentSales !== "" && record.consignmentSales !== null) ? Number(record.consignmentSales).toLocaleString() : "";
       } else {
-        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily'].forEach(id => {
+        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily', 'inpConsignExt'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
       }
+
+      // ★追加: 選択日の社内委託行を復元
+      renderInternalConsignRows(dateVal);
       updatePreview();
+    }
+
+    // ==========================================
+    // ★追加: 社内委託（B案）の入力行制御
+    // ==========================================
+    function getOwnerBranchOptions(selected) {
+      const sel = document.getElementById('branchSelector');
+      let names = [];
+      if (sel) names = Array.from(sel.options).map(o => o.value).filter(v => v && v !== '全店舗' && v !== targetBranch);
+      if (names.length === 0) names = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'].filter(v => v !== targetBranch);
+      return names.map(n => `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`).join('');
+    }
+
+    function addInternalConsignRow(owner, sales, cost) {
+      const wrap = document.createElement('div');
+      wrap.className = 'flex items-center gap-2 ic-row';
+      wrap.innerHTML = `
+        <select class="ic-owner input-box text-xs py-1.5 w-32 shrink-0 cursor-pointer text-left">${getOwnerBranchOptions(owner || '')}</select>
+        <input type="text" value="${(sales || sales === 0) ? Number(sales).toLocaleString() : ''}" oninput="formatNumber(this)" placeholder="販売額" class="ic-sales input-box text-xs py-1.5 text-fuchsia-300">
+        <input type="text" value="${(cost || cost === 0) ? Number(cost).toLocaleString() : ''}" oninput="formatNumber(this)" placeholder="買取原価" class="ic-cost input-box text-xs py-1.5 text-amber-300">
+        <button onclick="this.parentElement.remove(); updatePreview();" class="text-slate-500 hover:text-rose-400 text-xs px-1 shrink-0" title="この行を削除"><i class="fa-solid fa-xmark"></i></button>`;
+      document.getElementById('internalConsignRows').appendChild(wrap);
+    }
+
+    function renderInternalConsignRows(dateVal) {
+      const cont = document.getElementById('internalConsignRows');
+      if (!cont) return;
+      cont.innerHTML = '';
+      internalConsignData
+        .filter(r => String(r.target_date).substring(0, 10) === dateVal)
+        .forEach(r => addInternalConsignRow(r.owner_branch, Number(r.sales_amount) || 0, Number(r.cost_amount) || 0));
+    }
+
+    function collectInternalConsignRows() {
+      const rows = [];
+      document.querySelectorAll('#internalConsignRows .ic-row').forEach(div => {
+        const owner = div.querySelector('.ic-owner').value;
+        const sales = parseFloat((div.querySelector('.ic-sales').value || '').replace(/,/g, '')) || 0;
+        const cost = parseFloat((div.querySelector('.ic-cost').value || '').replace(/,/g, '')) || 0;
+        if (owner && sales > 0) rows.push({ owner_branch: owner, sales_amount: sales, cost_amount: cost });
+      });
+      return rows;
     }
 
     async function loadData() {
@@ -662,12 +728,41 @@
             userRoleConfig = rData;
         }
 
-        const { data: sbData, error: recordErr } = await db
-          .from('daily_records')
-          .select('*')
-          .order('target_date', { ascending: true });
+        // ★修正: Supabaseの1リクエスト1000件上限対策（全件ページング取得）
+        let sbData = [];
+        {
+          let from = 0; const PAGE = 1000;
+          while (true) {
+            const { data: chunk, error: recordErr } = await db
+              .from('daily_records')
+              .select('*')
+              .order('target_date', { ascending: true })
+              .range(from, from + PAGE - 1);
+            if (recordErr) throw recordErr;
+            if (chunk && chunk.length > 0) sbData = sbData.concat(chunk);
+            if (!chunk || chunk.length < PAGE) break;
+            from += PAGE;
+          }
+        }
 
-        if (recordErr) throw recordErr;
+        // ★追加: 委託関連の設定値と当月の社内委託記録を取得（テーブル未作成でも動作継続）
+        consignRates = { tk: 10, sh: 50 };
+        internalConsignData = [];
+        try {
+          const { data: gsData } = await db.from('fin_global_settings').select('*');
+          if (gsData) {
+            const tkRow = gsData.find(r => r.key === 'consign_external_take_rate');
+            const shRow = gsData.find(r => r.key === 'consign_internal_owner_share');
+            if (tkRow) consignRates.tk = Number(tkRow.value) || 10;
+            if (shRow) consignRates.sh = Number(shRow.value) || 50;
+          }
+          const { data: icData, error: icErr } = await db.from('internal_consign_records')
+            .select('*')
+            .gte('target_date', `${currentMonthStr}-01`)
+            .lte('target_date', `${currentMonthStr}-31`)
+            .eq('seller_branch', targetBranch);
+          if (!icErr && icData) internalConsignData = icData;
+        } catch (e) { console.warn('委託データ取得スキップ:', e); }
 
         // ★修正: 数値が0の場合に空文字になるのを防ぐため、論理OR(||)からNullish Coalescing(??)に変更
         allTrackingData = sbData.map(r => ({
@@ -689,6 +784,7 @@
           invChange: r.inv_change ?? 0,
           laborProd: r.labor_prod ?? 0,
           cashlessFee: r.cashless_fee ?? 0,
+          consignmentSales: r.consignment_sales ?? "", // ★追加: 外部委託販売額
           timestamp: r.created_at
         }));
 
@@ -946,6 +1042,21 @@
         else cEl.className = "text-2xl lg:text-3xl font-mono font-black text-rose-500 z-10";
       }
 
+      // ★追加: 委託入力がある場合は「実質手残り(委託支払い後)」を併記
+      const adjEl = document.getElementById('previewCashAdj');
+      if (adjEl) {
+        const extC = Number(getNum('inpConsignExt')) || 0;
+        const icRows = (typeof collectInternalConsignRows === 'function') ? collectInternalConsignRows() : [];
+        let payout = extC * (1 - consignRates.tk / 100);
+        icRows.forEach(r => { payout += r.cost_amount + (r.sales_amount - r.cost_amount) * (consignRates.sh / 100); });
+        if (payout > 0) {
+          adjEl.innerText = `委託支払後の実質手残り: ${Math.round(cash - payout).toLocaleString()} 円`;
+          adjEl.classList.remove('hidden');
+        } else {
+          adjEl.classList.add('hidden');
+        }
+      }
+
       const grossProfit = s * (m / 100);
       const laborProd = w > 0 ? grossProfit / w : 0;
       const cashProd = w > 0 ? cash / w : 0;
@@ -1064,10 +1175,27 @@
             inv_change: invChange,
             labor_prod: laborProd,
             cashless_fee_rate: feeRate,
-            cashless_fee: cashlessFee
+            cashless_fee: cashlessFee,
+            consignment_sales: Number(getNum('inpConsignExt')) || 0 // ★追加: 外部委託販売額
           }, { onConflict: 'target_date,branch' });
 
         if (error) throw error;
+
+        // ★追加: 社内委託記録の保存（当日の自店分を洗い替え）
+        try {
+          const icRows = collectInternalConsignRows();
+          const { error: icDelErr } = await db.from('internal_consign_records')
+            .delete().eq('target_date', cleanDate).eq('seller_branch', targetBranch);
+          if (icDelErr) throw icDelErr;
+          if (icRows.length > 0) {
+            const { error: icInsErr } = await db.from('internal_consign_records').insert(
+              icRows.map(r => ({ target_date: cleanDate, seller_branch: targetBranch, owner_branch: r.owner_branch, sales_amount: r.sales_amount, cost_amount: r.cost_amount, created_by: currentUser.name }))
+            );
+            if (icInsErr) throw icInsErr;
+          }
+        } catch (icErr) {
+          alert("日報は保存されましたが、社内委託記録の保存に失敗しました。\ninternal_consign_records テーブルが未作成の可能性があります (付属SQLを実行してください)。\n" + icErr.message);
+        }
 
         b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check mr-2"></i>保存する';
         mRow.innerText = "実績の保存が完了しました！"; 
