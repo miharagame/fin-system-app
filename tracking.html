@@ -243,6 +243,22 @@
                </div>
              </div>
           </div>
+
+          <!-- ★追加: 委託を除いた自社商品のみの当月累計（委託入力がある月のみ表示） -->
+          <div id="pureStoreCard" class="hidden bg-slate-950 p-5 rounded-2xl border border-fuchsia-900/30 relative overflow-hidden">
+            <div class="absolute right-0 top-0 h-full w-32 bg-fuchsia-500/10 blur-xl"></div>
+            <div class="flex justify-between items-center mb-4">
+              <p class="text-xs text-fuchsia-300 font-bold"><i class="fa-solid fa-store mr-1"></i>自社商品のみの当月累計 (委託・社内販売を除外)</p>
+              <span class="text-[9px] text-slate-500 font-mono">日報ベース</span>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
+              <div class="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800"><p class="text-[10px] text-slate-500 font-bold mb-1">自社純売上</p><p class="text-sm font-mono font-black text-sky-400" id="pureSales">--</p></div>
+              <div class="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800"><p class="text-[10px] text-slate-500 font-bold mb-1">自社粗利額</p><p class="text-sm font-mono font-black text-emerald-400" id="pureGross">--</p></div>
+              <div class="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800"><p class="text-[10px] text-slate-500 font-bold mb-1">自社粗利率</p><p class="text-sm font-mono font-black text-emerald-400" id="pureMargin">--</p></div>
+              <div class="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800"><p class="text-[10px] text-slate-500 font-bold mb-1">実質現金化 (委託支払後)</p><p class="text-sm font-mono font-black text-amber-400" id="pureCash">--</p></div>
+              <div class="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800"><p class="text-[10px] text-slate-500 font-bold mb-1">補正後在庫増減</p><p class="text-sm font-mono font-black text-fuchsia-400" id="pureInv">--</p></div>
+            </div>
+          </div>
         </div>
 
         <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
@@ -1231,6 +1247,37 @@
         const invChange = (Number(r.purchase) || 0) - (netS - grossP);
         calcSumInvChange += invChange;
       });
+
+      // ★追加: 自社商品のみ(委託除外)の当月累計カード
+      (function renderPureStoreCard() {
+        const card = document.getElementById('pureStoreCard');
+        if (!card) return;
+        const tk = consignRates.tk / 100, sh = consignRates.sh / 100;
+        let extSum = 0;
+        trackingData.forEach(r => { extSum += Number(r.consignmentSales) || 0; });
+        let intX = 0, intPayout = 0;
+        internalConsignData.forEach(r => {
+          const X = Number(r.sales_amount) || 0, C = Number(r.cost_amount) || 0;
+          intX += X;
+          intPayout += C + (X - C) * sh; // 在庫元への精算額(原価+按分粗利)
+        });
+        const consignTotal = extSum + intX;
+        if (consignTotal <= 0) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+
+        const netSalesSum = calcSumSales - calcSumDiscount;
+        const pureSales = netSalesSum - consignTotal;                    // 委託分を除いた自社純売上
+        const pureGross = calcSumGross - consignTotal * tk;              // 日報粗利からPOS由来の委託取り分(tk×委託額)を除外
+        const pureMargin = pureSales > 0 ? (pureGross / pureSales * 100) : 0;
+        const pureCash = calcSumCash - extSum * (1 - tk) - intPayout;    // 委託元への支払い後の実質手残り
+        const pureInv = calcSumInvChange + consignTotal * (1 - tk);      // 委託分の原価混入による見かけの在庫減を戻す
+
+        document.getElementById('pureSales').innerText = Math.round(pureSales).toLocaleString() + ' 円';
+        document.getElementById('pureGross').innerText = Math.round(pureGross).toLocaleString() + ' 円';
+        document.getElementById('pureMargin').innerText = pureMargin.toFixed(1) + ' %';
+        document.getElementById('pureCash').innerText = Math.round(pureCash).toLocaleString() + ' 円';
+        document.getElementById('pureInv').innerText = (pureInv >= 0 ? '+' : '') + Math.round(pureInv).toLocaleString() + ' 円';
+      })();
 
       if (confirmedStats) {
           calcSumGross = confirmedStats.grossProfit;
