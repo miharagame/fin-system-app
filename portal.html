@@ -1094,7 +1094,17 @@
         document.getElementById('totCash').innerText = Math.round(totalCash).toLocaleString();
         document.getElementById('totInv').innerText = (totalInv >= 0 ? "+" : "") + Math.round(totalInv).toLocaleString();
         
-        let avgMargin = totalSales > 0 ? (totalGross / totalSales) * 100 : 0;
+        // ★修正: 期間平均粗利率も店舗別テーブルと同じ「自社商品ベース」で算出する
+        //   従来は totalGross/totalSales で、分母に委託販売額(補正で粗利からは除外済み)が
+        //   含まれたままだったため、委託の多い期間は率が大きく希釈されて表示されていた。
+        let marginNetTotal = 0, marginGrossTotal = 0;
+        targetBranches.forEach(b => {
+            const s = bStats[b];
+            if (!s) return;
+            marginNetTotal += (s.sales - s.discount) - (s.consignSales || 0);
+            marginGrossTotal += s.grossProfit - (s.consignProfit || 0);
+        });
+        let avgMargin = marginNetTotal > 0 ? (marginGrossTotal / marginNetTotal) * 100 : 0;
         let elMargin = document.getElementById('totMarginRate');
         if (elMargin) elMargin.innerText = avgMargin.toFixed(1);
 
