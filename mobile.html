@@ -134,6 +134,11 @@
                <input type="text" inputmode="numeric" id="inpDiscount" onfocus="unformatNumber(this)" onblur="formatNumber(this)" oninput="updatePreview()" class="input-box input-num text-sm" placeholder="0">
              </div>
           </div>
+          <!-- ★追加: 外部委託販売額（該当店舗のみ / 社内委託の入力はPC版の予実管理から） -->
+          <div>
+             <label class="text-[10px] text-fuchsia-300 font-bold block mb-1"><i class="fa-solid fa-handshake mr-1"></i>外部委託販売額 (円) ※該当店舗のみ・なければ空欄</label>
+             <input type="text" inputmode="numeric" id="inpConsignExt" onfocus="unformatNumber(this)" onblur="formatNumber(this)" class="input-box input-num text-fuchsia-300 text-sm" placeholder="0">
+          </div>
           
           <div class="pt-4 mt-6 border-t border-slate-800">
              <div class="bg-slate-950 p-4 rounded-xl border border-sky-900/30 text-center w-full">
@@ -759,7 +764,8 @@
               memoSales: r.memo_sales || "",
               memoPurchase: r.memo_purchase || "",
               memoDaily: r.memo_daily || "",
-              cashFlow: r.cash_flow || 0
+              cashFlow: r.cash_flow || 0,
+              consignmentSales: r.consignment_sales ?? "" // ★追加: 外部委託販売額
           }));
 
           let sumCash = 0; trackingRecords.forEach(r => { sumCash += r.cashFlow; });
@@ -801,8 +807,9 @@
         document.getElementById('inpWorkHours').value = (record.workHours !== "") ? record.workHours : "";
         document.getElementById('inpCount').value = record.memoCount || ""; document.getElementById('inpMemoSales').value = record.memoSales || "";
         document.getElementById('inpMemoPurchase').value = record.memoPurchase || ""; document.getElementById('inpMemoDaily').value = record.memoDaily || "";
+        document.getElementById('inpConsignExt').value = (record.consignmentSales !== "" && record.consignmentSales !== null) ? Number(record.consignmentSales).toLocaleString() : "";
       } else {
-        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily'].forEach(id => {
+        ['inpSales', 'inpCashless', 'inpDiscount', 'inpMarginRate', 'inpPurchase', 'inpWorkHours', 'inpCount', 'inpMemoSales', 'inpMemoPurchase', 'inpMemoDaily', 'inpConsignExt'].forEach(id => {
             const el = document.getElementById(id); if (el) el.value = '';
         });
       }
@@ -849,7 +856,8 @@
             inv_change: invChange,
             labor_prod: laborProd,
             cashless_fee_rate: feeRate,
-            cashless_fee: cashlessFee
+            cashless_fee: cashlessFee,
+            consignment_sales: Number(getNum('inpConsignExt')) || 0 // ★追加: 外部委託販売額
         }, { onConflict: 'target_date,branch' });
 
         if (error) throw error;
