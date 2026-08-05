@@ -364,6 +364,12 @@
     }
 
     function checkPass() {
+      // ★追加: 全店舗の閲覧権限があるアカウントはパスワード入力なしで本部モード（閲覧）に入れる
+      if (currentUser && currentUser.permissions && currentUser.permissions.viewAll) {
+        AppState.mode = "HQ"; showFrame('ListView');
+        document.getElementById('listTitle').innerText = "全店分析一覧 (本部モード)";
+        return;
+      }
       const pwd = prompt("本部パスワードを入力してください:", "");
       if (pwd === MASTER_PASS) {
         AppState.mode = "HQ"; showFrame('ListView');
