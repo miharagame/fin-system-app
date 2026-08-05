@@ -452,7 +452,8 @@
             canReport: rData.can_report === '可能',
             canViewTrueCash: rData.can_view_true_cash === '可能',
             canChangePeriod: rData.can_change_period === '可能',
-            canShiftPlan: rData.can_shift_plan === '可能'
+            canShiftPlan: rData.can_shift_plan === '可能',
+            readOnly: rData.edit_scope === '閲覧のみ' // ★追加: 閲覧専用アカウント（税理士等）の判定フラグ
           }
         };
 
@@ -649,7 +650,14 @@
       applyToolPerm('inventory', toolPermissions.inventory, 'fuchsia-500');
       applyToolPerm('tasks', toolPermissions.tasks, 'indigo-500');
       applyToolPerm('hr', toolPermissions.hr, 'blue-500');
-      applyToolPerm('report', toolPermissions.report, 'rose-500'); 
+      applyToolPerm('report', toolPermissions.report, 'rose-500');
+
+      // ★追加: 閲覧専用アカウントには現場系のHIVEタイルを表示しない
+      if (perms.readOnly) {
+          const hiveWrap = document.getElementById('wrap_hive');
+          if (hiveWrap) hiveWrap.classList.add('hidden');
+      }
+
 
       const btnManage = document.getElementById("btnManageUsers");
       if (perms.manageAccess || perms.canManageUsers) {
