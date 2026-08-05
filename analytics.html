@@ -579,11 +579,11 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <p class="text-[10px] text-slate-400 font-bold mb-1">委託販売額 (円)</p>
-                <input type="text" id="hqConsignSales" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="0">
+                <input type="text" id="hqConsignSales" oninput="calcHqPreview()" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="0">
               </div>
               <div>
                 <p class="text-[10px] text-slate-400 font-bold mb-1">委託粗利率 (%) ※自社取り分</p>
-                <input type="text" id="hqConsignRate" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="10">
+                <input type="text" id="hqConsignRate" oninput="calcHqPreview()" class="w-full bg-slate-950 border border-fuchsia-900/50 text-fuchsia-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-fuchsia-500 text-right" placeholder="10">
               </div>
             </div>
           </div>
@@ -624,8 +624,9 @@
             <p class="text-lg font-mono font-black text-rose-400" id="hqPrevCogs">---</p>
           </div>
           <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-center shadow">
-            <p class="text-[10px] text-slate-400 font-bold mb-1">真の粗利額</p>
+            <p class="text-[10px] text-slate-400 font-bold mb-1">真の粗利額 <span class="text-slate-600">(委託補正前)</span></p>
             <p class="text-lg font-mono font-black text-emerald-400" id="hqPrevGross">---</p>
+            <p id="hqPrevGrossAdj" class="hidden text-[10px] font-bold text-fuchsia-300 mt-1"></p>
           </div>
         </div>
 
@@ -2430,10 +2431,24 @@
         elCogs.innerText = "---"; elGross.innerText = "---"; return; 
       }
       
-      elChange.innerText = (invChange > 0 ? "+" : "") + Math.round(invChange).toLocaleString() + " 円"; 
+      elChange.innerText = (invChange > 0 ? "+" : "") + Math.round(invChange).toLocaleString() + " 円";
       elChange.className = "text-lg font-mono font-black " + (invChange > 0 ? "text-amber-400" : "text-emerald-400");
-      elCogs.innerText = Math.round(cogs).toLocaleString() + " 円"; 
+      elCogs.innerText = Math.round(cogs).toLocaleString() + " 円";
       elGross.innerText = Math.round(grossProfit).toLocaleString() + " 円";
+
+      // ★追加: 委託販売額が入力されている場合は「委託補正後の実質粗利」を併記
+      const adjEl = document.getElementById('hqPrevGrossAdj');
+      if (adjEl) {
+        const consignVal = parseFloat(String(document.getElementById('hqConsignSales').value || '0').replace(/,/g, '')) || 0;
+        const consignRateVal = parseFloat(document.getElementById('hqConsignRate').value) || 10;
+        if (consignVal > 0) {
+          const payout = consignVal * (1 - consignRateVal / 100);
+          adjEl.innerText = `委託補正後の実質粗利: ${Math.round(grossProfit - payout).toLocaleString()} 円`;
+          adjEl.classList.remove('hidden');
+        } else {
+          adjEl.classList.add('hidden');
+        }
+      }
     }
 
     async function saveHqData() {
