@@ -183,6 +183,7 @@
           <div class="flex items-center gap-2">
             <select id="finEdPeriod" onchange="onFinPeriodChange()" class="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none cursor-pointer"></select>
             <div id="finEdNewPeriodWrap" class="hidden"><input type="text" id="finEdNewPeriod" class="input-num text-xs w-36" placeholder="例: 2026年2月期"></div>
+            <button onclick="autoSortPeriods()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 text-xs font-bold px-3 py-2 rounded-lg transition-colors" title="決算期名に含まれる年数・期数から並び順を自動で振り直します"><i class="fa-solid fa-arrow-down-1-9 mr-1"></i>並びを自動整列</button>
           </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1400,6 +1401,35 @@
       } catch (e) {
         hideLoading();
         alert('保存エラー: ' + e.message);
+      }
+    }
+
+    // ★追加: 決算期の並び順を名称から自動で振り直す
+    // 「第2期（2021年）」のような名称から年(西暦4桁)を優先、なければ最初の数字(期数)で判定する
+    function periodSortKey(p) {
+      const s = String(p).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+      const y = s.match(/(19|20)\d{2}/);
+      if (y) return Number(y[0]) * 1000 + (Number((s.match(/第(\d+)期/) || [])[1]) || 0);
+      const n = s.match(/\d+/);
+      return n ? Number(n[0]) : Number.MAX_SAFE_INTEGER;
+    }
+
+    async function autoSortPeriods() {
+      if (rawData.headers.length < 2 || rawData.headers[0] === 'データなし') { alert('並び替える決算期がありません。'); return; }
+      const sorted = rawData.headers.slice().sort((a, b) => periodSortKey(a) - periodSortKey(b));
+      if (!confirm('決算期名に含まれる年数・期数をもとに並び順を振り直します。\n\n新しい並び:\n' + sorted.join(' → ') + '\n\nよろしいですか？')) return;
+      showLoading('並び順を更新中...');
+      try {
+        for (let i = 0; i < sorted.length; i++) {
+          const { error } = await db.from('fin_historical_pl').update({ sort_order: i + 1 }).eq('period', sorted[i]);
+          if (error) throw error;
+          try { await db.from('fin_historical_bs').update({ sort_order: i + 1 }).eq('period', sorted[i]); } catch (e) { console.warn(e); }
+        }
+        hideLoading();
+        await fetchFinancialData();
+      } catch (e) {
+        hideLoading();
+        alert('並び替えエラー: ' + e.message);
       }
     }
 
