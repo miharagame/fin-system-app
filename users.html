@@ -499,6 +499,8 @@
         } else {
             bSel.disabled = false;
             bSel.classList.remove('opacity-50', 'cursor-not-allowed');
+            // ★追加: 管理者・税理士など店舗に属さないアカウント用に「全店舗」を選択可能にする
+            bSel.innerHTML += `<option value="全店舗">全店舗 (店舗に属さない)</option>`;
             branchList.forEach(b => { bSel.innerHTML += `<option value="${b}">${b}</option>`; });
         }
 
