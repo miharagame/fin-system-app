@@ -1783,11 +1783,9 @@
 
             let scoreLaborProd = 0; let breakevenProd = periodTargetHours > 0 ? periodFixedCost / periodTargetHours : 4000;
             let actualProd = actualWorkHours > 0 ? actualGrossProfit / actualWorkHours : 0;
-            let minHoursThreshold = periodTargetHours * 0.8 * periodDaysRatio;
-            if (actualWorkHours < minHoursThreshold) { 
-              scoreLaborProd = 0; 
-            } else if (breakevenProd > 0) { 
-              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 50); 
+            // ★修正: 「実働が基準時間×80%未満なら0点」の崖ルールを撤廃し、純粋に円/hで評価する
+            if (breakevenProd > 0) {
+              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 50);
             }
 
             let inputRate = elapsedPeriodDays > 0 ? (stats.recordDays.size / elapsedPeriodDays) * 100 : 0;
@@ -2056,7 +2054,7 @@
       }
 
       if (scores[4] === 0) {
-        advice.push("<li class='flex gap-2'><i class='fa-solid fa-skull-crossbones text-rose-500 mt-1 shrink-0'></i><span><strong class='text-rose-500'>【生産性】</strong> 労働時間が想定の80%未満です。ワンオペや無理なシフトによる店頭崩壊リスクとみなし、スコアが強制的に0点になっています。</span></li>");
+        advice.push("<li class='flex gap-2'><i class='fa-solid fa-skull-crossbones text-rose-500 mt-1 shrink-0'></i><span><strong class='text-rose-500'>【生産性】</strong> 人時生産性(円/h)が損益分岐点を大きく下回っています。粗利の底上げか労働時間の見直しが必要です。</span></li>");
       } else if (scores[4] > 60) {
         advice.push("<li class='flex gap-2'><i class='fa-solid fa-fire text-indigo-400 mt-1 shrink-0'></i><span><strong class='text-indigo-400'>【生産性】</strong> 上限突破！適正な人員を配置したうえで、損益分岐点を大きく超える圧倒的な生産性を誇っています。</span></li>");
       } else {
