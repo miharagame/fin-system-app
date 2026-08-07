@@ -1559,11 +1559,13 @@
 
         // ★追加: 委託関連（率の設定値・社内委託記録）を取得。テーブル未作成でも動作継続
         let consignTk = 10, consignSh = 50, internalRecsPeriod = [];
+        let prodTargetMult = 3.0; // ★追加: 生産性の目標倍率(分岐点×この倍率=目標生産性/50点)。全社共通設定で変更可
         try {
             const { data: gsData } = await db.from('fin_global_settings').select('*');
             if (gsData) {
                 const tRow = gsData.find(r => r.key === 'consign_external_take_rate'); if (tRow) consignTk = Number(tRow.value) || 10;
                 const sRow = gsData.find(r => r.key === 'consign_internal_owner_share'); if (sRow) consignSh = Number(sRow.value) || 50;
+                const pRow = gsData.find(r => r.key === 'prod_target_multiplier'); if (pRow) prodTargetMult = Number(pRow.value) || 3.0;
             }
             const { data: icData, error: icErr } = await db.from('internal_consign_records').select('*').gte('target_date', startDateStr).lte('target_date', endDateStr);
             if (!icErr && icData) internalRecsPeriod = icData;
@@ -1783,10 +1785,13 @@
 
             let scoreLaborProd = 0; let breakevenProd = periodTargetHours > 0 ? periodFixedCost / periodTargetHours : 4000;
             let actualProd = actualWorkHours > 0 ? actualGrossProfit / actualWorkHours : 0;
-            // ★修正: 「実働が基準時間×80%未満なら0点」の崖ルールを撤廃し、純粋に円/hで評価する
-            if (breakevenProd > 0) {
-              scoreLaborProd = Math.max(0, (actualProd / breakevenProd) * 50);
-            }
+            // ★修正: 分岐点(赤字ライン)基準では全店が大幅超過して点がインフレするため、
+            //   「分岐点 × 目標倍率(既定3.0 / fin_global_settings: prod_target_multiplier)」を
+            //   目標生産性=50点満点相当とし、超過分は傾き半分(超過100%ごとに+25点)の逓減加点(上限なし)。
+            //   分岐点ちょうどなら約17点(=50/3)で「赤字回避しただけ」の評価になる。
+            let targetProd = breakevenProd * prodTargetMult;
+            let prodRatio = targetProd > 0 ? actualProd / targetProd : 0;
+            scoreLaborProd = prodRatio <= 1 ? Math.max(0, prodRatio * 50) : 50 + (prodRatio - 1) * 25;
 
             let inputRate = elapsedPeriodDays > 0 ? (stats.recordDays.size / elapsedPeriodDays) * 100 : 0;
             let scoreBase = Math.min(30, Math.max(0, (inputRate / 100) * 30));
@@ -1810,6 +1815,7 @@
                     targetInvLimit: currentInvLimit, actualInvChange: actualInvChange,
                     targetMargin: target.marginRate, actualMargin: actualMarginRate.toFixed(1), marginRatio: (mRatio * 100).toFixed(1),
                     inputRate: inputRate.toFixed(1), actualProd: Math.round(actualProd), breakevenProd: Math.round(breakevenProd),
+                    targetProd: Math.round(targetProd), prodMult: prodTargetMult,
                     workHours: Math.round(actualWorkHours), targetHours: Math.round(periodTargetHours),
                     goodInvRatio: (goodInvRatio * 100).toFixed(1), validInvMonths: validInvMonths
                 }
@@ -1952,7 +1958,7 @@
 
       document.getElementById('detScore5').innerText = s.scores[4] + " / " + maxScores[4];
       const masterWarn = s.hasMaster ? "" : `<br><span class="text-amber-400 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>固定費マスタ未設定のため仮の基準値で計算されています</span>`;
-      document.getElementById('detDetail5').innerHTML = `分岐点生産性: <span class="text-white">${s.details.breakevenProd}</span>円/h / 実績: <span class="text-white">${s.details.actualProd}</span>円/h (実働 ${s.details.workHours}h / 基準 ${s.details.targetHours}h)${masterWarn}`;
+      document.getElementById('detDetail5').innerHTML = `目標生産性: <span class="text-white">${(s.details.targetProd || 0).toLocaleString()}</span>円/h (分岐点${s.details.breakevenProd}円/h×${s.details.prodMult || 3}) / 実績: <span class="text-white">${s.details.actualProd}</span>円/h (実働 ${s.details.workHours}h)${masterWarn}`;
 
       document.getElementById('detScore6').innerText = s.scores[5] + " / " + maxScores[5];
       document.getElementById('detDetail6').innerHTML = `日報入力率: <span class="text-white">${s.details.inputRate}</span>% (経過日数ベース)`;
