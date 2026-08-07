@@ -587,6 +587,22 @@
               </div>
             </div>
           </div>
+
+          <!-- ★追加: 店舗間在庫移動の補正入力 (移動記録から自動プリフィル) -->
+          <div class="bg-sky-950/20 p-4 rounded-xl border border-sky-900/40 mt-4">
+            <label class="text-sm text-sky-300 font-bold mb-1 block"><i class="fa-solid fa-truck-arrow-right mr-1"></i>店舗間在庫移動の補正 (移動がない月は0のまま)</label>
+            <p class="text-[10px] text-slate-500 mb-3">当月に他店と在庫を移動した場合、原価ベースの移入・移出額を入力すると売上原価の計算式に組み込まれ、移動による粗利の増減が打ち消されます。日報の移動記録から自動集計されます。</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <p class="text-[10px] text-slate-400 font-bold mb-1">移入額 (他店から受入 / 原価)</p>
+                <input type="text" id="hqTransferIn" oninput="calcHqPreview()" class="w-full bg-slate-950 border border-sky-900/50 text-sky-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-sky-500 text-right" placeholder="0">
+              </div>
+              <div>
+                <p class="text-[10px] text-slate-400 font-bold mb-1">移出額 (他店へ送付 / 原価)</p>
+                <input type="text" id="hqTransferOut" oninput="calcHqPreview()" class="w-full bg-slate-950 border border-sky-900/50 text-sky-200 font-bold font-mono rounded-lg px-3 py-2 outline-none focus:border-sky-500 text-right" placeholder="0">
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="bg-emerald-950/20 p-6 rounded-xl border border-emerald-900/50 shadow-lg mb-6">
@@ -652,8 +668,10 @@
     let scoringData = [];
     let radarChartObj = null;
     let hqBaseData = { totalPurchase: 0, totalSales: 0 };
-    let globalBranches = []; 
-    
+    let globalBranches = [];
+    let evalGroupMap = {};    // ★追加: 評価グループ 子店舗名 → 親店舗名 (例: 池袋店 → 秋葉原店)
+    let evalChildrenMap = {}; // ★追加: 親店舗名 → [子店舗名...]
+
     let hrEvaluationsList = [];
     let hqReportsList = [];
     let adminUsersList = [];
@@ -739,11 +757,19 @@
             await db.auth.setSession({ access_token: accToken, refresh_token: refToken });
         }
         
-        const { data: bData, error: bErr } = await db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true });
+        const { data: bData, error: bErr } = await db.from('branches').select('*').eq('is_active', true).order('sort_order', { ascending: true });
         if (bErr) throw bErr;
-        
+
         if (bData && bData.length > 0) {
             globalBranches = bData.map(b => b.name);
+            // ★追加: 評価グループ(branches.eval_parent)の構築
+            evalGroupMap = {}; evalChildrenMap = {};
+            bData.forEach(b => {
+                if (b.eval_parent && b.eval_parent !== b.name) {
+                    evalGroupMap[b.name] = b.eval_parent;
+                    (evalChildrenMap[b.eval_parent] = evalChildrenMap[b.eval_parent] || []).push(b.name);
+                }
+            });
         } else {
             globalBranches = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店']; // フォールバック
         }
@@ -1573,20 +1599,27 @@
             if (!icErr && icData) internalRecsPeriod = icData;
         } catch (e) { console.warn('委託データ取得スキップ:', e); }
 
-        let targetBranches = currentUser.permissions.viewAll ? globalBranches : [currentUser.branch];
+        // ★修正: 評価グループ(例: 秋葉原+池袋)は親店舗に合算して評価する
+        //   子店舗はランキングから除外し、日報・確定値・目標・固定費・棚卸をすべて親へ合算
+        let targetBranches = currentUser.permissions.viewAll
+            ? globalBranches.filter(b => !evalGroupMap[b])
+            : [evalGroupMap[currentUser.branch] || currentUser.branch];
+        const groupMembersOf = (b) => [b, ...(evalChildrenMap[b] || [])];
         let branchPeriodTargets = {};
-        
+
         targetBranches.forEach(b => {
             branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0 };
             let marginSum = 0, marginCount = 0;
-            targetMonthsList.forEach(mStr => {
-                let mData = budgetRes.data.find(d => d.target_month === mStr && d.branch === b);
-                if (mData) {
-                    branchPeriodTargets[b].cash += Number(mData.target_cash) || 0;
-                    branchPeriodTargets[b].invLimit += Number(mData.target_inv_limit) || 0;
-                    let mr = Number(mData.margin_rate) || 0;
-                    if (mr > 0) { marginSum += mr; marginCount++; }
-                }
+            groupMembersOf(b).forEach(mb => {
+                targetMonthsList.forEach(mStr => {
+                    let mData = budgetRes.data.find(d => d.target_month === mStr && d.branch === mb);
+                    if (mData) {
+                        branchPeriodTargets[b].cash += Number(mData.target_cash) || 0;
+                        branchPeriodTargets[b].invLimit += Number(mData.target_inv_limit) || 0;
+                        let mr = Number(mData.margin_rate) || 0;
+                        if (mr > 0) { marginSum += mr; marginCount++; }
+                    }
+                });
             });
             if (marginCount > 0) branchPeriodTargets[b].marginRate = marginSum / marginCount;
         });
@@ -1696,10 +1729,26 @@
 
         scoringData = [];
         targetBranches.forEach(b => {
+            const members = groupMembersOf(b); // ★追加: 評価グループの構成店舗(親+子)
             let target = branchPeriodTargets[b];
-            let stats = branchStats[b] || { sales: 0, discount: 0, workHours: 0, recordDays: new Set() };
-            let hasMaster = !!fixedCostMap[b];
-            let fcObj = fixedCostMap[b] || { monthlySga: 2500000, monthlyRepay: 500000, targetHours: 160 };
+
+            // ★修正: 日報ベースの期間集計(売上・値引・労働時間・入力日)をグループ合算
+            let stats = { sales: 0, discount: 0, workHours: 0, recordDays: new Set() };
+            members.forEach(mb => {
+                const s = branchStats[mb];
+                if (!s) return;
+                stats.sales += s.sales; stats.discount += s.discount; stats.workHours += s.workHours;
+                s.recordDays.forEach(d => stats.recordDays.add(d));
+            });
+
+            // ★修正: 固定費マスタもグループ合算
+            let hasMaster = members.some(mb => !!fixedCostMap[mb]);
+            let fcObj = { monthlySga: 0, monthlyRepay: 0, targetHours: 0 };
+            members.forEach(mb => {
+                const f = fixedCostMap[mb];
+                if (f) { fcObj.monthlySga += f.monthlySga; fcObj.monthlyRepay += f.monthlyRepay; fcObj.targetHours += f.targetHours; }
+            });
+            if (!hasMaster) fcObj = { monthlySga: 2500000, monthlyRepay: 500000, targetHours: 160 };
 
             let actualNetSales = stats.sales - stats.discount;
             let actualWorkHours = stats.workHours;
@@ -1714,30 +1763,40 @@
             let consignProfit = 0;
             let isConfirmed = false;
 
-            targetMonthsList.forEach(mStr => {
-                const key = b + '|' + mStr;
-                const dm = dailyByKey[key] || { gross: 0, cash: 0, inv: 0 };
-                const cm = confirmedByKey[key];
-                if (cm) {
-                    // 確定月: 確定粗利は在庫ベース計算のため委託売上分が膨らむ → 実質(自社+委託取り分)に補正
-                    actualGrossProfit += cm.grossProfit - cm.payout;
-                    // 旧形式の確定行(在庫増減が計算不能)はその月の日報値で代替
-                    actualInvChange += (cm.invChange === null) ? dm.inv : cm.invChange;
-                    // 現金化は日報の現金化から委託元への支払予定分を控除した実質
-                    cashFlowBase += dm.cash - cm.payout;
-                    consignSales += cm.consignSales;
-                    consignProfit += cm.consignProfit;
-                    isConfirmed = true;
-                } else {
-                    // 未確定月: 日報ベース(委託の日次補正は下の consignAdjMap で適用)
-                    actualGrossProfit += dm.gross;
-                    actualInvChange += dm.inv;
-                    cashFlowBase += dm.cash;
-                }
+            // ★修正: グループ構成店舗ごと×月ごとにハイブリッド集計(確定値があれば確定、なければ日報)
+            members.forEach(mb => {
+                targetMonthsList.forEach(mStr => {
+                    const key = mb + '|' + mStr;
+                    const dm = dailyByKey[key] || { gross: 0, cash: 0, inv: 0 };
+                    const cm = confirmedByKey[key];
+                    if (cm) {
+                        // 確定月: 確定粗利は在庫ベース計算のため委託売上分が膨らむ → 実質(自社+委託取り分)に補正
+                        actualGrossProfit += cm.grossProfit - cm.payout;
+                        // 旧形式の確定行(在庫増減が計算不能)はその月の日報値で代替
+                        actualInvChange += (cm.invChange === null) ? dm.inv : cm.invChange;
+                        // 現金化は日報の現金化から委託元への支払予定分を控除した実質
+                        cashFlowBase += dm.cash - cm.payout;
+                        consignSales += cm.consignSales;
+                        consignProfit += cm.consignProfit;
+                        isConfirmed = true;
+                    } else {
+                        // 未確定月: 日報ベース(委託の日次補正は下の consignAdjMap で適用)
+                        actualGrossProfit += dm.gross;
+                        actualInvChange += dm.inv;
+                        cashFlowBase += dm.cash;
+                    }
+                });
             });
 
-            // ★追加: 日次委託データ(外部・社内B案)によるリアルタイム補正を適用
-            const cAdj = consignAdjMap[b];
+            // ★追加: 日次委託データ(外部・社内B案)によるリアルタイム補正を適用(グループ合算)
+            let cAdj = null;
+            members.forEach(mb => {
+                const a = consignAdjMap[mb];
+                if (!a) return;
+                if (!cAdj) cAdj = { gross: 0, cash: 0, inv: 0, consignSales: 0, consignProfit: 0 };
+                cAdj.gross += a.gross; cAdj.cash += a.cash; cAdj.inv += a.inv;
+                cAdj.consignSales += a.consignSales; cAdj.consignProfit += a.consignProfit;
+            });
             if (cAdj) {
                 actualGrossProfit += cAdj.gross;
                 actualInvChange += cAdj.inv;
@@ -1771,7 +1830,7 @@
 
             let sumGoodInv = 0; let sumTotalInv = 0; let validInvMonths = 0;
             if (invRes.data) {
-                let bInv = invRes.data.filter(i => i.branch === b);
+                let bInv = invRes.data.filter(i => members.includes(i.branch)); // ★修正: グループ合算
                 bInv.forEach(r => {
                     let rMonth = String(r.target_month).substring(0, 7);
                     if (targetMonthsList.includes(rMonth)) {
@@ -1814,6 +1873,7 @@
 
             scoringData.push({
                 branch: b, totalScore: totalScore, rank: rank, scores: scoresArr,
+                groupNote: (evalChildrenMap[b] || []).join('・'), // ★追加: 評価グループの子店舗表示用
                 isConfirmed: isConfirmed, hasMaster: hasMaster,
                 details: {
                     targetCash: currentTargetCash, actualCash: correctedCashFlow, cashRatio: (cashRatio * 100).toFixed(1),
@@ -1902,7 +1962,7 @@
             <div class="flex items-center">
               ${medal}
               <div>
-                <p class="font-bold text-white group-hover:text-sky-400 transition-colors">${s.branch}</p>
+                <p class="font-bold text-white group-hover:text-sky-400 transition-colors">${s.branch}${s.groupNote ? ` <span class="text-[9px] text-sky-500 font-normal">+${s.groupNote}</span>` : ''}</p>
                 <p class="text-[10px] text-slate-500 font-mono mt-0.5">${s.totalScore} points</p>
               </div>
             </div>
@@ -1929,7 +1989,7 @@
       document.getElementById('scoreDetailContent').classList.remove('hidden');
       document.getElementById('scoreDetailContent').classList.add('flex');
 
-      document.getElementById('detailBranchName').innerText = s.branch;
+      document.getElementById('detailBranchName').innerText = s.branch + (s.groupNote ? `（${s.groupNote}含む）` : '');
       document.getElementById('detailTotalScore').innerText = s.totalScore;
       
       if (s.isConfirmed) {
@@ -2200,11 +2260,13 @@
       scoringData.forEach(s => { storeStaffCounts[s.branch] = 0; storeUserMaps[s.branch] = []; });
 
       adminUsersList.forEach(u => {
-        if (storeStaffCounts[u.branch] !== undefined) {
+        // ★修正: 評価グループの子店舗(例: 池袋)所属スタッフは親店舗(秋葉原)のプールに合流させる
+        const ub = evalGroupMap[u.branch] || u.branch;
+        if (storeStaffCounts[ub] !== undefined) {
           // ★修正: 「店舗共通」が含まれる役職を一括で賞与計算の分母から除外する
         　const isCommonAccount = u.roleLevel && String(u.roleLevel).includes("店舗共通");
         　if (u.roleId === "role_employee" && !isCommonAccount && u.roleLevel !== "管理者") {
-          　storeStaffCounts[u.branch]++; storeUserMaps[u.branch].push(u);
+          　storeStaffCounts[ub]++; storeUserMaps[ub].push(u);
         　}
         }
       });
@@ -2352,7 +2414,28 @@
               ? Number(curStatData.consignment_sales).toLocaleString()
               : (dailyConsignTotal > 0 ? Math.round(dailyConsignTotal).toLocaleString() : "0");
           document.getElementById('hqConsignRate').value = (curStatData && curStatData.consignment_margin_rate != null) ? curStatData.consignment_margin_rate : 10;
-          
+
+          // ★追加: 店舗間移動のプリフィル。確定済みなら保存値、なければ日報の移動記録の当月集計
+          let trInSum = 0, trOutSum = 0;
+          try {
+              const { data: trs, error: trErr } = await db.from('inventory_transfer_records')
+                  .select('*')
+                  .gte('target_date', `${month}-01`).lte('target_date', `${month}-${lastDay}`);
+              if (!trErr && trs) trs.forEach(r => {
+                  const c = Number(r.cost_amount) || 0;
+                  if (r.to_branch === branch) trInSum += c;
+                  if (r.from_branch === branch) trOutSum += c;
+              });
+          } catch (e) { console.warn('移動記録の取得スキップ:', e); }
+          const elTrIn = document.getElementById('hqTransferIn');
+          const elTrOut = document.getElementById('hqTransferOut');
+          if (elTrIn) elTrIn.value = (curStatData && Number(curStatData.transfer_in) > 0)
+              ? Number(curStatData.transfer_in).toLocaleString()
+              : (trInSum > 0 ? Math.round(trInSum).toLocaleString() : "0");
+          if (elTrOut) elTrOut.value = (curStatData && Number(curStatData.transfer_out) > 0)
+              ? Number(curStatData.transfer_out).toLocaleString()
+              : (trOutSum > 0 ? Math.round(trOutSum).toLocaleString() : "0");
+
           const prevStatData = statsRes.data ? statsRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           const prevSummaryData = invSummaryRes.data ? invSummaryRes.data.find(r => String(r.target_month).startsWith(prevMonthStr)) : null;
           let prevInvVal = "";
@@ -2468,10 +2551,15 @@
       prevInvInput.value = vPrevInv !== '' ? parseInt(vPrevInv, 10).toLocaleString() : '';
       const prevInv = vPrevInv !== '' ? parseInt(vPrevInv, 10) : 0;
 
-      const invChange = currentInv - prevInv; 
-      const cogs = prevInv + hqBaseData.totalPurchase - currentInv; 
+      // ★追加: 店舗間移動(原価)を売上原価の式に組み込む: 原価 = 期首 + 買取 + 移入 − 移出 − 期末
+      //   これにより移動による粗利のブレが消え、在庫評価(買取−原価)も自店の売買活動のみを反映する
+      const trIn = parseFloat(String((document.getElementById('hqTransferIn') || {}).value || '0').replace(/,/g, '')) || 0;
+      const trOut = parseFloat(String((document.getElementById('hqTransferOut') || {}).value || '0').replace(/,/g, '')) || 0;
+
+      const invChange = currentInv - prevInv;
+      const cogs = prevInv + hqBaseData.totalPurchase + trIn - trOut - currentInv;
       const grossProfit = hqBaseData.totalSales - cogs;
-      
+
       const elChange = document.getElementById('hqPrevInvChange'); 
       const elCogs = document.getElementById('hqPrevCogs'); 
       const elGross = document.getElementById('hqPrevGross');
@@ -2509,11 +2597,14 @@
       
       if (!valStr || !prevValStr) { alert("前月末の在庫と今月末の確定在庫額を両方入力してください。"); return; }
       
-      const currentInv = parseInt(valStr, 10); 
-      const prevInv = parseInt(prevValStr, 10); 
-      const cogs = prevInv + hqBaseData.totalPurchase - currentInv; 
+      const currentInv = parseInt(valStr, 10);
+      const prevInv = parseInt(prevValStr, 10);
+      // ★追加: 店舗間移動(原価)を売上原価の式に組み込む
+      const trInSave = parseFloat(String((document.getElementById('hqTransferIn') || {}).value || '0').replace(/,/g, '')) || 0;
+      const trOutSave = parseFloat(String((document.getElementById('hqTransferOut') || {}).value || '0').replace(/,/g, '')) || 0;
+      const cogs = prevInv + hqBaseData.totalPurchase + trInSave - trOutSave - currentInv;
       const grossProfit = hqBaseData.totalSales - cogs;
-      
+
       let confirmMsg = `${month} の ${branch} の月次データを確定し、Supabaseへ同期上書きします。よろしいですか？\n・月末在庫額: ${currentInv.toLocaleString()}円`;
       if (parsedAttendanceRows.length > 0) {
         confirmMsg += `\n\n⚠️【同時実行】読み込まれている ${parsedAttendanceRows.length} 件の日次勤怠データを、日報(daily_records)へ直接強制上書きします。`;
@@ -2567,11 +2658,20 @@
               gross_profit: grossProfit,
               consignment_sales: parseInt((document.getElementById('hqConsignSales').value || "0").replace(/,/g, ''), 10) || 0,
               consignment_margin_rate: parseFloat(document.getElementById('hqConsignRate').value) || 10,
+              transfer_in: trInSave,   // ★追加: 店舗間移動(移入/原価)
+              transfer_out: trOutSave, // ★追加: 店舗間移動(移出/原価)
               updated_by: currentUser.name,
               updated_at: new Date().toISOString()
           };
 
-          const { error: statsErr } = await db.from('fin_monthly_stats').upsert(payload, { onConflict: 'target_month, branch' });
+          let { error: statsErr } = await db.from('fin_monthly_stats').upsert(payload, { onConflict: 'target_month, branch' });
+          // ★追加: transfer列が未作成の環境ではその2列を除いて再試行(粗利・原価には反映済み)
+          if (statsErr && /transfer/i.test(statsErr.message || '')) {
+              const { transfer_in, transfer_out, ...fallbackPayload } = payload;
+              const retry = await db.from('fin_monthly_stats').upsert(fallbackPayload, { onConflict: 'target_month, branch' });
+              statsErr = retry.error;
+              if (!statsErr && (trInSave > 0 || trOutSave > 0)) alert("注意: fin_monthly_stats に transfer_in / transfer_out 列がありません。付属SQL (inventory_transfer_setup.sql) を実行してください。確定値の粗利・原価には移動分を反映済みです。");
+          }
           if (statsErr) throw statsErr;
 
           parsedAttendanceRows = [];
