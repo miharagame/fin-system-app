@@ -612,7 +612,10 @@
                     month: String(d.target_month).substring(0, 7), // ★追加: 対象月 (yyyy-mm)
                     branch: d.branch,
                     grossProfit: Number(d.gross_profit) || 0,
-                    invChange: (Number(d.total_purchase) || 0) - (Number(d.cogs) || 0),
+                    // ★修正: 旧形式の確定行(仕入・売上原価が未保存)は在庫増減を計算できないため null
+                    //   (0扱いすると仕入額がそのまま在庫増に化ける) → 集計時に日報値で代替する
+                    invChange: (d.total_purchase !== null && d.total_purchase !== undefined && d.cogs !== null && d.cogs !== undefined)
+                        ? (Number(d.total_purchase) || 0) - (Number(d.cogs) || 0) : null,
                     consignSales: consignSales,
                     consignProfit: consignProfit,
                     consignPayout: consignPayout,
@@ -1016,10 +1019,12 @@
                 const correctedGross = cStats.grossProfit - (cStats.consignPayout || 0);
 
                 // その月の日報ベース値を除外し、確定値(補正済み)を加算
+                // ★修正: 旧形式の確定行(invChange=null)は在庫増減のみ日報値を維持する
+                const confInv = (cStats.invChange === null) ? daily.inv : cStats.invChange;
                 bStats[cStats.branch].grossProfit += correctedGross - daily.gross;
-                bStats[cStats.branch].invChange += cStats.invChange - daily.inv;
+                bStats[cStats.branch].invChange += confInv - daily.inv;
                 totalGross += correctedGross - daily.gross;
-                totalInv += cStats.invChange - daily.inv;
+                totalInv += confInv - daily.inv;
 
                 // 現金化額から委託元へ支払う預かり分を控除（実質の手残りに補正）
                 bStats[cStats.branch].cashFlow -= (cStats.consignPayout || 0);
