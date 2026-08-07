@@ -59,6 +59,14 @@
                 <option value="false">無効 (閉鎖・準備中)</option>
               </select>
             </div>
+            <!-- ★追加: 評価統合 (eval_parent) -->
+            <div>
+              <label class="text-[10px] text-sky-400 mb-1 block font-bold">評価統合 (親店舗)</label>
+              <select id="b_eval_parent" class="input-box text-sm cursor-pointer border-sky-900 focus:border-sky-500 bg-sky-950/20 text-sky-100">
+                <option value="">なし (独立して評価)</option>
+              </select>
+              <p class="text-[10px] text-slate-500 mt-1">親店舗を設定すると、スコアリング・ポータル・賞与計算でその店舗の数字が親店舗に合算されます (例: 池袋店 → 秋葉原店)。日報入力は今まで通り店舗ごとです。</p>
+            </div>
             <button onclick="saveBranchMaster()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all mt-4 flex justify-center items-center gap-2 shadow-lg"><i class="fa-solid fa-save"></i> 保存する</button>
             <button onclick="clearBranchForm()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold py-2 rounded-xl transition-all mt-2 text-xs border border-slate-700">フォームをクリア (新規追加)</button>
           </div>
@@ -70,7 +78,7 @@
           <button onclick="loadBranchesMaster()" class="text-xs text-slate-400 hover:text-white transition-colors border border-slate-700 bg-slate-800 px-3 py-1 rounded"><i class="fa-solid fa-rotate-right mr-1"></i>更新</button>
         </h2>
         <table class="w-full text-sm text-left whitespace-nowrap">
-          <thead><tr class="border-b border-slate-700 text-xs text-slate-400"><th class="pb-2">コード(ID)</th><th class="pb-2">店舗名</th><th class="pb-2 text-center">並び順</th><th class="pb-2 text-center">ステータス</th><th class="pb-2 text-center">操作</th></tr></thead>
+          <thead><tr class="border-b border-slate-700 text-xs text-slate-400"><th class="pb-2">コード(ID)</th><th class="pb-2">店舗名</th><th class="pb-2 text-center">並び順</th><th class="pb-2 text-center">ステータス</th><th class="pb-2 text-center">評価統合</th><th class="pb-2 text-center">操作</th></tr></thead>
           <tbody id="branchTbody" class="divide-y divide-slate-800/50"></tbody>
         </table>
       </div>
@@ -520,32 +528,59 @@
         if (error) throw error;
         
         branchesMasterList = data || [];
+        refreshEvalParentOptions();
         renderBranchesMaster();
       } catch (err) {
         document.getElementById('branchTbody').innerHTML = `<tr><td colspan="5" class="text-center py-4 text-rose-400 font-bold">${err.message}</td></tr>`;
       }
     }
 
+    // ★追加: 評価統合(親店舗)セレクトの選択肢を再構築する
+    //   親候補 = 自分以外で、かつ自身が誰かの子になっていない店舗(2段階の入れ子は禁止)
+    function refreshEvalParentOptions(excludeName) {
+      const sel = document.getElementById('b_eval_parent');
+      if (!sel) return;
+      const current = sel.value;
+      let html = `<option value="">なし (独立して評価)</option>`;
+      branchesMasterList.forEach(b => {
+        if (b.name === excludeName) return;
+        if (b.eval_parent) return; // 子店舗は親候補にしない
+        html += `<option value="${b.name}">${b.name}</option>`;
+      });
+      sel.innerHTML = html;
+      if (current) sel.value = current;
+    }
+
     function renderBranchesMaster() {
       let html = "";
       if(branchesMasterList.length > 0) {
         branchesMasterList.forEach(b => {
-          const statusBadge = b.is_active 
-            ? `<span class="px-2 py-1 rounded border border-emerald-900 bg-emerald-950/30 text-emerald-400 font-bold text-[10px]">有効</span>` 
+          const statusBadge = b.is_active
+            ? `<span class="px-2 py-1 rounded border border-emerald-900 bg-emerald-950/30 text-emerald-400 font-bold text-[10px]">有効</span>`
             : `<span class="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-500 font-bold text-[10px]">無効</span>`;
-          
+
+          // ★追加: 評価統合の表示 (親 or 子リスト)
+          const childNames = branchesMasterList.filter(x => x.eval_parent === b.name).map(x => x.name);
+          let evalBadge = `<span class="text-slate-600 text-[10px]">-</span>`;
+          if (b.eval_parent) {
+            evalBadge = `<span class="px-2 py-1 rounded border border-sky-900 bg-sky-950/30 text-sky-400 font-bold text-[10px]"><i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>${b.eval_parent} に合算</span>`;
+          } else if (childNames.length > 0) {
+            evalBadge = `<span class="px-2 py-1 rounded border border-indigo-900 bg-indigo-950/30 text-indigo-300 font-bold text-[10px]"><i class="fa-solid fa-layer-group mr-1"></i>親 (+${childNames.join('・')})</span>`;
+          }
+
           html += `<tr class="hover:bg-slate-800/50 transition-colors">
             <td class="py-3 px-2 text-slate-400 font-mono text-xs">${b.id}</td>
             <td class="py-3 px-2 text-white font-bold">${b.name}</td>
             <td class="py-3 px-2 text-center font-mono text-sky-300">${b.sort_order}</td>
             <td class="py-3 px-2 text-center">${statusBadge}</td>
+            <td class="py-3 px-2 text-center">${evalBadge}</td>
             <td class="py-3 px-2 text-center">
               <button onclick="editBranchMaster('${b.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded text-white border border-slate-600 transition-colors">編集</button>
             </td>
           </tr>`;
         });
       } else {
-        html = `<tr><td colspan="5" class="text-center py-10 text-slate-500 font-bold">店舗マスタがありません。</td></tr>`;
+        html = `<tr><td colspan="6" class="text-center py-10 text-slate-500 font-bold">店舗マスタがありません。</td></tr>`;
       }
       document.getElementById('branchTbody').innerHTML = html;
     }
@@ -553,12 +588,16 @@
     function editBranchMaster(id) {
       const b = branchesMasterList.find(x => x.id === id);
       if(!b) return;
-      document.getElementById('b_id').value = b.id; 
-      document.getElementById('b_id').disabled = true; 
-      document.getElementById('b_name').value = b.name; 
+      document.getElementById('b_id').value = b.id;
+      document.getElementById('b_id').disabled = true;
+      document.getElementById('b_name').value = b.name;
       document.getElementById('b_sort').value = b.sort_order;
       document.getElementById('b_active').value = b.is_active ? "true" : "false";
-      
+      // ★追加: 評価統合の反映(自分自身は親候補から除外)
+      refreshEvalParentOptions(b.name);
+      const pSel = document.getElementById('b_eval_parent');
+      if (pSel) pSel.value = b.eval_parent || "";
+
       window.scrollTo(0, 0);
     }
 
@@ -568,6 +607,9 @@
       document.getElementById('b_name').value = "";
       document.getElementById('b_sort').value = "99";
       document.getElementById('b_active').value = "true";
+      refreshEvalParentOptions();
+      const pSel = document.getElementById('b_eval_parent');
+      if (pSel) pSel.value = "";
     }
 
     async function saveBranchMaster() {
@@ -575,19 +617,38 @@
         id: document.getElementById('b_id').value.trim(),
         name: document.getElementById('b_name').value.trim(),
         sort_order: parseInt(document.getElementById('b_sort').value, 10) || 99,
-        is_active: document.getElementById('b_active').value === "true"
+        is_active: document.getElementById('b_active').value === "true",
+        eval_parent: (document.getElementById('b_eval_parent') ? document.getElementById('b_eval_parent').value : "") || ""
       };
-      
+
       if(!payload.id || !payload.name) { alert("店舗コードと店舗名を入力してください。"); return; }
       if(!/^[a-zA-Z0-9_]+$/.test(payload.id)) { alert("店舗コードは半角英数とアンダースコア(_)のみ使用可能です。"); return; }
-      
+
+      // ★追加: 評価統合のバリデーション(自己参照・2段階の入れ子・子持ち店舗の子化を禁止)
+      if (payload.eval_parent) {
+        if (payload.eval_parent === payload.name) { alert("自分自身を親店舗にはできません。"); return; }
+        const parentRow = branchesMasterList.find(x => x.name === payload.eval_parent);
+        if (parentRow && parentRow.eval_parent) { alert(`「${payload.eval_parent}」は既に「${parentRow.eval_parent}」の子店舗です。\n親店舗には独立した店舗のみ指定できます(入れ子は1段まで)。`); return; }
+        const myChildren = branchesMasterList.filter(x => x.eval_parent === payload.name).map(x => x.name);
+        if (myChildren.length > 0) { alert(`この店舗は既に親店舗です(子: ${myChildren.join('・')})。\n子店舗を持つ店舗を別の店舗に統合することはできません。先に子店舗の統合を解除してください。`); return; }
+      }
+
       try {
-        const { error } = await db.from('branches').upsert({
-            id: payload.id, 
-            name: payload.name, 
-            sort_order: payload.sort_order, 
-            is_active: payload.is_active
+        let { error } = await db.from('branches').upsert({
+            id: payload.id,
+            name: payload.name,
+            sort_order: payload.sort_order,
+            is_active: payload.is_active,
+            eval_parent: payload.eval_parent
         });
+        // ★追加: eval_parent列が未作成の環境ではその項目を除いて再試行し、SQLの実行を案内
+        if (error && /eval_parent/i.test(error.message || '')) {
+            const retry = await db.from('branches').upsert({
+                id: payload.id, name: payload.name, sort_order: payload.sort_order, is_active: payload.is_active
+            });
+            error = retry.error;
+            if (!error && payload.eval_parent) alert("注意: branches テーブルに eval_parent 列がありません。\n評価統合を使うには inventory_transfer_setup.sql を実行してください(その他の項目は保存済みです)。");
+        }
         if (error) throw error;
         
         alert("店舗マスタを保存しました。\n※UIに反映させるには画面のスーパーリロードが必要です。");
