@@ -146,6 +146,15 @@
               <div id="internalConsignRows" class="space-y-2"></div>
               <p class="text-[10px] text-slate-500 mt-2">在庫元店舗・販売額・在庫元での買取原価を入力すると、粗利が設定の按分率で在庫元と自動シェアされます。</p>
             </div>
+            <!-- ★追加: 店舗間在庫移動 (出庫側が入力) -->
+            <div class="bg-slate-950 p-3 rounded-xl border border-sky-900/30">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] font-bold text-sky-300"><i class="fa-solid fa-truck-arrow-right mr-1"></i>店舗間在庫移動 (他店へ在庫を送った分 / 出庫側のみ入力)</label>
+                <button onclick="addTransferRow()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 text-[10px] font-bold px-2.5 py-1 rounded transition-colors"><i class="fa-solid fa-plus mr-1"></i>行を追加</button>
+              </div>
+              <div id="transferRows" class="space-y-2"></div>
+              <p class="text-[10px] text-slate-500 mt-2">移動先店舗と「買取原価ベース」の金額を入力してください。受け取った側の入力は不要です。月次確定時に両店舗の粗利・在庫評価が自動補正されます。</p>
+            </div>
           </div>
 
           <div class="space-y-3 border-t border-slate-800 pt-4">
@@ -475,6 +484,7 @@
 
     let allTrackingData = [], trackingData = [], chartObj = null, currentUser = null;
     let internalConsignData = []; // ★追加: 当月の社内委託記録（自店が販売側のもの）
+    let transferData = [];        // ★追加: 当月の店舗間在庫移動記録（自店が出庫側のもの）
     let consignRates = { tk: 10, sh: 50 }; // ★追加: 外部取り分率% / 社内の在庫元按分率%
     let storeTarget = { margin: 0, cash: 0, invLimit: 0 };
     let todayStr = "", currentMonthStr = "", targetBranch = ""; 
@@ -682,8 +692,9 @@
         });
       }
 
-      // ★追加: 選択日の社内委託行を復元
+      // ★追加: 選択日の社内委託行・店舗間移動行を復元
       renderInternalConsignRows(dateVal);
+      renderTransferRows(dateVal);
       updatePreview();
     }
 
@@ -725,6 +736,39 @@
         const sales = parseFloat((div.querySelector('.ic-sales').value || '').replace(/,/g, '')) || 0;
         const cost = parseFloat((div.querySelector('.ic-cost').value || '').replace(/,/g, '')) || 0;
         if (owner && sales > 0) rows.push({ owner_branch: owner, sales_amount: sales, cost_amount: cost });
+      });
+      return rows;
+    }
+
+    // ==========================================
+    // ★追加: 店舗間在庫移動 (出庫側が入力)
+    // ==========================================
+    function addTransferRow(toBranch, cost) {
+      const wrap = document.createElement('div');
+      wrap.className = 'flex items-center gap-2 tr-row';
+      wrap.innerHTML = `
+        <span class="text-[10px] text-slate-500 shrink-0">移動先</span>
+        <select class="tr-to input-box text-xs py-1.5 w-32 shrink-0 cursor-pointer text-left">${getOwnerBranchOptions(toBranch || '')}</select>
+        <input type="text" value="${(cost || cost === 0) ? Number(cost).toLocaleString() : ''}" oninput="formatNumber(this)" placeholder="買取原価(円)" class="tr-cost input-box text-xs py-1.5 text-sky-300">
+        <button onclick="this.parentElement.remove();" class="text-slate-500 hover:text-rose-400 text-xs px-1 shrink-0" title="この行を削除"><i class="fa-solid fa-xmark"></i></button>`;
+      document.getElementById('transferRows').appendChild(wrap);
+    }
+
+    function renderTransferRows(dateVal) {
+      const cont = document.getElementById('transferRows');
+      if (!cont) return;
+      cont.innerHTML = '';
+      transferData
+        .filter(r => String(r.target_date).substring(0, 10) === dateVal)
+        .forEach(r => addTransferRow(r.to_branch, Number(r.cost_amount) || 0));
+    }
+
+    function collectTransferRows() {
+      const rows = [];
+      document.querySelectorAll('#transferRows .tr-row').forEach(div => {
+        const to = div.querySelector('.tr-to').value;
+        const cost = parseFloat((div.querySelector('.tr-cost').value || '').replace(/,/g, '')) || 0;
+        if (to && cost > 0) rows.push({ to_branch: to, cost_amount: cost });
       });
       return rows;
     }
@@ -779,6 +823,17 @@
             .eq('seller_branch', targetBranch);
           if (!icErr && icData) internalConsignData = icData;
         } catch (e) { console.warn('委託データ取得スキップ:', e); }
+
+        // ★追加: 当月の店舗間在庫移動記録（自店が出庫側のもの / テーブル未作成でも動作継続）
+        transferData = [];
+        try {
+          const { data: trData, error: trErr } = await db.from('inventory_transfer_records')
+            .select('*')
+            .gte('target_date', `${currentMonthStr}-01`)
+            .lte('target_date', `${currentMonthStr}-31`)
+            .eq('from_branch', targetBranch);
+          if (!trErr && trData) transferData = trData;
+        } catch (e) { console.warn('移動記録の取得スキップ:', e); }
 
         // ★修正: 数値が0の場合に空文字になるのを防ぐため、論理OR(||)からNullish Coalescing(??)に変更
         allTrackingData = sbData.map(r => ({
@@ -1211,6 +1266,23 @@
           }
         } catch (icErr) {
           alert("日報は保存されましたが、社内委託記録の保存に失敗しました。\ninternal_consign_records テーブルが未作成の可能性があります (付属SQLを実行してください)。\n" + icErr.message);
+        }
+
+        // ★追加: 店舗間在庫移動記録の保存（当日の自店出庫分を洗い替え）
+        try {
+          const trRows = collectTransferRows();
+          const { error: trDelErr } = await db.from('inventory_transfer_records')
+            .delete().eq('target_date', cleanDate).eq('from_branch', targetBranch);
+          if (trDelErr) throw trDelErr;
+          if (trRows.length > 0) {
+            const { error: trInsErr } = await db.from('inventory_transfer_records').insert(
+              trRows.map(r => ({ target_date: cleanDate, from_branch: targetBranch, to_branch: r.to_branch, cost_amount: r.cost_amount, created_by: currentUser.name }))
+            );
+            if (trInsErr) throw trInsErr;
+          }
+        } catch (trErr) {
+          const hasRows = document.querySelectorAll('#transferRows .tr-row').length > 0;
+          if (hasRows) alert("日報は保存されましたが、店舗間移動記録の保存に失敗しました。\ninventory_transfer_records テーブルが未作成の可能性があります (inventory_transfer_setup.sql を実行してください)。\n" + trErr.message);
         }
 
         b.disabled = false; b.innerHTML = '<i class="fa-solid fa-check mr-2"></i>保存する';
