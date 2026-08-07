@@ -345,6 +345,9 @@
     let toolPermissions = { analytics: false, planning: false, tracking: false, inventory: false, tasks: false, hr: false, report: false };
     
     let allRecords = [];
+    let evalGroupMap = {};    // ★追加: 評価グループ 子店舗名 → 親店舗名 (例: 池袋店 → 秋葉原店)
+    let evalChildrenMap = {}; // ★追加: 親店舗名 → [子店舗名...]
+    const evalBranchOf = (b) => evalGroupMap[b] || b; // ★追加: 集計上の店舗名(親)を返す
     let internalConsignAll = []; // ★追加: 社内委託記録（B案・粗利按分）
     let targetBranches = [];
     let currentPeriodMode = 'monthly'; 
@@ -500,15 +503,23 @@
           db.from('projects').select('*').neq('status', 'deleted'),
           db.from('fin_branch_fixed_costs').select('*'),
           db.from('fin_global_settings').select('*'),
-          db.from('branches').select('name').eq('is_active', true).order('sort_order', { ascending: true })
+          db.from('branches').select('*').eq('is_active', true).order('sort_order', { ascending: true })
         ]);
-        
+
         if (noticesRes.error) throw noticesRes.error;
         if (projRes.error) throw projRes.error;
         if (branchesRes.error) throw branchesRes.error;
 
+        evalGroupMap = {}; evalChildrenMap = {};
         if (branchesRes.data && branchesRes.data.length > 0) {
             globalBranches = branchesRes.data.map(b => b.name);
+            // ★追加: 評価グループ(branches.eval_parent) 子店舗を親店舗へ合算表示する
+            branchesRes.data.forEach(b => {
+                if (b.eval_parent && b.eval_parent !== b.name) {
+                    evalGroupMap[b.name] = b.eval_parent;
+                    (evalChildrenMap[b.eval_parent] = evalChildrenMap[b.eval_parent] || []).push(b.name);
+                }
+            });
         } else {
             globalBranches = ["大阪本店", "バトルタワー店", "秋葉原店", "福岡天神店", "名古屋大須店", "池袋店"];
         }
@@ -570,7 +581,7 @@
         }
 
         allRecords = allFetchedRecords.map(r => ({
-          branch: r.branch,
+          branch: r.branch, // ★修正: 集計は店舗単位のまま保持し、評価グループは表示段階で合算する(内訳表示のため)
           date: r.target_date ? r.target_date.substring(0, 10) : "",
           sales: Number(r.sales) || 0,
           purchase: Number(r.purchase) || 0,
@@ -596,7 +607,7 @@
         } catch (e) { console.warn('社内委託記録の取得スキップ:', e); }
         
         targetBranches = [...new Set(allRecords.map(r => r.branch))];
-        if (targetBranches.length === 0) targetBranches = globalBranches; 
+        if (targetBranches.length === 0) targetBranches = globalBranches;
         
         // ★修正: 当月分だけでなく全確定月を取得し、半期・年間・全期間の集計でも補正できるようにする
         const { data: summaryDataRes, error: summaryErr } = await db.from('fin_monthly_stats').select('*');
@@ -1067,12 +1078,14 @@
             const m = d.substring(0, 7);
             const ownerShare = (X - C) * shRate;
             const sellerShare = (X - C) - ownerShare;
-            const sellerConfirmed = swappedKeys.has(r.seller_branch + '|' + m);
-            const ownerConfirmed = swappedKeys.has(r.owner_branch + '|' + m);
+            const sellerB = r.seller_branch;
+            const ownerB = r.owner_branch;
+            const sellerConfirmed = swappedKeys.has(sellerB + '|' + m);
+            const ownerConfirmed = swappedKeys.has(ownerB + '|' + m);
 
             // --- 販売側: POS/確定補正に埋まっている取り分(tk×X)を按分後の取り分に置換し、在庫元への支払を控除 ---
-            if (bStats[r.seller_branch]) {
-                const s = bStats[r.seller_branch];
+            if (bStats[sellerB]) {
+                const s = bStats[sellerB];
                 const gAdj = sellerShare - X * tkRate;
                 const cAdj = sellerConfirmed ? (X * (1 - tkRate) - (C + ownerShare)) : -(C + ownerShare);
                 const iAdj = sellerConfirmed ? 0 : X * (1 - tkRate);
@@ -1083,8 +1096,8 @@
                 else { s.consignSales = (s.consignSales || 0) + X; s.consignProfit = (s.consignProfit || 0) + sellerShare; }
             }
             // --- 在庫元側: 按分粗利と精算金(原価+按分粗利)を加算、未確定月は在庫減も反映 ---
-            if (bStats[r.owner_branch]) {
-                const o = bStats[r.owner_branch];
+            if (bStats[ownerB]) {
+                const o = bStats[ownerB];
                 const gAdj = ownerConfirmed ? (C + ownerShare) : ownerShare;
                 const iAdj = ownerConfirmed ? 0 : -C;
                 o.grossProfit += gAdj; totalGross += gAdj;
@@ -1145,7 +1158,7 @@
                     .select('*')
                     .in('target_month', targetMonthsList)
                     .in('branch', targetBranches);
-                
+
                 if (bErr) throw bErr;
                 if (bData) {
                     bData.forEach(d => {
@@ -1277,48 +1290,113 @@
             summaryData.push({
                 branch: b, sales: stats.sales, purchase: stats.purchase, grossProfit: stats.grossProfit,
                 marginRate: mRate, cashFlow: stats.cashFlow, invChange: stats.invChange, isConfirmed: stats.isConfirmed,
-                laborProd: laborProd, monthlyTarget: mTarget
+                laborProd: laborProd, monthlyTarget: mTarget,
+                // ★追加: 評価グループ合算用の内訳項目
+                discount: stats.discount || 0, consignSales: stats.consignSales || 0,
+                consignProfit: stats.consignProfit || 0, workHours: stats.workHours || 0
             });
         });
-        
-        const branchOrder = globalBranches; 
+
+        const branchOrder = globalBranches;
         summaryData.sort((a, b) => {
             let idxA = branchOrder.indexOf(a.branch); let idxB = branchOrder.indexOf(b.branch);
             if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999;
             return idxA - idxB;
         });
-        
-        buildDashboard(summaryData);
+
+        // ★追加: 評価グループ(branches.eval_parent)の表示用合算
+        //   親行 = グループ合算値、members = 内訳(親自身+子店舗)の店舗別行(折りたたみ表示用)
+        const rowByBranch = {};
+        summaryData.forEach(s => { rowByBranch[s.branch] = s; });
+        const groupedData = [];
+        summaryData.forEach(s => {
+            const parentName = evalGroupMap[s.branch];
+            if (parentName) {
+                // 子店舗: 親の行があれば親の内訳に入るのでスキップ、親に行がなければ単独表示
+                if (rowByBranch[parentName]) return;
+                groupedData.push(s);
+                return;
+            }
+            const childRows = (evalChildrenMap[s.branch] || []).map(c => rowByBranch[c]).filter(Boolean);
+            if (childRows.length === 0) { groupedData.push(s); return; }
+            const memberRows = [s, ...childRows];
+            const agg = {
+                branch: s.branch, members: memberRows,
+                sales: 0, purchase: 0, grossProfit: 0, cashFlow: 0, invChange: 0,
+                discount: 0, consignSales: 0, consignProfit: 0, workHours: 0, monthlyTarget: 0,
+                isConfirmed: false
+            };
+            memberRows.forEach(m => {
+                agg.sales += m.sales || 0; agg.purchase += m.purchase || 0; agg.grossProfit += m.grossProfit || 0;
+                agg.cashFlow += m.cashFlow || 0; agg.invChange += m.invChange || 0; agg.discount += m.discount || 0;
+                agg.consignSales += m.consignSales || 0; agg.consignProfit += m.consignProfit || 0;
+                agg.workHours += m.workHours || 0; agg.monthlyTarget += m.monthlyTarget || 0;
+                agg.isConfirmed = agg.isConfirmed || m.isConfirmed;
+            });
+            const gNetS = (agg.sales - agg.discount) - agg.consignSales;
+            const gGross = agg.grossProfit - agg.consignProfit;
+            agg.marginRate = gNetS > 0 ? (gGross / gNetS) * 100 : 0;
+            agg.laborProd = agg.workHours > 0 ? agg.grossProfit / agg.workHours : 0;
+            groupedData.push(agg);
+        });
+
+        buildDashboard(groupedData);
         document.getElementById("initLoading").classList.add("hidden");
+    }
+
+    // ★追加: 評価グループ内訳行の表示/非表示切り替え
+    function toggleGroupRows(key, btn) {
+      document.querySelectorAll('.grp-' + key).forEach(tr => tr.classList.toggle('hidden'));
+      const ic = btn ? btn.querySelector('i') : null;
+      if (ic) { ic.classList.toggle('fa-chevron-down'); ic.classList.toggle('fa-chevron-up'); }
     }
 
     function buildDashboard(summaryData) {
       let labels = [], salesData = [], grossData = [], purchaseData = [], invData = [], cashData = [];
       let tbody = "";
 
-      summaryData.forEach(s => {
-        labels.push(s.branch);
+      const fmtRow = (s, opts) => {
+        const isMember = opts && opts.member;
+        const grpKey = opts && opts.grpKey;
+        let highlight = (currentUser && s.branch === currentUser.branch) ? "bg-slate-800" : "";
+        let invSign = (s.invChange || 0) >= 0 ? "+" : "";
+        let badge = s.isConfirmed ? `<span class="ml-2 bg-rose-900/80 border border-rose-500 text-rose-400 text-[9px] px-1.5 py-0.5 rounded-full font-bold shadow-[0_0_5px_rgba(225,29,72,0.3)]"><i class="fa-solid fa-lock text-[8px] mr-1"></i>確定</span>` : '';
+
+        // 親行: グループ合算バッジ+内訳の開閉ボタン / 内訳行: インデント+淡色表示
+        let nameCell;
+        if (s.members && s.members.length > 0) {
+          nameCell = `<button onclick="toggleGroupRows('${grpKey}', this)" class="mr-1 text-sky-400 hover:text-sky-300 transition-colors" title="内訳を表示/非表示"><i class="fa-solid fa-chevron-down text-[10px]"></i></button>${s.branch} <span class="text-[9px] text-sky-500 font-normal">統合(+${s.members.slice(1).map(m => m.branch).join('・')})</span>${badge}`;
+        } else if (isMember) {
+          nameCell = `<span class="text-slate-500 mr-1">└</span><span class="text-slate-400">${s.branch}</span>${badge}`;
+        } else {
+          nameCell = `${s.branch}${badge}`;
+        }
+        const numCls = isMember ? 'opacity-60' : '';
+        return `<tr class="${highlight} hover:bg-slate-800/50 transition-colors ${isMember ? `grp-${grpKey} hidden bg-slate-950/60` : ''}">
+          <td class="py-3 px-2 text-slate-200 font-bold whitespace-nowrap ${isMember ? 'pl-6 text-xs' : ''}">${nameCell}</td>
+          <td class="py-3 px-2 text-right font-mono text-sky-400 ${numCls}">${Math.round(s.sales || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono text-rose-400 ${numCls}">${Math.round(s.purchase || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono text-emerald-400 ${numCls}">${Math.round(s.grossProfit || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-emerald-300 ${numCls}">${(s.marginRate || 0).toFixed(1)}%</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-amber-400 ${numCls}">${Math.round(s.cashFlow || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-fuchsia-400 ${numCls}">${invSign}${Math.round(s.invChange || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono font-bold text-indigo-400 ${numCls}">${Math.round(s.laborProd || 0).toLocaleString()}</td>
+        </tr>`;
+      };
+
+      summaryData.forEach((s, gIdx) => {
+        labels.push(s.branch + ((s.members && s.members.length > 1) ? `(+${s.members.slice(1).map(m => m.branch).join('・')})` : ''));
         salesData.push(Math.round(s.sales || 0));
         grossData.push(Math.round(s.grossProfit || 0));
         purchaseData.push(Math.round(s.purchase || 0));
         invData.push(Math.round(s.invChange || 0));
         cashData.push(Math.round(s.cashFlow || 0));
 
-        let highlight = (currentUser && s.branch === currentUser.branch) ? "bg-slate-800" : "";
-        let invSign = (s.invChange || 0) >= 0 ? "+" : "";
-        
-        let badge = s.isConfirmed ? `<span class="ml-2 bg-rose-900/80 border border-rose-500 text-rose-400 text-[9px] px-1.5 py-0.5 rounded-full font-bold shadow-[0_0_5px_rgba(225,29,72,0.3)]"><i class="fa-solid fa-lock text-[8px] mr-1"></i>確定</span>` : '';
-        
-        tbody += `<tr class="${highlight} hover:bg-slate-800/50 transition-colors">
-          <td class="py-3 px-2 text-slate-200 font-bold whitespace-nowrap">${s.branch}${badge}</td>
-          <td class="py-3 px-2 text-right font-mono text-sky-400">${Math.round(s.sales || 0).toLocaleString()}</td>
-          <td class="py-3 px-2 text-right font-mono text-rose-400">${Math.round(s.purchase || 0).toLocaleString()}</td>
-          <td class="py-3 px-2 text-right font-mono text-emerald-400">${Math.round(s.grossProfit || 0).toLocaleString()}</td>
-          <td class="py-3 px-2 text-right font-mono font-bold text-emerald-300">${s.marginRate.toFixed(1)}%</td>
-          <td class="py-3 px-2 text-right font-mono font-bold text-amber-400">${Math.round(s.cashFlow || 0).toLocaleString()}</td>
-          <td class="py-3 px-2 text-right font-mono font-bold text-fuchsia-400">${invSign}${Math.round(s.invChange || 0).toLocaleString()}</td>
-          <td class="py-3 px-2 text-right font-mono font-bold text-indigo-400">${Math.round(s.laborProd || 0).toLocaleString()}</td>
-        </tr>`;
+        tbody += fmtRow(s, { grpKey: gIdx });
+        // ★追加: 評価グループの内訳行(折りたたみ・初期非表示)
+        if (s.members && s.members.length > 0) {
+          s.members.forEach(m => { tbody += fmtRow(m, { member: true, grpKey: gIdx }); });
+        }
       });
       document.getElementById('branchTbody').innerHTML = tbody;
 
