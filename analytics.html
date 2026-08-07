@@ -1560,12 +1560,14 @@
         // ★追加: 委託関連（率の設定値・社内委託記録）を取得。テーブル未作成でも動作継続
         let consignTk = 10, consignSh = 50, internalRecsPeriod = [];
         let prodTargetMult = 3.0; // ★追加: 生産性の目標倍率(分岐点×この倍率=目標生産性/50点)。全社共通設定で変更可
+        let invOverZoneMult = 1.0; // ★追加: 在庫超過の減点ゾーン幅(上限×この倍率で0点)。全社共通設定で変更可
         try {
             const { data: gsData } = await db.from('fin_global_settings').select('*');
             if (gsData) {
                 const tRow = gsData.find(r => r.key === 'consign_external_take_rate'); if (tRow) consignTk = Number(tRow.value) || 10;
                 const sRow = gsData.find(r => r.key === 'consign_internal_owner_share'); if (sRow) consignSh = Number(sRow.value) || 50;
                 const pRow = gsData.find(r => r.key === 'prod_target_multiplier'); if (pRow) prodTargetMult = Number(pRow.value) || 3.0;
+                const zRow = gsData.find(r => r.key === 'inv_over_zone_mult'); if (zRow) invOverZoneMult = Number(zRow.value) || 1.0;
             }
             const { data: icData, error: icErr } = await db.from('internal_consign_records').select('*').gte('target_date', startDateStr).lte('target_date', endDateStr);
             if (!icErr && icData) internalRecsPeriod = icData;
@@ -1758,10 +1760,13 @@
             if (currentTargetCash > 0) { cashRatio = correctedCashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 150); } 
             else if (currentTargetCash <= 0 && correctedCashFlow > 0) { scoreCash = 150; cashRatio = 1; }
 
+            // ★修正: 在庫超過の減点を緩和。「超過率=減点率」(上限の2倍で0点)とし、
+            //   0点ラインは全社共通設定 inv_over_zone_mult (既定1.0 = 減点ゾーン幅が上限×1.0)で調整可能。
+            //   マイナス側(売り減らし)も傾きを半分に緩和: 減点 = (減少額÷上限)×25点(上限相当の減少で75点)。
             let scoreInv = 0; let currentInvLimit = target.invLimit * periodDaysRatio;
-            if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 100; } 
-            else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 100 - (Math.abs(actualInvChange) / minLimit) * 50; } 
-            else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * 0.5 : 500000; scoreInv = 100 - (overAmount / penaltyZone) * 100; }
+            if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 100; }
+            else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 100 - (Math.abs(actualInvChange) / minLimit) * 25; }
+            else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * invOverZoneMult : 1000000; scoreInv = 100 - (overAmount / penaltyZone) * 100; }
             scoreInv = Math.min(100, Math.max(0, scoreInv));
 
             let sumGoodInv = 0; let sumTotalInv = 0; let validInvMonths = 0;
