@@ -448,33 +448,40 @@
           <div class="bg-slate-900 rounded-3xl p-5 border border-slate-800 shadow-xl overflow-x-auto">
             <h4 class="font-bold text-white text-sm mb-3"><i class="fa-solid fa-filter-circle-dollar text-rose-400 mr-2"></i>【ステップ1】間接法キャッシュフローによる真の最終手残り算出 (全社)</h4>
             <div class="flex gap-3 min-w-max">
-              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 w-44 shrink-0">
                   <p class="text-[9px] text-slate-500 font-bold mb-1">① 全社粗利相当額</p>
                   <p class="text-sm font-mono font-black text-slate-300" id="lblGrossProfit">0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml1">式: 現金化額計 + 在庫増減計</p>
               </div>
-              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-44 shrink-0">
                   <p class="text-[9px] text-rose-500 font-bold mb-1">② 消費税・固定費</p>
                   <p class="text-sm font-mono font-black text-rose-400" id="lblExpenses">- 0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml2">式: 消費税 + 固定費</p>
               </div>
-              <div class="bg-slate-950 p-3 rounded-xl border border-sky-900/30 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-sky-900/30 w-44 shrink-0">
                   <p class="text-[9px] text-sky-500 font-bold mb-1">③ 営業利益</p>
                   <p class="text-sm font-mono font-black text-sky-400" id="lblOpProfit">0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml3">式: ① − ②</p>
               </div>
-              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-44 shrink-0">
                   <p class="text-[9px] text-rose-500 font-bold mb-1">④ 法人税等 (課税)</p>
                   <p class="text-sm font-mono font-black text-rose-400" id="lblCorpTax">- 0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml4">式: ③(黒字分) × 税率</p>
               </div>
-              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-rose-900/30 w-44 shrink-0">
                   <p class="text-[9px] text-rose-500 font-bold mb-1">⑤ 借入金返済額</p>
                   <p class="text-sm font-mono font-black text-rose-400" id="lblRepayment">- 0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml5">式: 入力値 (税引後から支払)</p>
               </div>
-              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 w-32 shrink-0">
+              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 w-44 shrink-0">
                   <p class="text-[9px] text-slate-500 font-bold mb-1">⑥ 在庫増減調整</p>
                   <p class="text-sm font-mono font-black text-slate-300" id="lblInvChange">- 0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml6">式: 在庫増は控除・減は加算</p>
               </div>
-              <div class="bg-slate-900 p-3 rounded-xl border border-emerald-900/50 shadow shadow-emerald-500/10 w-36 shrink-0">
+              <div class="bg-slate-900 p-3 rounded-xl border border-emerald-900/50 shadow shadow-emerald-500/10 w-48 shrink-0">
                   <p class="text-[9px] text-emerald-400 font-bold mb-1">⑦ 最終手残り現金</p>
                   <p class="text-base font-mono font-black text-emerald-400" id="lblTrueCash">0</p>
+                  <p class="text-[8px] text-slate-600 leading-tight mt-1.5 border-t border-slate-800/70 pt-1" id="fml7">式: ③ − ④ − ⑤ − ⑥</p>
               </div>
             </div>
           </div>
@@ -483,10 +490,12 @@
             <div class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow shadow-amber-500/5">
               <p class="text-[11px] text-slate-400 font-bold mb-1">税・返済・在庫調整後 最終手残り現金額 (全社合計)</p>
               <p class="text-2xl font-black font-mono text-white" id="lblTotalCompanyCash">0 <span class="text-xs font-sans text-slate-500">円</span></p>
+              <p class="text-[9px] text-slate-600 leading-tight mt-1.5" id="fmlCash">式: ステップ1の ⑦ と同値</p>
             </div>
             <div class="bg-slate-900 rounded-2xl p-5 border border-amber-900/50 shadow shadow-amber-500/10">
               <p class="text-[11px] text-amber-400 font-bold mb-1">分配対象 全社賞与総原資額 (総パイ)</p>
               <p class="text-2xl font-black font-mono text-amber-400" id="lblTotalBonusPool">0 <span class="text-xs font-sans text-amber-500">円</span></p>
+              <p class="text-[9px] text-slate-600 leading-tight mt-1.5" id="fmlPool">式: 最終手残り × 還元率</p>
             </div>
           </div>
 
@@ -507,6 +516,11 @@
                 <tr><td colspan="6" class="text-center py-6 text-slate-500">シミュレーションを実行してください</td></tr>
               </tbody>
             </table>
+            <p class="text-[9px] text-slate-600 leading-relaxed mt-3 border-t border-slate-800 pt-2">
+              <i class="fa-solid fa-square-root-variable mr-1"></i>計算式:
+              店舗総持ち点 = 運営スコア × 対象人数 ／ 配分比率 = 店舗総持ち点 ÷ 全社持ち点合計 ／ 分配原資 = 賞与総原資 × 配分比率
+              <span class="text-slate-500">(対象人数 = role_employee のアカウント。店舗共通・管理者は除外。評価グループの子店舗は親店舗に合流)</span>
+            </p>
           </div>
 
           <div class="bg-slate-900 p-5 border border-slate-800 rounded-3xl shadow-xl overflow-x-auto">
@@ -529,6 +543,10 @@
                 <tr><td colspan="9" class="text-center py-6 text-slate-500">シミュレーションを実行してください</td></tr>
               </tbody>
             </table>
+            <p class="text-[9px] text-slate-600 leading-relaxed mt-3 border-t border-slate-800 pt-2" id="userFormulaNote">
+              <i class="fa-solid fa-square-root-variable mr-1"></i>計算式:
+              係数換算点 = (人事評価 + 条件PT + レポPT) × 役職係数 ／ 店舗内比率 = 係数換算点 ÷ 店舗内換算点合計 ／ 支給予定額 = 店舗分配原資 × 店舗内比率 (最低保障額未満は最低保障を適用)
+            </p>
           </div>
         </div>
       </div>
@@ -2146,9 +2164,28 @@
         const periodLabel = document.getElementById('bonusSimHrPeriod');
         if (periodLabel) { periodLabel.innerText = hrPeriod; }
 
+        // ★修正: 賞与シミュは選択した人事評価期と同じ「半期」の店舗実績で必ず集計する
+        //   (従来はスコアリングタブで最後に表示していた期間(単月など)をそのまま流用しており、
+        //    単月の現金化 × 半期の固定費 という不整合な計算になり得た)
+        try {
+            const mHr = String(hrPeriod).match(/^(\d{4})年_(上|下)半期$/);
+            const pmEl = document.getElementById('scorePeriodMode');
+            const semiEl = document.getElementById('scoreSemiYear');
+            if (mHr && pmEl && semiEl) {
+                const want = (mHr[2] === '上') ? `${mHr[1]}-03` : `${mHr[1]}-09`;
+                if (Array.from(semiEl.options).some(o => o.value === want)) {
+                    pmEl.value = 'semi';
+                    semiEl.value = want;
+                    document.getElementById('wrapper_month_select').classList.add('hidden');
+                    document.getElementById('wrapper_annual_select').classList.add('hidden');
+                    document.getElementById('wrapper_semi_select').classList.remove('hidden');
+                }
+            }
+        } catch (e) { console.warn('賞与集計期間の同期をスキップ:', e); }
+
         try {
             await loadScoringData(true);
-            
+
             if (hrEvaluationsList.length === 0 || adminUsersList.length === 0) {
                 const [usersRes, hrRes, repRes] = await Promise.all([
                     db.from('system_users').select('*'),
@@ -2256,6 +2293,25 @@
       updateText('lblTotalCompanyCash', trueNetCash.toLocaleString() + " 円");
       updateText('lblTotalBonusPool', totalBonusPool.toLocaleString() + " 円");
 
+      // ★追加: 各数値の計算式を実数入りで表示
+      const yen = v => Math.round(v).toLocaleString();
+      const ctp = Math.round(cTaxRate * 100);
+      updateText('fml1', `= 現金化額計 ${yen(rawCompanyCash)} + 在庫増減計 ${yen(rawInvChange)}`);
+      updateText('fml2', `= 消費税 ${yen(cTaxAmount)} + 固定費 ${yen(fixedCost)}｜消費税 = ①×${ctp}/${100 + ctp} − 固定費×${Math.round(taxableRatio * 100)}%×${ctp}/${100 + ctp}`);
+      updateText('fml3', `= ① ${yen(grossProfitEquivalent)} − ② ${yen(cTaxAmount + fixedCost)}`);
+      updateText('fml4', opProfit > 0
+          ? `= ③ ${yen(taxableIncome)} × ${Math.round(corpTaxRate * 100)}%`
+          : `= 営業赤字のため 0 円`);
+      updateText('fml5', `= 入力値 (税引後キャッシュから支払)`);
+      updateText('fml6', rawInvChange >= 0
+          ? `= 在庫増 ${yen(rawInvChange)} を現金から控除 (在庫に化けた分)`
+          : `= 在庫減 ${yen(Math.abs(rawInvChange))} を現金に加算 (在庫が現金化した分)`);
+      updateText('fml7', `= ③ ${yen(opProfit)} − ④ ${yen(corpTaxAmount)} − ⑤ ${yen(repayment)} ${rawInvChange >= 0 ? '−' : '+'} ⑥ ${yen(Math.abs(rawInvChange))}`);
+      updateText('fmlCash', `式: ステップ1の ⑦ と同値`);
+      updateText('fmlPool', trueNetCash > 0
+          ? `= 最終手残り ${yen(trueNetCash)} × 還元率 ${Math.round(R_all * 100)}%`
+          : `= 最終手残りがマイナスのため 0 円`);
+
       let storeStaffCounts = {}; let storeUserMaps = {}; 
       scoringData.forEach(s => { storeStaffCounts[s.branch] = 0; storeUserMaps[s.branch] = []; });
 
@@ -2288,16 +2344,32 @@
       }
 
       let storeHtml = "";
+      let totalStaffAll = 0, totalPoolAssigned = 0;
       for (let bName in storeBonusAllocations) {
         let storeAlloc = storeBonusAllocations[bName];
+        totalStaffAll += storeAlloc.staffCount;
+        totalPoolAssigned += storeAlloc.pool;
         storeHtml += `
           <tr class="hover:bg-slate-800/40 transition-colors">
             <td class="py-2.5 font-bold text-slate-200">${bName}</td>
             <td class="py-2.5 text-right font-mono">${storeAlloc.score} pt</td>
             <td class="py-2.5 text-right font-mono">${storeAlloc.staffCount} 名</td>
-            <td class="py-2.5 text-right font-mono text-slate-400">${storeAlloc.points.toLocaleString()}</td>
+            <td class="py-2.5 text-right font-mono text-slate-400">${storeAlloc.points.toLocaleString()} <span class="text-[9px] text-slate-600">(${storeAlloc.score}×${storeAlloc.staffCount})</span></td>
             <td class="py-2.5 text-right font-mono text-slate-400">${(storeAlloc.ratio * 100).toFixed(1)}%</td>
             <td class="py-2.5 text-right font-mono font-black text-sky-400">${storeAlloc.pool.toLocaleString()} 円</td>
+          </tr>
+        `;
+      }
+      // ★追加: 合計行 (検算用)
+      if (storeHtml) {
+        storeHtml += `
+          <tr class="border-t-2 border-slate-700 font-bold bg-slate-950/60">
+            <td class="py-2.5 text-slate-400">全社合計</td>
+            <td></td>
+            <td class="py-2.5 text-right font-mono text-slate-300">${totalStaffAll} 名</td>
+            <td class="py-2.5 text-right font-mono text-slate-300">${totalStorePointsSum.toLocaleString()}</td>
+            <td class="py-2.5 text-right font-mono text-slate-300">100%</td>
+            <td class="py-2.5 text-right font-mono font-black text-sky-300">${totalPoolAssigned.toLocaleString()} 円</td>
           </tr>
         `;
       }
@@ -2335,8 +2407,12 @@
       }
 
       let userHtml = "";
+      let totalPaidSum = 0, minGuaranteeCount = 0;
       userBonusRows.forEach(row => {
+        totalPaidSum += row.finalBonus;
+        if (row.isMinGuaranteed) minGuaranteeCount++;
         let noteBadge = row.isMinGuaranteed ? `<span class="bg-blue-950 border border-blue-800 text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold">最低保障適用</span>` : `<span class="text-slate-600">-</span>`;
+        const kUsed = row.roleLabel === "店長" ? K_mgr : (row.roleLabel === "副店長" ? K_sub : K_staff);
         userHtml += `
           <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/30">
             <td class="py-2 px-1 text-slate-400">${row.branchName}</td>
@@ -2344,15 +2420,32 @@
             <td class="py-2 px-1 text-center font-mono">${row.hrScore}</td>
             <td class="py-2 px-1 text-center font-mono ${row.condPT > 0 ? 'text-amber-400' : 'text-slate-600'}">${row.condPT > 0 ? '+' + row.condPT : '-'}</td>
             <td class="py-2 px-1 text-center font-mono ${row.repPT >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${row.repPT > 0 ? '+' : ''}${row.repPT}</td>
-            <td class="py-2 px-1 text-right font-mono text-slate-400">${Math.round(row.points).toLocaleString()}</td>
+            <td class="py-2 px-1 text-right font-mono text-slate-400">${Math.round(row.points).toLocaleString()} <span class="text-[9px] text-slate-600">((${row.hrScore}+${row.condPT}+${row.repPT})×${kUsed})</span></td>
             <td class="py-2 px-1 text-right font-mono text-slate-500">${(row.ratioInBranch * 100).toFixed(1)}%</td>
             <td class="py-2 px-1 text-right font-mono font-black text-emerald-400 text-sm">${row.finalBonus.toLocaleString()} 円</td>
             <td class="py-2 px-1 text-center">${noteBadge}</td>
           </tr>
         `;
       });
+      // ★追加: 支給合計と原資の突合行 (最低保障による持ち出しを可視化)
+      if (userHtml) {
+        const overrun = totalPaidSum - totalBonusPool;
+        userHtml += `
+          <tr class="border-t-2 border-slate-700 font-bold bg-slate-950/60">
+            <td class="py-2.5 text-slate-400" colspan="7">支給予定合計 (総原資 ${totalBonusPool.toLocaleString()} 円 との差: <span class="${overrun > 0 ? 'text-rose-400' : 'text-emerald-400'}">${overrun > 0 ? '+' : ''}${overrun.toLocaleString()} 円${overrun > 0 ? ` = 最低保障${minGuaranteeCount}件による持ち出し・端数` : ''}</span>)</td>
+            <td class="py-2.5 text-right font-mono font-black text-emerald-300 text-sm">${totalPaidSum.toLocaleString()} 円</td>
+            <td></td>
+          </tr>
+        `;
+      }
       const userTbody = document.getElementById('bonusUserTbody');
       if (userTbody) userTbody.innerHTML = userHtml || '<tr><td colspan="9" class="text-center py-6 text-slate-500">対象スタッフがいません。</td></tr>';
+
+      // ★追加: 分配ルールの計算式を実数入りで表示
+      const noteEl = document.getElementById('userFormulaNote');
+      if (noteEl) {
+        noteEl.innerHTML = `<i class="fa-solid fa-square-root-variable mr-1"></i>計算式: 係数換算点 = (人事評価 + 条件PT + レポPT) × 役職係数 (店長${K_mgr}・副店長${K_sub}・一般${K_staff}) ／ 店舗内比率 = 係数換算点 ÷ 店舗内換算点合計 ／ 支給予定額 = 店舗分配原資 × 店舗内比率 (${B_min.toLocaleString()}円未満は最低保障を適用)`;
+      }
     }
 
     // ==========================================
