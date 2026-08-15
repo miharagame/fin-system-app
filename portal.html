@@ -565,6 +565,7 @@
             .from('daily_records')
             .select('branch, target_date, sales, purchase, gross_profit, cash_flow, inv_change, discount, work_hours, consignment_sales')
             .order('target_date', { ascending: true })
+            .order('id', { ascending: true }) // ★修正: 同一日付内の順序も固定(ページ間の重複・取りこぼし防止)
             .range(fromIndex, fromIndex + limitSize - 1);
 
           if (recErr) throw recErr;
@@ -598,7 +599,7 @@
         try {
           let icFrom = 0;
           while (true) {
-            const { data: icChunk, error: icErr } = await db.from('internal_consign_records').select('*').range(icFrom, icFrom + limitSize - 1);
+            const { data: icChunk, error: icErr } = await db.from('internal_consign_records').select('*').order('id', { ascending: true }).range(icFrom, icFrom + limitSize - 1); // ★修正: 並び順固定
             if (icErr) break;
             if (icChunk && icChunk.length > 0) internalConsignAll = internalConsignAll.concat(icChunk);
             if (!icChunk || icChunk.length < limitSize) break;
