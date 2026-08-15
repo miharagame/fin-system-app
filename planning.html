@@ -762,12 +762,10 @@
           
           renderFixedCostInputs();
           renderBranchDistInputs();
-          
-          if (!document.getElementById('weightTotalValue').getAttribute('data-loaded')) {
-              loadTargetBudgetMaster();
-          } else {
-              calcWeightTotal();
-          }
+
+          // ★修正: タブを開くたびに配分行が均等割へリセットされるため、毎回マスタから復元する
+          //   (従来は初回のみ読込で、2回目以降は前回の配分が失われたままだった)
+          loadTargetBudgetMaster();
       }
       if(activeView) activeView.classList.remove('hidden');
     }
@@ -1202,27 +1200,80 @@
        document.getElementById('loading').classList.remove('hidden');
 
        try {
-          const { data, error } = await db.from('zzz_old_fin_target_budget_master')
-                                         .select('*')
-                                         .eq('target_year', year)
-                                         .limit(1);
-
-          document.getElementById('loading').classList.add('hidden');
-          document.getElementById('weightTotalValue').setAttribute('data-loaded', 'true');
-
-          if (data && data.length > 0) {
-              const r = data[0];
+          // ★修正: 季節指数は新テーブル(fin_season_weights)から読む。
+          //   (従来は廃止済みの旧テーブルからの読込のみで、保存先が存在しなかった)
+          //   移行期は旧テーブルにもフォールバックする。
+          let wRow = null;
+          try {
+              const { data: wData, error: wErr } = await db.from('fin_season_weights').select('*').eq('target_year', year).limit(1);
+              if (!wErr && wData && wData.length > 0) wRow = wData[0];
+          } catch (e) { /* テーブル未作成なら旧テーブルへ */ }
+          if (!wRow) {
+              try {
+                  const { data: oldData } = await db.from('zzz_old_fin_target_budget_master').select('*').eq('target_year', year).limit(1);
+                  if (oldData && oldData.length > 0) wRow = oldData[0];
+              } catch (e) { /* 旧テーブルも無ければ既定値のまま */ }
+          }
+          if (wRow) {
               const wMap = {
-                '01': r.weight_01, '02': r.weight_02, '03': r.weight_03, '04': r.weight_04,
-                '05': r.weight_05, '06': r.weight_06, '07': r.weight_07, '08': r.weight_08,
-                '09': r.weight_09, '10': r.weight_10, '11': r.weight_11, '12': r.weight_12
+                '01': wRow.weight_01, '02': wRow.weight_02, '03': wRow.weight_03, '04': wRow.weight_04,
+                '05': wRow.weight_05, '06': wRow.weight_06, '07': wRow.weight_07, '08': wRow.weight_08,
+                '09': wRow.weight_09, '10': wRow.weight_10, '11': wRow.weight_11, '12': wRow.weight_12
               };
               document.querySelectorAll('.weight-input').forEach(input => {
                   const m = input.getAttribute('data-month');
-                  if(wMap[m] !== undefined) input.value = wMap[m];
+                  if (wMap[m] !== undefined && wMap[m] !== null) input.value = wMap[m];
               });
           }
+
+          // ★追加: 適用済みの月次予算マスタから店舗別の配分率・粗利目標を復元プリフィル
+          //   (従来はタブを開くたびに全店均等割に戻り、前回の配分が失われていた)
+          try {
+              const nextYear = String(parseInt(year, 10) + 1);
+              const { data: tData } = await db.from('fin_monthly_targets').select('*')
+                  .gte('target_month', `${year}-03`).lte('target_month', `${nextYear}-02`);
+              if (tData && tData.length > 0) {
+                  const agg = {};
+                  tData.forEach(r => {
+                      if (!agg[r.branch]) agg[r.branch] = { cash: 0, inv: 0, margin: 0 };
+                      agg[r.branch].cash += Number(r.target_cash) || 0;
+                      agg[r.branch].inv += Number(r.target_inv_limit) || 0;
+                      if (!agg[r.branch].margin && Number(r.margin_rate) > 0) agg[r.branch].margin = Number(r.margin_rate);
+                  });
+                  let totCash = 0, totInv = 0;
+                  Object.values(agg).forEach(a => { totCash += a.cash; totInv += a.inv; });
+
+                  if (totCash > 0 || totInv > 0) {
+                      const rows = Array.from(document.querySelectorAll('.dist-row'));
+                      const branches = rows.map(r => r.getAttribute('data-branch'));
+                      const buildPcts = (key, tot) => {
+                          const pcts = {};
+                          branches.forEach(b => { pcts[b] = (tot > 0 && agg[b]) ? Math.round(agg[b][key] / tot * 1000) / 10 : 0; });
+                          // 端数を最大配分の店舗で吸収して合計をちょうど100.0にする
+                          let sum = 0; branches.forEach(b => sum += pcts[b]);
+                          const diff = Math.round((100 - sum) * 10) / 10;
+                          if (Math.abs(diff) > 0.001 && branches.length > 0) {
+                              let maxB = branches[0];
+                              branches.forEach(b => { if (pcts[b] > pcts[maxB]) maxB = b; });
+                              pcts[maxB] = Math.round((pcts[maxB] + diff) * 10) / 10;
+                          }
+                          return pcts;
+                      };
+                      const cashPcts = totCash > 0 ? buildPcts('cash', totCash) : null;
+                      const invPcts = totInv > 0 ? buildPcts('inv', totInv) : null;
+                      branches.forEach(b => {
+                          if (cashPcts) { const el = document.getElementById(`distCashPct_${b}`); if (el) el.value = cashPcts[b]; }
+                          if (invPcts) { const el = document.getElementById(`distInvPct_${b}`); if (el) el.value = invPcts[b]; }
+                          if (agg[b] && agg[b].margin > 0) { const mEl = document.getElementById(`distMargin_${b}`); if (mEl) mEl.value = agg[b].margin; }
+                      });
+                  }
+              }
+          } catch (e) { console.warn('配分率のプリフィルをスキップ:', e); }
+
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('weightTotalValue').setAttribute('data-loaded', 'true');
           calcWeightTotal();
+          calcDistTotal();
        } catch (err) {
           document.getElementById('loading').classList.add('hidden');
           console.error("マスタ読込エラー:", err);
@@ -1231,10 +1282,27 @@
 
     async function executeApplyMaster() {
        const year = document.getElementById('applyTargetYear').value;
-       
-       const startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
+
+       // ★追加: シミュレーション未実行(目標ゼロ)のまま適用すると全店の目標が0で上書きされるため防止
+       const guardCash = currentCalcData.fieldCashTarget || 0;
+       const guardSales = currentCalcData.sales || 0;
+       if (guardCash <= 0 && guardSales <= 0) {
+           alert("全社目標が0のため適用できません。\n先に「年次経営計画」タブでシミュレーションを実行してください。");
+           return;
+       }
+
+       let startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
        if (!startMonthInput) return;
-       
+       // ★追加: 入力形式の検証・正規化 (「2026/07」「2026年7月」等の揺れで過去月まで上書きされる事故を防ぐ)
+       startMonthInput = toHalfWidth(String(startMonthInput)).trim()
+           .replace(/[\/.年]/g, '-').replace(/月/g, '').replace(/-+/g, '-').replace(/-$/, '');
+       const mParts = startMonthInput.match(/^(\d{4})-(\d{1,2})$/);
+       if (!mParts || Number(mParts[2]) < 1 || Number(mParts[2]) > 12) {
+           alert(`対象月の形式が正しくありません: 「${startMonthInput}」\n「2026-07」のように 年-月 の形式で入力してください。処理を中断しました。`);
+           return;
+       }
+       startMonthInput = `${mParts[1]}-${String(Number(mParts[2])).padStart(2, '0')}`;
+
        const hasWarning = document.querySelectorAll('.warning-bg').length > 0;
        let confirmMsg = `⚠️選択された ${startMonthInput} 以降の月に対して、シミュレーション結果を反映します。\nそれより前の過去月の目標は上書きされず保持されます。よろしいですか？`;
        
@@ -1309,6 +1377,17 @@
           const { error } = await db.from('fin_monthly_targets').upsert(upserts, { onConflict: 'target_month, branch' });
           document.getElementById('loading').classList.add('hidden');
           if (error) throw new Error(error.message);
+
+          // ★追加: 季節指数を年度別に永続化 (従来は保存先が無く、開き直すたびに初期値へ戻っていた)
+          try {
+              const wPayload = { target_year: year, updated_by: currentUser.name, updated_at: new Date().toISOString() };
+              document.querySelectorAll('.weight-input').forEach(input => {
+                  wPayload['weight_' + input.getAttribute('data-month')] = parseFloat(input.value) || 0;
+              });
+              const { error: wErr } = await db.from('fin_season_weights').upsert(wPayload, { onConflict: 'target_year' });
+              if (wErr) console.warn('季節指数の保存に失敗 (fin_season_weights_setup.sql が未実行の可能性):', wErr.message);
+          } catch (e) { console.warn('季節指数の保存をスキップ:', e); }
+
           alert(`✅ ${startMonthInput} 以降の月次予算マスタへの反映が完了しました！\n（それ以前の過去月は無傷で保護されました）`);
        } catch (err) {
           document.getElementById('loading').classList.add('hidden');
