@@ -479,15 +479,23 @@
         let startIndex = 0;
         const PAGE_SIZE = 1000;
         let isFetching = true;
+        // ★修正: 並び順を固定せずにページング取得すると、リクエスト間で行の順序が変わり
+        //   「行の重複・取りこぼし」が起きて読込のたびに集計が変わることがある → idで順序を固定
+        let useIdOrder = true;
 
         while (isFetching) {
-          const { data, error } = await db.from('inventory_details')
+          let query = db.from('inventory_details')
             .select('*')
             .eq('target_month', monthStr)
-            .in('branch', shopTargets)
-            .range(startIndex, startIndex + PAGE_SIZE - 1);
+            .in('branch', shopTargets);
+          if (useIdOrder) query = query.order('id', { ascending: true });
+          const { data, error } = await query.range(startIndex, startIndex + PAGE_SIZE - 1);
 
-          if (error) throw new Error("データの読込に失敗しました: " + error.message);
+          if (error) {
+            // id列が無い環境では並び順なしで最初からやり直す(従来動作)
+            if (useIdOrder) { useIdOrder = false; allData = []; startIndex = 0; continue; }
+            throw new Error("データの読込に失敗しました: " + error.message);
+          }
 
           if (data && data.length > 0) {
             allData = allData.concat(data);
