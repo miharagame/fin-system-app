@@ -430,7 +430,7 @@
             <div>
               <label class="text-[10px] text-slate-400 font-bold block mb-1">みなし法人税率</label>
               <div class="flex items-center gap-2">
-                <input type="number" id="sim_corp_tax" value="30" step="1" class="w-full bg-slate-950 border border-slate-700 text-sm font-bold rounded p-1.5 outline-none font-mono text-white text-right" oninput="calculateBonusSimulation()">
+                <input type="number" id="sim_corp_tax" value="33" step="1" class="w-full bg-slate-950 border border-slate-700 text-sm font-bold rounded p-1.5 outline-none font-mono text-white text-right" oninput="calculateBonusSimulation()">
                 <span class="text-xs text-slate-500">%</span>
               </div>
             </div>
@@ -1907,17 +1907,22 @@
 
         scoringData.sort((a, b) => b.totalScore - a.totalScore);
         
-        let totalSgaHalfYearly = 0;
-        let totalRepayHalfYearly = 0;
+        // ★修正: ポータルの「最終手残り額」と定義を揃えるため、固定費・返済のプリフィルを
+        //   「年額 × 経過日数 ÷ 365」の日割按分に統一 (従来は年額のちょうど半分で、日割と約0.8%ズレていた)
+        let sgaYearlySum = 0;
+        let repayYearlySum = 0;
         if (fixedRes.data) {
             fixedRes.data.forEach(r => {
-                totalSgaHalfYearly += (Number(r.total_sga || 0) * 10000 / 2); 
-                totalRepayHalfYearly += (Number(r.allocated_repay || 0) * 10000 / 2); 
+                sgaYearlySum += Number(r.total_sga || 0) * 10000;
+                repayYearlySum += Number(r.allocated_repay || 0) * 10000;
             });
         }
+        const prorationDays = elapsedPeriodDays > 0 ? elapsedPeriodDays : totalPeriodDays;
+        const totalSgaHalfYearly = Math.round((sgaYearlySum / 365) * prorationDays);
+        const totalRepayHalfYearly = Math.round((repayYearlySum / 365) * prorationDays);
         const fixedInput = document.getElementById('sim_fixed_cost');
         if (fixedInput && !fixedInput.value) fixedInput.value = totalSgaHalfYearly;
-        
+
         const repayInput = document.getElementById('sim_repay');
         if (repayInput && !repayInput.value) repayInput.value = totalRepayHalfYearly;
 
@@ -2241,7 +2246,7 @@
       const B_min = getVal('sim_B_min', 50000);
       const cTaxRate = getVal('sim_c_tax', 10) / 100;
       const fixedCost = getVal('sim_fixed_cost', 0);
-      const corpTaxRate = getVal('sim_corp_tax', 30) / 100;
+      const corpTaxRate = getVal('sim_corp_tax', 33) / 100;
       const taxableRatio = getVal('sim_taxable_ratio', 40) / 100;
       const repayment = getVal('sim_repay', 0);
 
