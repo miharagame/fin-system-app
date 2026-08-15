@@ -1572,9 +1572,17 @@
         const PAGE_SIZE = 1000;
         let all = [];
         let from = 0;
+        // ★修正: 並び順を固定しないページングはリクエスト間で行順が変わり重複・取りこぼしが起きる → idで固定
+        let useIdOrder = true;
         while (true) {
-            const { data, error } = await applyFilters(db.from(tableName).select('*')).range(from, from + PAGE_SIZE - 1);
-            if (error) throw error;
+            let q = applyFilters(db.from(tableName).select('*'));
+            if (useIdOrder) q = q.order('id', { ascending: true });
+            const { data, error } = await q.range(from, from + PAGE_SIZE - 1);
+            if (error) {
+                // id列が無いテーブルでは並び順なしで最初からやり直す(従来動作)
+                if (useIdOrder) { useIdOrder = false; all = []; from = 0; continue; }
+                throw error;
+            }
             if (data && data.length > 0) all = all.concat(data);
             if (!data || data.length < PAGE_SIZE) break;
             from += PAGE_SIZE;
