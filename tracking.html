@@ -797,6 +797,7 @@
               .from('daily_records')
               .select('*')
               .order('target_date', { ascending: true })
+              .order('id', { ascending: true }) // ★修正: 同一日付内の順序も固定(ページ間の重複・取りこぼし防止)
               .range(from, from + PAGE - 1);
             if (recordErr) throw recordErr;
             if (chunk && chunk.length > 0) sbData = sbData.concat(chunk);
