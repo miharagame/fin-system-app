@@ -289,7 +289,7 @@
           </div>
           <div class="mt-2 border-t border-indigo-900/50 pt-2 text-[10px] text-slate-400 font-mono leading-relaxed bg-slate-950/30 p-2 rounded-xl border border-slate-800/50">
             <p class="font-bold text-indigo-300 mb-0.5">【間接 CF 着地予測】</p>
-            <p>利益CFから固定費・借入元本返済・みなし法人税(33%)・消費税(固定費課税40%)を期間日数で正確に日割按分して自動リアルタイム控除した実質プール額です。</p>
+            <p>利益CFから固定費・借入元本返済・みなし法人税(33%)・消費税(固定費課税40%)を期間日数で正確に日割按分して自動リアルタイム控除した真の実質プール額です。</p>
           </div>
         </div>
         
@@ -1242,8 +1242,17 @@
             }
             const fixedCostCurrent = ((totalSgaYearly * 10000) / 365) * totalTargetDays;
             
-            const repayMonthly万 = Number(globalSettingsMap['repayTotalMonthly']) || 0;
-            const repaymentCurrent = ((repayMonthly万 * 10000 * 12) / 365) * totalTargetDays;
+            // ★修正: 返済額の出典を固定費マスタ(店舗別 allocated_repay 年額の合算)に統一。
+            //   賞与シミュレータと同じソース・同じ日割按分になり、期間を揃えれば数字が一致する。
+            //   (マスタ未登録の場合のみ従来の全社設定 repayTotalMonthly にフォールバック)
+            let repayYearlySum万 = 0;
+            for (let b in branchFixedCostsMap) {
+                repayYearlySum万 += Number(branchFixedCostsMap[b].allocatedRepay || 0);
+            }
+            if (repayYearlySum万 <= 0) {
+                repayYearlySum万 = (Number(globalSettingsMap['repayTotalMonthly']) || 0) * 12;
+            }
+            const repaymentCurrent = ((repayYearlySum万 * 10000) / 365) * totalTargetDays;
 
             const cTaxRate = 0.10;
             const corpTaxRate = 0.33; 
