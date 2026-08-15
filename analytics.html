@@ -1002,6 +1002,77 @@
       rawData.hasBs = true;
     }
 
+    // ==========================================
+    // ★追加: 財務指標の解説ガイド (指標名横の?アイコン → モーダル表示)
+    // ==========================================
+    const INDICATOR_GUIDE = {
+      '売上高': { what: '商品を売って得たお金の総額(値引後)。会社の事業規模を表す、すべての指標の出発点。', formula: '期間中の販売額の合計', guide: 'まず前期比で伸びているか。伸びていても利益が付いてこなければ「安売りで膨らんだ売上」の可能性がある。' },
+      '売上原価': { what: '「売れた商品」の仕入(買取)コスト。まだ売れていない在庫のコストは含まれないのがポイント。', formula: '期首在庫 + 当期買取 − 期末在庫', guide: '売上の伸び以上に原価が増えていたら粗利率が悪化している。買取単価の上げすぎ・安売りのどちらかを疑う。' },
+      '売上総利益': { what: '売上から商品コストを引いた「商売の直接の儲け」。ここから家賃や人件費を払う。粗利と同じ意味。', formula: '売上高 − 売上原価', guide: '全ての経費と利益の源泉。これが固定費を下回ると構造的に赤字。' },
+      '粗利額': { what: '売上から商品コストを引いた「商売の直接の儲け」。ここから家賃や人件費を払う。', formula: '売上高 − 売上原価', guide: '全ての経費と利益の源泉。これが固定費を下回ると構造的に赤字。' },
+      '粗利率(%)': { what: '売上のうち何%が粗利として残るか。商売の「利幅の厚さ」。', formula: '粗利 ÷ 売上高 × 100', guide: 'カードショップの自社商品は25〜35%が目安。委託販売が混ざると見かけ上下がるので、店舗評価では自社ベースの率を使う。' },
+      '販管費': { what: '家賃・人件費・広告費・水道光熱費など、商品コスト以外で店を運営するのにかかる費用。', formula: '販売費 + 一般管理費の合計', guide: '売上比(固定費比率)で見る。売上が伸びても販管費が同じ速度で増えていたら店の収益構造は改善していない。' },
+      '固定費': { what: '売上がゼロでも毎月出ていく費用(家賃・正社員給与など)。', formula: '販管費のうち売上に連動しない部分', guide: '固定費が重いほど損益分岐点が上がり、不況に弱くなる。' },
+      '営業利益': { what: '本業でどれだけ儲けたか。粗利から運営コストを引いた「店の実力値」。', formula: '売上総利益 − 販管費', guide: '銀行が最初に見る数字。ここが赤字だと「本業で稼げていない」と評価される。' },
+      '営業利益率(%)': { what: '売上のうち何%が本業の利益として残るか。', formula: '営業利益 ÷ 売上高 × 100', guide: '小売業は2〜3%が平均、5%あれば優良。10%超はかなりの高収益。' },
+      '経常利益': { what: '本業の儲けに、利息の支払い・受取りなど財務活動の損益を加えた経営全体の成績。', formula: '営業利益 ± 営業外損益(利息など)', guide: '営業利益より大きく下がっている場合は借入利息の負担が重いサイン。' },
+      '当期純利益': { what: '税金まで全部払い終えた後の最終的な儲け。ここが自己資本(純資産)に積み上がっていく。', formula: '経常利益 ± 特別損益 − 法人税等', guide: '黒字を続ければ自己資本比率が上がり、会社の体力になる。' },
+      '損益分岐点売上高': { what: '赤字にならないために最低限必要な売上高。これを下回った瞬間から赤字になるライン。', formula: '固定費(販管費) ÷ 粗利率', guide: '実際の売上との距離が経営の安全余裕。粗利率を上げるか固定費を下げると分岐点は下がる。' },
+      '経営安全率(%)': { what: '売上があと何%落ちても赤字にならないかという「余裕度」。', formula: '(売上高 − 損益分岐点売上高) ÷ 売上高 × 100', guide: '10%未満は危険水域、20%以上で優良。マイナスなら既に損益分岐点割れ。' },
+      '自己資本比率(%)': { what: '会社の全財産(総資産)のうち、借金ではない自前のお金が占める割合。会社の「体力」を表す代表指標。', formula: '純資産(自己資本) ÷ 総資産 × 100', guide: '10%未満は危険、20%〜で安定、30%〜で優良。黒字を積み重ねることでしか上がらない。' },
+      '流動比率(%)': { what: '1年以内に払う義務(買掛・未払等)に対して、すぐ現金化できる資産が何倍あるか。短期の支払能力。', formula: '流動資産 ÷ 流動負債 × 100', guide: '100%未満は資金繰り警戒、120%でまず安心、200%以上で優良。高すぎる場合は資産を寝かせている可能性もある。' },
+      'ROA(%)': { what: '会社が持っている全資産を使って、1年でどれだけ本業の利益を稼いだか。資産の運用効率。', formula: '営業利益 ÷ 総資産 × 100 (このシステムは営業利益ベース)', guide: '5%で優良、10%超で高収益。低い場合は「稼がない資産(滞留在庫・遊休資産)」が多い。' },
+      '在庫回転日数': { what: '仕入れた在庫が売り切れるまでの平均日数。在庫が現金に戻るスピード。', formula: '棚卸資産 ÷ 売上原価 × 365日', guide: '短いほど資金繰りが楽。長期化は滞留在庫のサイン。トレカ小売なら30〜60日程度が快適圏。' },
+      '交叉比率': { what: '在庫がどれだけ効率よく粗利を生んでいるか。「利幅の厚さ×回転の速さ」の掛け算で、小売業の総合力を表す。', formula: '粗利率(%) × 在庫回転率(売上÷在庫)', guide: '200以上で優良。回転が速くても薄利、高粗利でも回らない、のどちらでも下がる。仕入と値付けのバランス指標。' },
+      '現金・預金': { what: '手元の現金と銀行預金。最強の流動資産。', formula: 'B/S入力値', guide: '月商の1〜2ヶ月分あると資金繰りに余裕が生まれる。' },
+      '売掛金・未収金': { what: '売ったけどまだ回収していないお金(カード決済の入金待ちなど)。', formula: 'B/S入力値', guide: '急増している場合は回収サイトの悪化を疑う。' },
+      '棚卸資産(商品在庫)': { what: '店とバックヤードにある商品在庫の金額(原価ベース)。', formula: 'B/S入力値(棚卸)', guide: '商品力の源泉だが、寝ている在庫は現金を食う。在庫回転日数とセットで見る。' },
+      '固定資産': { what: '店舗の内装・設備・保証金など、すぐには現金化できない資産。', formula: 'B/S入力値', guide: '出店するほど増える。増えた分を利益で回収できているかはROAで確認。' },
+      '流動負債(買掛・未払等)': { what: '1年以内に支払う義務のあるお金(仕入の買掛金、未払費用、短期借入など)。', formula: 'B/S入力値', guide: '流動資産とのバランス(流動比率)で支払能力を判断する。' },
+      '固定負債(長期借入等)': { what: '返済が1年より先の借金(長期借入金など)。', formula: 'B/S入力値', guide: '月々の返済額が営業キャッシュの範囲に収まっているかが重要。' },
+      '純資産(自己資本)': { what: '総資産から負債を引いた、正味の自分の財産。資本金+これまでの利益の蓄積。', formula: '総資産 − 総負債', guide: '毎期の純利益で積み上がる。自己資本比率の分子。' }
+    };
+
+    function guideIcon(n) {
+      if (!INDICATOR_GUIDE[n]) return '';
+      return ` <button onclick="event.stopPropagation(); showIndicatorGuide('${String(n).replace(/'/g, "\\'")}')" class="text-sky-600 hover:text-sky-300 transition-colors align-middle ml-1" title="この指標の解説を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button>`;
+    }
+
+    function showIndicatorGuide(name) {
+      const gd = INDICATOR_GUIDE[name];
+      if (!gd) return;
+      let modal = document.getElementById('indicatorGuideModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'indicatorGuideModal';
+        modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4';
+        modal.innerHTML = `
+          <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-start mb-4 border-b border-slate-800 pb-3">
+              <h3 id="igTitle" class="font-black text-white text-lg"><i class="fa-solid fa-book-open text-sky-400 mr-2 text-sm"></i></h3>
+              <button onclick="closeIndicatorGuide()" class="text-slate-500 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-4">
+              <div><p class="text-[10px] font-bold text-sky-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>これは何？</p><p id="igWhat" class="text-slate-300 leading-relaxed text-xs"></p></div>
+              <div><p class="text-[10px] font-bold text-amber-400 mb-1"><i class="fa-solid fa-square-root-variable mr-1"></i>計算式</p><p id="igFormula" class="text-amber-200 font-mono text-xs bg-slate-950 rounded-lg p-2.5 border border-slate-800"></p></div>
+              <div><p class="text-[10px] font-bold text-emerald-400 mb-1"><i class="fa-solid fa-compass mr-1"></i>目安・見方</p><p id="igGuide" class="text-slate-300 leading-relaxed text-xs"></p></div>
+            </div>
+          </div>`;
+        modal.addEventListener('click', closeIndicatorGuide);
+        document.body.appendChild(modal);
+      }
+      document.getElementById('igTitle').innerHTML = `<i class="fa-solid fa-book-open text-sky-400 mr-2 text-sm"></i>${name}`;
+      document.getElementById('igWhat').innerText = gd.what;
+      document.getElementById('igFormula').innerText = gd.formula;
+      document.getElementById('igGuide').innerText = gd.guide;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    function closeIndicatorGuide() {
+      const m = document.getElementById('indicatorGuideModal');
+      if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    }
+
     function buildUI() {
       const cbDiv = document.getElementById('checkboxes'); cbDiv.innerHTML = "";
       rawData.itemNames.forEach(item => {
@@ -1092,7 +1163,7 @@
         const arr = rawData.items[itemName];
         if (!arr) return;
         const isPct = itemName.includes('(%)') || itemName.includes('率');
-        let rowHtml = `<tr><td class="py-3 px-4 font-bold text-slate-300 bg-slate-900/50">${itemName}</td>`;
+        let rowHtml = `<tr><td class="py-3 px-4 font-bold text-slate-300 bg-slate-900/50 whitespace-nowrap">${itemName}${guideIcon(itemName)}</td>`;
         arr.forEach((val, i) => {
           // ★修正: B/S未入力期(null)は「--」表示
           let displayVal = (val === null || val === undefined) ? '--' : (isPct ? Number(val).toFixed(1) : Math.round(val).toLocaleString());
@@ -1243,7 +1314,7 @@
           diffStr = (diff >= 0 ? '+' : '') + (isPct ? diff.toFixed(1) + 'pt' : Math.round(diff).toLocaleString());
           rateStr = (!isPct && Number(va) !== 0) ? ((diff >= 0 ? '+' : '') + (diff / Math.abs(va) * 100).toFixed(1) + '%') : '--';
         }
-        html += `<tr class="hover:bg-slate-800/40 transition-colors"><td class="py-2 px-3 font-bold text-slate-300">${n}</td><td class="py-2 px-3 text-right font-mono">${fmt(va)}</td><td class="py-2 px-3 text-right font-mono">${fmt(vb)}</td><td class="py-2 px-3 text-right font-mono font-bold ${cls}">${diffStr}</td><td class="py-2 px-3 text-right font-mono ${cls}">${rateStr}</td></tr>`;
+        html += `<tr class="hover:bg-slate-800/40 transition-colors"><td class="py-2 px-3 font-bold text-slate-300 whitespace-nowrap">${n}${guideIcon(n)}</td><td class="py-2 px-3 text-right font-mono">${fmt(va)}</td><td class="py-2 px-3 text-right font-mono">${fmt(vb)}</td><td class="py-2 px-3 text-right font-mono font-bold ${cls}">${diffStr}</td><td class="py-2 px-3 text-right font-mono ${cls}">${rateStr}</td></tr>`;
       });
       tbody.innerHTML = html;
     }
