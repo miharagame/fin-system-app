@@ -1289,7 +1289,7 @@
         let rows = [], from = 0;
         const PAGE = 1000;
         while (true) {
-          const { data, error } = await db.from('daily_records').select('target_date,sales,discount,gross_profit').gte('target_date', fyStart).range(from, from + PAGE - 1);
+          const { data, error } = await db.from('daily_records').select('target_date,sales,discount,gross_profit').gte('target_date', fyStart).order('target_date', { ascending: true }).order('id', { ascending: true }).range(from, from + PAGE - 1); // ★修正: 並び順固定(ページ間の重複・取りこぼし防止)
           if (error) throw error;
           if (data && data.length > 0) rows = rows.concat(data);
           if (!data || data.length < PAGE) break;
