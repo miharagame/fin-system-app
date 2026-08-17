@@ -274,28 +274,28 @@
                </div>
                <div class="space-y-3">
                  <div class="bg-slate-950 p-3 rounded-xl border border-sky-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-sky-400">① 現金化力 (基準:150 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore1">-- / 150</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-sky-400">① 現金化力 (基準:150 / 青天井) <button onclick="showScoreGuide(1)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore1">-- / 150</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail1">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-emerald-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-emerald-400">② 在庫コントロール (上限:100)</span><span class="font-mono font-bold text-white" id="detScore2">-- / 100</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-emerald-400">② 在庫コントロール (上限:100) <button onclick="showScoreGuide(2)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore2">-- / 100</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail2">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-fuchsia-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-fuchsia-400">③ 在庫質ランク評価 (上限:100)</span><span class="font-mono font-bold text-white" id="detScore3">-- / 100</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-fuchsia-400">③ 在庫質ランク評価 (上限:100) <button onclick="showScoreGuide(3)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore3">-- / 100</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail3">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-amber-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-amber-500">④ 粗利率達成度 (基準:50 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore4">-- / 50</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-amber-500">④ 粗利率達成度 (基準:50 / 青天井) <button onclick="showScoreGuide(4)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore4">-- / 50</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail4">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-indigo-900/30 relative overflow-hidden">
                    <div id="prodAlertBg" class="absolute inset-0 bg-rose-950/20 hidden"></div>
-                   <div class="relative z-10 flex justify-between items-center mb-1"><span class="text-xs font-bold text-indigo-400">⑤ 生産性 (基準:50 / 青天井)</span><span class="font-mono font-bold text-white" id="detScore5">-- / 50</span></div>
+                   <div class="relative z-10 flex justify-between items-center mb-1"><span class="text-xs font-bold text-indigo-400">⑤ 生産性 (基準:50 / 青天井) <button onclick="showScoreGuide(5)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore5">-- / 50</span></div>
                    <p class="relative z-10 text-[10px] text-slate-400" id="detDetail5">--</p>
                  </div>
                  <div class="bg-slate-950 p-3 rounded-xl border border-teal-900/30">
-                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-teal-400">⑥ 基本管理 (上限:30)</span><span class="font-mono font-bold text-white" id="detScore6">-- / 30</span></div>
+                   <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-teal-400">⑥ 基本管理 (上限:30) <button onclick="showScoreGuide(6)" class="text-slate-600 hover:text-sky-300 transition-colors ml-0.5" title="この点数の計算方法を見る"><i class="fa-regular fa-circle-question text-[11px]"></i></button></span><span class="font-mono font-bold text-white" id="detScore6">-- / 30</span></div>
                    <p class="text-[10px] text-slate-400" id="detDetail6">--</p>
                  </div>
                </div>
@@ -1989,7 +1989,9 @@
                     inputRate: inputRate.toFixed(1), actualProd: Math.round(actualProd), breakevenProd: Math.round(breakevenProd),
                     targetProd: Math.round(targetProd), prodMult: prodTargetMult,
                     workHours: Math.round(actualWorkHours), targetHours: Math.round(periodTargetHours),
-                    goodInvRatio: (goodInvRatio * 100).toFixed(1), validInvMonths: validInvMonths
+                    goodInvRatio: (goodInvRatio * 100).toFixed(1), validInvMonths: validInvMonths,
+                    // ★追加: 期間満額目標と採点説明用のパラメータ
+                    targetCashFull: target.cash, targetInvLimitFull: target.invLimit, invZoneMult: invOverZoneMult
                 }
             });
         });
@@ -2058,10 +2060,73 @@
       }
     }
 
+    // ==========================================
+    // ★追加: 店舗スコアの採点方法説明モーダル (各カードの?ボタン)
+    // ==========================================
+    let currentScoreDetailIndex = 0;
+
+    function showScoreGuide(scoreNo) {
+      const s = scoringData[currentScoreDetailIndex];
+      if (!s) return;
+      const d = s.details;
+      const yen = v => Math.round(Number(v) || 0).toLocaleString();
+      let title = '', what = '', formula = '', calc = '';
+
+      if (scoreNo === 1) {
+        title = '① 現金化力 (基準150点・青天井)';
+        what = '「本日までの目標」に対する実績の進捗率をそのまま点数化します。目標累計は、終わった月の月次目標は満額・進行中の月は日割で積み上げた「今日時点で到達しているべき金額」。実績は日報の現金化額から委託の精算分を差し引いた実質値です。';
+        formula = 'スコア = (実績累計 ÷ 本日までの目標累計) × 150点\n目標累計 = 終了月の月次目標の満額 + 当月目標 × 経過日÷月日数';
+        calc = `実績 ${yen(d.actualCash)}円 ÷ 目標 ${yen(d.targetCash)}円 = 進捗 ${d.cashRatio}% → ×150 = ${s.scores[0]}点。期間満額目標は ${yen(d.targetCashFull)}円 で、期末に近づくほど目標累計がこの額まで増えていきます。※目標未設定で実績プラスの場合は150点扱い。`;
+      } else if (scoreNo === 2) {
+        title = '② 在庫コントロール (上限100点)';
+        const limit = Number(d.targetInvLimit) || 0;
+        const act = Number(d.actualInvChange) || 0;
+        const zone = Number(d.invZoneMult) || 1.0;
+        what = '在庫の増減を本部が設定した「上限枠」内にコントロールできているかを評価します。枠内なら満点、超過は超過率に応じて減点、売り減らし(マイナス)は緩やかに減点します。';
+        formula = `枠内(0〜上限) = 100点\n超過時: 100点 − (超過額 ÷ [上限×${zone}]) × 100点\nマイナス時: 100点 − (減少額 ÷ 上限) × 25点`;
+        if (act >= 0 && act <= limit) {
+          calc = `実績 +${yen(act)}円 は上限 ${yen(limit)}円 の枠内 → 満点100点。`;
+        } else if (act > limit) {
+          const over = act - limit;
+          calc = `実績 +${yen(act)}円 は上限 ${yen(limit)}円 を ${yen(over)}円 超過。減点 = ${yen(over)} ÷ ${yen(limit * zone)} × 100 ≈ ${Math.min(100, Math.round(over / Math.max(1, limit * zone) * 100))}点 → ${s.scores[1]}点。上限の${(1 + zone).toFixed(1)}倍(${yen(limit * (1 + zone))}円)で0点になります。`;
+        } else {
+          calc = `実績 ${yen(act)}円 の在庫減。減点 = ${yen(Math.abs(act))} ÷ ${yen(limit || 1000000)} × 25 → ${s.scores[1]}点。棚痩せ(仕入不足)への緩やかなブレーキです。`;
+        }
+        calc += ` 期間満額上限は ${yen(d.targetInvLimitFull)}円。`;
+      } else if (scoreNo === 3) {
+        title = '③ 在庫質ランク評価 (上限100点)';
+        what = '棚卸データのランク別金額から、優良在庫(A〜Cランク)が在庫全体に占める割合を点数化します。売れ筋を多く・死に筋を少なく持てているかの「在庫の中身の質」の指標です。';
+        formula = 'スコア = (A+B+Cランクの在庫金額 ÷ 在庫総額) × 100点';
+        calc = `優良ランク比率 ${d.goodInvRatio}% → ${s.scores[2]}点 (集計対象: ${d.validInvMonths}ヶ月分の棚卸データ)。`;
+      } else if (scoreNo === 4) {
+        title = '④ 粗利率達成度 (基準50点・青天井)';
+        what = '月次予算で設定した目標粗利率に対する達成度です。粗利率は委託販売を分子・分母から除外した「自社商品ベース」で計算するので、委託の多い店舗でも公平に比較できます。';
+        formula = 'スコア = (実績粗利率 ÷ 目標粗利率) × 50点\n実績粗利率 = (粗利 − 委託取り分) ÷ (売上 − 委託販売額)';
+        calc = `実績 ${d.actualMargin}% ÷ 目標 ${d.targetMargin}% = 進捗 ${d.marginRatio}% → ×50 = ${s.scores[3]}点。`;
+      } else if (scoreNo === 5) {
+        title = '⑤ 生産性 (基準50点・青天井/逓減)';
+        what = '1時間あたりの粗利(円/h)を「目標生産性」と比べて点数化します。目標は損益分岐点(固定費+返済を賄えるライン)の' + (d.prodMult || 3) + '倍。目標超過分は傾きを半分にして、点数の暴騰を防いでいます。';
+        formula = `目標生産性 = 分岐点 × ${d.prodMult || 3}\n進捗100%まで: 進捗率 × 50点\n超過分: 超過1%あたり +0.25点 (上限なし・逓減)`;
+        calc = `実績 ${yen(d.actualProd)}円/h ÷ 目標 ${yen(d.targetProd)}円/h (分岐点${yen(d.breakevenProd)}円/h×${d.prodMult || 3}) → ${s.scores[4]}点 (実働 ${yen(d.workHours)}h)。`;
+      } else {
+        title = '⑥ 基本管理 (上限30点)';
+        what = '経過日数に対して日報が何日分入力されているかの「入力規律」です。データが揃わないと他の全指標の精度が落ちるため、基本動作として点数化しています。';
+        formula = 'スコア = 日報入力率 × 30点\n入力率 = 日報のある日数 ÷ 期間の経過日数';
+        calc = `入力率 ${d.inputRate}% → ${s.scores[5]}点。`;
+      }
+
+      // 財務指標ガイドと同じモーダルを流用
+      const gd = { what: what, formula: formula, guide: calc };
+      INDICATOR_GUIDE['__score_tmp__'] = gd;
+      showIndicatorGuide('__score_tmp__');
+      document.getElementById('igTitle').innerHTML = `<i class="fa-solid fa-calculator text-sky-400 mr-2 text-sm"></i>${title}`;
+      delete INDICATOR_GUIDE['__score_tmp__'];
+    }
+
     function renderRankingList() {
       const container = document.getElementById('rankingList');
       let html = "";
-      
+
       scoringData.forEach((s, index) => {
         let rankColor = "bg-slate-800 text-slate-400 border-slate-700";
         if (s.rank === "S") rankColor = "bg-amber-900/50 text-amber-400 border-amber-500";
@@ -2129,11 +2194,13 @@
 
       const maxScores = [150, 100, 100, 50, 50, 30];
       
+      currentScoreDetailIndex = index; // ★追加: 採点説明モーダル用に選択中の店舗を保持
+
       document.getElementById('detScore1').innerText = s.scores[0] + " / " + maxScores[0];
-      document.getElementById('detDetail1').innerHTML = `目標累計: <span class="text-white">${Math.round(s.details.targetCash).toLocaleString()}</span>円 / 実績累計: <span class="text-white ${s.details.actualCash < 0 ? 'text-rose-400' : 'text-emerald-400'}">${Math.round(s.details.actualCash).toLocaleString()}</span>円 (進捗 ${s.details.cashRatio}%)`;
+      document.getElementById('detDetail1').innerHTML = `目標累計: <span class="text-white">${Math.round(s.details.targetCash).toLocaleString()}</span>円 / 実績累計: <span class="text-white ${s.details.actualCash < 0 ? 'text-rose-400' : 'text-emerald-400'}">${Math.round(s.details.actualCash).toLocaleString()}</span>円 (進捗 ${s.details.cashRatio}%)<br><span class="text-slate-500">期間満額目標: ${Math.round(s.details.targetCashFull || 0).toLocaleString()}円</span>`;
 
       document.getElementById('detScore2').innerText = s.scores[1] + " / " + maxScores[1];
-      document.getElementById('detDetail2').innerHTML = `上限累計: <span class="text-white">${Math.round(s.details.targetInvLimit).toLocaleString()}</span>円 / 実績累計: <span class="text-white ${s.details.actualInvChange > 0 ? 'text-rose-400' : 'text-emerald-400'}">${s.details.actualInvChange > 0 ? '+' : ''}${Math.round(s.details.actualInvChange).toLocaleString()}</span>円`;
+      document.getElementById('detDetail2').innerHTML = `上限累計: <span class="text-white">${Math.round(s.details.targetInvLimit).toLocaleString()}</span>円 / 実績累計: <span class="text-white ${s.details.actualInvChange > 0 ? 'text-rose-400' : 'text-emerald-400'}">${s.details.actualInvChange > 0 ? '+' : ''}${Math.round(s.details.actualInvChange).toLocaleString()}</span>円<br><span class="text-slate-500">期間満額上限: ${Math.round(s.details.targetInvLimitFull || 0).toLocaleString()}円</span>`;
 
       document.getElementById('detScore3').innerText = s.scores[2] + " / " + maxScores[2];
       document.getElementById('detDetail3').innerHTML = `優良ランク(A〜C)比率: <span class="text-white">${s.details.goodInvRatio}</span>% (集計対象: ${s.details.validInvMonths}ヶ月分)`;
