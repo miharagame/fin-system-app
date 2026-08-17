@@ -1642,6 +1642,20 @@
         let periodDaysRatio = totalPeriodDays > 0 ? elapsedPeriodDays / totalPeriodDays : 1;
         if (periodDaysRatio <= 0 || periodDaysRatio > 1) periodDaysRatio = 1;
 
+        // ★修正: 「本日までの目標」計算用の月別消化率。
+        //   終わった月=1 / 進行中の月=経過日÷月日数 / 未来の月=0。
+        //   (従来は期間全体の目標合計×経過日数÷全日数の均等日割で、年次表示だと
+        //    未来月の目標まで日割で混ざり、季節指数や未設定月があると目標累計が大きく歪んだ)
+        const monthElapsedRatio = {};
+        targetMonthsList.forEach(mStr => {
+            const my = parseInt(mStr.substring(0, 4), 10);
+            const mm = parseInt(mStr.substring(5, 7), 10);
+            const dim = new Date(my, mm, 0).getDate();
+            if (todayStrLocal.startsWith(mStr)) monthElapsedRatio[mStr] = Math.min(1, today.getDate() / dim);
+            else if (todayStrLocal > mStr) monthElapsedRatio[mStr] = 1;
+            else monthElapsedRatio[mStr] = 0;
+        });
+
         let firstM = targetMonthsList[0];
         let lastM = targetMonthsList[targetMonthsList.length - 1];
         let lastDayNum = new Date(parseInt(lastM.substring(0, 4), 10), parseInt(lastM.substring(5, 7), 10), 0).getDate();
@@ -1697,14 +1711,17 @@
         let branchPeriodTargets = {};
 
         targetBranches.forEach(b => {
-            branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0 };
+            branchPeriodTargets[b] = { marginRate: 0, cash: 0, invLimit: 0, cashElapsed: 0, invLimitElapsed: 0 };
             let marginSum = 0, marginCount = 0;
             groupMembersOf(b).forEach(mb => {
                 targetMonthsList.forEach(mStr => {
                     let mData = budgetRes.data.find(d => d.target_month === mStr && d.branch === mb);
                     if (mData) {
+                        const w = monthElapsedRatio[mStr] || 0; // ★追加: 月別の消化率
                         branchPeriodTargets[b].cash += Number(mData.target_cash) || 0;
                         branchPeriodTargets[b].invLimit += Number(mData.target_inv_limit) || 0;
+                        branchPeriodTargets[b].cashElapsed += (Number(mData.target_cash) || 0) * w;
+                        branchPeriodTargets[b].invLimitElapsed += (Number(mData.target_inv_limit) || 0) * w;
                         let mr = Number(mData.margin_rate) || 0;
                         if (mr > 0) { marginSum += mr; marginCount++; }
                     }
@@ -1904,14 +1921,15 @@
             let periodFixedCost = (fcObj.monthlySga + fcObj.monthlyRepay) * monthsCount;
             let periodTargetHours = fcObj.targetHours * monthsCount;
 
-            let scoreCash = 0; let currentTargetCash = target.cash * periodDaysRatio; let cashRatio = 0;
+            // ★修正: 本日までの目標 = 月別消化ベース(終了月は満額+当月のみ日割)。均等日割をやめた
+            let scoreCash = 0; let currentTargetCash = target.cashElapsed; let cashRatio = 0;
             if (currentTargetCash > 0) { cashRatio = correctedCashFlow / currentTargetCash; scoreCash = Math.max(0, cashRatio * 150); } 
             else if (currentTargetCash <= 0 && correctedCashFlow > 0) { scoreCash = 150; cashRatio = 1; }
 
             // ★修正: 在庫超過の減点を緩和。「超過率=減点率」(上限の2倍で0点)とし、
             //   0点ラインは全社共通設定 inv_over_zone_mult (既定1.0 = 減点ゾーン幅が上限×1.0)で調整可能。
             //   マイナス側(売り減らし)も傾きを半分に緩和: 減点 = (減少額÷上限)×25点(上限相当の減少で75点)。
-            let scoreInv = 0; let currentInvLimit = target.invLimit * periodDaysRatio;
+            let scoreInv = 0; let currentInvLimit = target.invLimitElapsed; // ★修正: 月別消化ベース
             if (actualInvChange >= 0 && actualInvChange <= currentInvLimit) { scoreInv = 100; }
             else if (actualInvChange < 0) { let minLimit = currentInvLimit > 0 ? currentInvLimit : 1000000; scoreInv = 100 - (Math.abs(actualInvChange) / minLimit) * 25; }
             else if (actualInvChange > currentInvLimit) { let overAmount = actualInvChange - currentInvLimit; let penaltyZone = currentInvLimit > 0 ? currentInvLimit * invOverZoneMult : 1000000; scoreInv = 100 - (overAmount / penaltyZone) * 100; }
