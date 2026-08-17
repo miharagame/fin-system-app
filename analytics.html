@@ -1991,11 +1991,19 @@
         const prorationDays = elapsedPeriodDays > 0 ? elapsedPeriodDays : totalPeriodDays;
         const totalSgaHalfYearly = Math.round((sgaYearlySum / 365) * prorationDays);
         const totalRepayHalfYearly = Math.round((repayYearlySum / 365) * prorationDays);
-        const fixedInput = document.getElementById('sim_fixed_cost');
-        if (fixedInput && !fixedInput.value) fixedInput.value = totalSgaHalfYearly;
-
-        const repayInput = document.getElementById('sim_repay');
-        if (repayInput && !repayInput.value) repayInput.value = totalRepayHalfYearly;
+        // ★修正: 期間切替時にプリフィルを追従させる。
+        //   「空欄のときだけ」方式だと、先に単月表示でプリフィルされた値(例: 8月17日分)が
+        //   賞与シミュの半期集計に残ったまま使われ、固定費・返済が実際の1/10などになる事故が起きる。
+        //   前回の自動値のまま(=ユーザーが手入力していない)なら新しい期間の値で上書きし、
+        //   手入力された値はそのまま尊重する。
+        const setAutoPrefill = (el, val) => {
+            if (!el) return;
+            const prevAuto = el.getAttribute('data-auto-value');
+            if (!el.value || el.value === prevAuto) el.value = String(val);
+            el.setAttribute('data-auto-value', String(val));
+        };
+        setAutoPrefill(document.getElementById('sim_fixed_cost'), totalSgaHalfYearly);
+        setAutoPrefill(document.getElementById('sim_repay'), totalRepayHalfYearly);
 
         const lblEl = document.getElementById('scorePeriodDetailLabel');
         if (lblEl) {
