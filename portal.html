@@ -309,6 +309,8 @@
                   <th class="py-2 px-2 text-right text-emerald-400">粗利率(%)</th>
                   <th class="py-2 px-2 text-right text-amber-400">現金化額(円)</th>
                   <th class="py-2 px-2 text-right text-fuchsia-400">在庫増減(円)</th>
+                  <th class="py-2 px-2 text-right text-purple-300" title="外部委託+社内委託の販売額合計">委託販売(円)</th>
+                  <th class="py-2 px-2 text-right text-cyan-300" title="店舗間移動の純額(原価ベース)。受入がプラス・送出がマイナス">在庫移動(円)</th>
                   <th class="py-2 px-2 text-right text-indigo-400">生産性(円/h)</th>
                 </tr>
               </thead>
@@ -621,8 +623,8 @@
           }
         } catch (e) { console.warn('移動記録の取得スキップ:', e); }
 
-        targetBranches = [...new Set(allRecords.map(r => r.branch))];
-        if (targetBranches.length === 0) targetBranches = globalBranches;
+        // ★修正: 店舗マスタ登録済みの有効店舗は、日報が未入力でも(開店準備中の新店など)一覧に表示する
+        targetBranches = [...new Set([...allRecords.map(r => r.branch), ...globalBranches])];
         
         // ★修正: 当月分だけでなく全確定月を取得し、半期・年間・全期間の集計でも補正できるようにする
         const { data: summaryDataRes, error: summaryErr } = await db.from('fin_monthly_stats').select('*');
@@ -1145,6 +1147,9 @@
             const toS = ensureB(r.to_branch);
             fromS.cashFlow += C; fromS.invChange -= C;
             toS.cashFlow -= C; toS.invChange += C;
+            // ★追加: 表示用の移動純額(原価ベース / 受入+・送出−)
+            fromS.transferNet = (fromS.transferNet || 0) - C;
+            toS.transferNet = (toS.transferNet || 0) + C;
         });
 
         document.getElementById('totSales').innerText = Math.round(totalSales).toLocaleString();
@@ -1342,7 +1347,8 @@
                 laborProd: laborProd, monthlyTarget: mTarget,
                 // ★追加: 評価グループ合算用の内訳項目
                 discount: stats.discount || 0, consignSales: stats.consignSales || 0,
-                consignProfit: stats.consignProfit || 0, workHours: stats.workHours || 0
+                consignProfit: stats.consignProfit || 0, workHours: stats.workHours || 0,
+                transferNet: stats.transferNet || 0 // ★追加: 店舗間移動の純額(受入+・送出−)
             });
         });
 
@@ -1373,13 +1379,14 @@
                 branch: s.branch, members: memberRows,
                 sales: 0, purchase: 0, grossProfit: 0, cashFlow: 0, invChange: 0,
                 discount: 0, consignSales: 0, consignProfit: 0, workHours: 0, monthlyTarget: 0,
-                isConfirmed: false
+                transferNet: 0, isConfirmed: false
             };
             memberRows.forEach(m => {
                 agg.sales += m.sales || 0; agg.purchase += m.purchase || 0; agg.grossProfit += m.grossProfit || 0;
                 agg.cashFlow += m.cashFlow || 0; agg.invChange += m.invChange || 0; agg.discount += m.discount || 0;
                 agg.consignSales += m.consignSales || 0; agg.consignProfit += m.consignProfit || 0;
                 agg.workHours += m.workHours || 0; agg.monthlyTarget += m.monthlyTarget || 0;
+                agg.transferNet += m.transferNet || 0;
                 agg.isConfirmed = agg.isConfirmed || m.isConfirmed;
             });
             const gNetS = (agg.sales - agg.discount) - agg.consignSales;
@@ -1429,6 +1436,8 @@
           <td class="py-3 px-2 text-right font-mono font-bold text-emerald-300 ${numCls}">${(s.marginRate || 0).toFixed(1)}%</td>
           <td class="py-3 px-2 text-right font-mono font-bold text-amber-400 ${numCls}">${Math.round(s.cashFlow || 0).toLocaleString()}</td>
           <td class="py-3 px-2 text-right font-mono font-bold text-fuchsia-400 ${numCls}">${invSign}${Math.round(s.invChange || 0).toLocaleString()}</td>
+          <td class="py-3 px-2 text-right font-mono ${(s.consignSales || 0) > 0 ? 'text-purple-300' : 'text-slate-700'} ${numCls}">${(s.consignSales || 0) > 0 ? Math.round(s.consignSales).toLocaleString() : '-'}</td>
+          <td class="py-3 px-2 text-right font-mono ${(s.transferNet || 0) !== 0 ? ((s.transferNet || 0) > 0 ? 'text-cyan-300' : 'text-cyan-600') : 'text-slate-700'} ${numCls}">${(s.transferNet || 0) !== 0 ? ((s.transferNet > 0 ? '+' : '') + Math.round(s.transferNet).toLocaleString()) : '-'}</td>
           <td class="py-3 px-2 text-right font-mono font-bold text-indigo-400 ${numCls}">${Math.round(s.laborProd || 0).toLocaleString()}</td>
         </tr>`;
       };
