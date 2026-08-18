@@ -512,6 +512,20 @@
                  <span class="block text-[9px] mt-0.5 opacity-80">年間ゴール自体を引き直す。現在の年間シミュレーションの月割をそのまま残り月に配信</span>
                </button>
              </div>
+             <div id="midRevSettleRow" class="hidden mb-3">
+               <p class="text-[9px] text-slate-500 font-bold mb-1.5">不足分の精算単位 (クリックで切替):</p>
+               <input type="hidden" id="midRevSettle" value="company">
+               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                 <button type="button" id="midRevSettleCompanyBtn" onclick="setMidRevSettle('company')" class="text-left p-3 rounded-xl border-2 transition-all cursor-pointer">
+                   <span class="block text-xs font-black"><i class="fa-solid fa-people-group mr-1.5"></i>全社一括</span>
+                   <span class="block text-[9px] mt-0.5 opacity-80">全店の実績を合算して残り必要額を出し、配分率で再分配。店舗間の貸し借りは問わない</span>
+                 </button>
+                 <button type="button" id="midRevSettleBranchBtn" onclick="setMidRevSettle('branch')" class="text-left p-3 rounded-xl border-2 transition-all cursor-pointer">
+                   <span class="block text-xs font-black"><i class="fa-solid fa-store mr-1.5"></i>店舗別精算</span>
+                   <span class="block text-[9px] mt-0.5 opacity-80">各店の年間コミット−自店実績で残額を計算。前半の貯金・遅れをその店自身が持ち越す</span>
+                 </button>
+               </div>
+             </div>
              <div id="midRevSummary"></div>
            </div>
          </div>
@@ -1178,14 +1192,60 @@
       return { netSales, gross, cash, inv };
     }
 
+    // 年度初来〜指定月の前月末までの実績を店舗別に集計 (円・B案補正込み・未確定基準)
+    function computePeriodActualsByBranch(year, beforeYm) {
+      if (!anchorRaw) return null;
+      const fyStart = `${year}-03-01`;
+      const boundary = `${beforeYm}-01`;
+      const tk = consignRatesPlan.tk / 100, sh = consignRatesPlan.sh / 100;
+      const within = d => d && d >= fyStart && d < boundary;
+      const by = {};
+      const ensure = b => { if (!by[b]) by[b] = { netSales: 0, gross: 0, cash: 0, inv: 0 }; return by[b]; };
+      anchorRaw.daily.forEach(r => {
+        if (!within(r.target_date)) return;
+        const o = ensure(r.branch);
+        o.netSales += (Number(r.sales) || 0) - (Number(r.discount) || 0);
+        o.gross += Number(r.gross_profit) || 0;
+        o.cash += Number(r.cash_flow) || 0;
+        o.inv += Number(r.inv_change) || 0;
+        const ext = Number(r.consignment_sales) || 0;
+        if (ext) { o.inv += ext * (1 - tk); o.cash -= ext * (1 - tk); }
+      });
+      anchorRaw.internal.forEach(r => {
+        if (!within(r.target_date)) return;
+        const X = Number(r.sales_amount) || 0, C = Number(r.cost_amount) || 0;
+        if (!X) return;
+        const ownerShare = (X - C) * sh, sellerShare = (X - C) - ownerShare;
+        const s = ensure(r.seller_branch), o = ensure(r.owner_branch);
+        s.gross += sellerShare - X * tk; s.inv += X * (1 - tk); s.cash -= (C + ownerShare);
+        o.gross += ownerShare; o.inv -= C; o.cash += (C + ownerShare);
+      });
+      anchorRaw.transfers.forEach(r => {
+        if (!within(r.target_date)) return;
+        const C = Number(r.cost_amount) || 0;
+        if (!C) return;
+        const f = ensure(r.from_branch), t = ensure(r.to_branch);
+        f.cash += C; f.inv -= C;   // 評価振替: 出し手は原価で社内売却した扱い
+        t.cash -= C; t.inv += C;
+      });
+      return by;
+    }
+
     function midRevisionState() {
       const en = document.getElementById('midRevEnabled');
       if (!en || !en.checked) return { enabled: false };
       return {
         enabled: true,
         mode: (document.getElementById('midRevMode') || {}).value || 'goal',
+        settle: (document.getElementById('midRevSettle') || {}).value || 'company',
         startMonth: (document.getElementById('midRevStartMonth') || {}).value || ''
       };
+    }
+
+    function setMidRevSettle(settle) {
+      const el = document.getElementById('midRevSettle');
+      if (el) el.value = settle;
+      updateMidRevisionPanel();
     }
 
     function populateMidRevMonths() {
@@ -1204,7 +1264,7 @@
     }
 
     // 期中修正の中核計算 — プレビューと一括適用の両方がこの1本を使う
-    function computeMidRevision(year, startYm, mode) {
+    function computeMidRevision(year, startYm, mode, settle) {
       const plan = {
         sales: currentCalcData.sales || 0,
         cash: currentCalcData.fieldCashTarget || 0,
@@ -1223,7 +1283,29 @@
       });
       let dist; // 残期間に配信する総額 (万円)
       const clamped = {};
-      if (mode === 'goal') {
+      let perBranch = null; // 店舗別精算のときの店ごとの内訳
+      if (mode === 'goal' && settle === 'branch') {
+        // 店舗別精算: 各店の年間コミット (年間計画×配分率) − 自店実績 = 自店の残り必要額
+        const actBy = computePeriodActualsByBranch(year, startYm) || {};
+        perBranch = {};
+        dist = { sales: 0, cash: 0, inv: 0 };
+        document.querySelectorAll('.dist-row').forEach(rowEl => {
+          const b = rowEl.getAttribute('data-branch');
+          const cashPct = parseFloat((document.getElementById(`distCashPct_${b}`) || {}).value) || 0;
+          const invPct = parseFloat((document.getElementById(`distInvPct_${b}`) || {}).value) || 0;
+          const a = actBy[b] || { netSales: 0, gross: 0, cash: 0, inv: 0 };
+          const commit = { sales: plan.sales * cashPct / 100, cash: plan.cash * cashPct / 100, inv: plan.inv * invPct / 100 };
+          const aW = { sales: a.netSales / 10000, cash: a.cash / 10000, inv: a.inv / 10000 };
+          const rem = {}, cl = {};
+          ['sales', 'cash', 'inv'].forEach(k => {
+            const raw = commit[k] - aW[k];
+            rem[k] = Math.max(0, raw);
+            if (raw < 0) cl[k] = true; // この店はこの項目のコミットを達成済み
+          });
+          perBranch[b] = { commit, act: aW, rem, clamped: cl };
+          dist.sales += rem.sales; dist.cash += rem.cash; dist.inv += rem.inv;
+        });
+      } else if (mode === 'goal') {
         dist = {};
         ['sales', 'cash', 'inv'].forEach(k => {
           const raw = plan[k] - actW[k];
@@ -1233,7 +1315,7 @@
       } else {
         dist = { sales: plan.sales * remW / 100, cash: plan.cash * remW / 100, inv: plan.inv * remW / 100 };
       }
-      return { plan, actW, dist, clamped, elapsedW, remW, elapsedN, remN, mode, startYm,
+      return { plan, actW, dist, clamped, perBranch, elapsedW, remW, elapsedN, remN, mode, settle: settle || 'company', startYm,
                anchorMismatch: anchorRaw && anchorRaw.fyStart !== `${year}-03-01` };
     }
 
@@ -1265,13 +1347,19 @@
       const offCls = 'bg-slate-900 border-slate-700 text-slate-500 hover:border-indigo-700 hover:text-slate-300';
       if (goalBtn) goalBtn.className = baseCls + (st.mode === 'goal' ? onCls : offCls);
       if (paceBtn) paceBtn.className = baseCls + (st.mode === 'pace' ? onCls : offCls);
+      // 精算単位 (ゴール死守のときのみ意味を持つ)
+      const settleRow = document.getElementById('midRevSettleRow');
+      if (settleRow) settleRow.classList.toggle('hidden', st.mode !== 'goal');
+      const scBtn = document.getElementById('midRevSettleCompanyBtn'), sbBtn = document.getElementById('midRevSettleBranchBtn');
+      if (scBtn) scBtn.className = baseCls + (st.settle !== 'branch' ? onCls : offCls);
+      if (sbBtn) sbBtn.className = baseCls + (st.settle === 'branch' ? onCls : offCls);
       const year = document.getElementById('applyTargetYear').value;
       if (!anchorRaw) { summary.innerHTML = '<p class="text-[10px] text-slate-500 py-2">今期実績を読み込み中です...</p>'; return; }
       if (!(currentCalcData.sales > 0 || currentCalcData.fieldCashTarget > 0)) {
         summary.innerHTML = '<p class="text-[10px] text-amber-500 py-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>先に「年次経営計画」タブでシミュレーションを実行してください (年間計画が0のままです)。配信履歴から元の計画を復元してから修正するのがおすすめです。</p>';
         return;
       }
-      const r = computeMidRevision(year, st.startMonth, st.mode);
+      const r = computeMidRevision(year, st.startMonth, st.mode, st.settle);
       if (!r) { summary.innerHTML = '<p class="text-[10px] text-slate-500 py-2">実績データを読み込めません。</p>'; return; }
       const fmt = v => Math.round(v).toLocaleString();
       const row = (label, k, unitNote) => {
@@ -1287,18 +1375,73 @@
       let warns = [];
       if (r.anchorMismatch) warns.push(`実績データは ${anchorRaw.fyStart.slice(0,4)}年度分を読み込んでいます。選択中の ${year}年度 とズレているため、経過実績が正しく集計されない可能性があります。`);
       if (r.actW.sales <= 0) warns.push('経過実績の売上が0円です。日報の入力状況を確認してください。');
-      if (st.mode === 'goal' && r.elapsedN > 0 && r.remN > 0) {
+      if (st.mode === 'goal' && r.elapsedN > 0 && r.remN > 0 && !r.perBranch) {
         const actPace = r.actW.cash / r.elapsedN, needPace = r.dist.cash / r.remN;
         if (actPace > 0 && needPace > actPace * 1.3) {
           warns.push(`ゴール死守には残り${r.remN}ヶ月で月平均 ${fmt(needPace)}万円の現金化が必要です (経過実績ペース ${fmt(actPace)}万円/月 の ${(needPace/actPace).toFixed(1)}倍)。現実的でない場合は「現実ペース」への切替や年間計画の見直しを検討してください。`);
         }
       }
+      if (r.perBranch) {
+        Object.entries(r.perBranch).forEach(([b, p]) => {
+          if (r.elapsedN > 0 && r.remN > 0 && p.rem.cash > 0) {
+            const actPace = p.act.cash / r.elapsedN, needPace = p.rem.cash / r.remN;
+            if (actPace > 0 && needPace > actPace * 1.5) {
+              warns.push(`${b}: 残り${r.remN}ヶ月で月平均 ${fmt(needPace)}万円の現金化が必要です (自店の実績ペース ${fmt(actPace)}万円/月 の ${(needPace/actPace).toFixed(1)}倍)。目標が非現実的な場合は「全社一括」や配分率の見直しを検討してください。`);
+            }
+          }
+        });
+      }
       const progPct = r.plan.cash > 0 ? (r.actW.cash / r.plan.cash * 100) : 0;
-      const modeNote = st.mode === 'goal'
-        ? `年間計画 − 経過実績 = 残期間の必要額として、${st.startMonth} 以降の各月へ季節指数の比率 (残期間内で100%に正規化) で配分します。`
-        : `現在の年間計画の月割 (季節指数そのまま) を ${st.startMonth} 以降のみ上書きします。年間ゴールは「経過実績 + 残期間配信分」に引き直されます。`;
-      summary.innerHTML = `
-        <p class="text-[9px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>${modeNote} 経過実績は ${year}-03-01 〜 ${st.startMonth} の前月末までの入力済みデータ (委託・店舗間移動の補正込み) を使用。過去月の目標マスタは変更されません。</p>
+      const modeNote = st.mode !== 'goal'
+        ? `現在の年間計画の月割 (季節指数そのまま) を ${st.startMonth} 以降のみ上書きします。年間ゴールは「経過実績 + 残期間配信分」に引き直されます。`
+        : (r.perBranch
+          ? `各店舗の年間コミット (年間計画 × 配分率) − 自店実績 = その店の残り必要額として、${st.startMonth} 以降の各月へ季節指数 (残期間内で正規化) で配分します。前半の貯金・遅れはその店自身が持ち越します。`
+          : `年間計画 − 経過実績 = 残期間の必要額として、${st.startMonth} 以降の各月へ季節指数の比率 (残期間内で100%に正規化) で配分します。`);
+      let tableHtml;
+      if (r.perBranch) {
+        // 店舗別精算テーブル: 貯金/不足は「経過時点の消化予定 (コミット×経過指数)」との差
+        const diffOf = p => p.act.cash - p.commit.cash * r.elapsedW / 100;
+        const bRow = ([b, p]) => {
+          const d = diffOf(p);
+          const badge = d >= 0
+            ? `<span class="text-emerald-400">+${fmt(d)} 貯金</span>`
+            : `<span class="text-rose-400">${fmt(d)} 不足</span>`;
+          const cell = (k) => `${fmt(p.rem[k])}${p.clamped[k] ? ' <span class="text-emerald-500">✓</span>' : ''}`;
+          return `<tr class="border-b border-slate-800/50">
+            <td class="py-1.5 pr-2 text-slate-300 font-bold whitespace-nowrap">${b}</td>
+            <td class="py-1.5 px-2 text-right font-mono text-slate-400">${fmt(p.commit.cash)}</td>
+            <td class="py-1.5 px-2 text-right font-mono text-sky-300">${fmt(p.act.cash)}</td>
+            <td class="py-1.5 px-2 text-right font-mono font-bold">${badge}</td>
+            <td class="py-1.5 px-2 text-right font-mono font-bold text-fuchsia-300">${cell('cash')}</td>
+            <td class="py-1.5 px-2 text-right font-mono text-slate-400">${cell('sales')}</td>
+            <td class="py-1.5 pl-2 text-right font-mono text-slate-400">${cell('inv')}</td>
+          </tr>`;
+        };
+        const entries = Object.entries(r.perBranch);
+        const tot = k => entries.reduce((s, [, p]) => s + p[k === 'commit' ? 'commit' : 'act'].cash, 0);
+        tableHtml = `
+        <table class="w-full text-[10px]">
+          <thead><tr class="text-[9px] text-slate-600 border-b border-slate-700">
+            <th class="text-left py-1 pr-2">店舗 (万円)</th><th class="text-right px-2">現金化コミット<br>(年間)</th>
+            <th class="text-right px-2">実績<br>(${r.elapsedN}ヶ月)</th><th class="text-right px-2">前半の<br>貯金/不足</th>
+            <th class="text-right px-2">残配信<br>現金化</th><th class="text-right px-2">残配信<br>売上</th><th class="text-right pl-2">残配信<br>在庫枠</th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(bRow).join('')}
+            <tr class="border-t border-slate-600">
+              <td class="py-1.5 pr-2 text-white font-black">全社合計</td>
+              <td class="py-1.5 px-2 text-right font-mono text-slate-300 font-bold">${fmt(tot('commit'))}</td>
+              <td class="py-1.5 px-2 text-right font-mono text-sky-300 font-bold">${fmt(tot('act'))}</td>
+              <td class="py-1.5 px-2"></td>
+              <td class="py-1.5 px-2 text-right font-mono font-black text-fuchsia-300">${fmt(r.dist.cash)}</td>
+              <td class="py-1.5 px-2 text-right font-mono font-bold text-slate-300">${fmt(r.dist.sales)}</td>
+              <td class="py-1.5 pl-2 text-right font-mono font-bold text-slate-300">${fmt(r.dist.inv)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="text-[9px] text-slate-500 mt-2">✓ = その項目のコミットを達成済み (残目標0)。「貯金/不足」は経過${r.elapsedN}ヶ月の消化予定 (コミット×${r.elapsedW.toFixed(1)}%) と実績の差です。</p>`;
+      } else {
+        tableHtml = `
         <table class="w-full text-[10px]">
           <thead><tr class="text-[9px] text-slate-600 border-b border-slate-700">
             <th class="text-left py-1 pr-2">項目 (万円)</th><th class="text-right px-2">年間計画</th>
@@ -1310,7 +1453,11 @@
             ${row('在庫増加枠', 'inv')}
           </tbody>
         </table>
-        <p class="text-[9px] text-slate-500 mt-2">計画では経過${r.elapsedN}ヶ月で ${r.elapsedW.toFixed(1)}% 消化の予定 → 現金化の実績消化率 ${progPct.toFixed(1)}%</p>
+        <p class="text-[9px] text-slate-500 mt-2">計画では経過${r.elapsedN}ヶ月で ${r.elapsedW.toFixed(1)}% 消化の予定 → 現金化の実績消化率 ${progPct.toFixed(1)}%</p>`;
+      }
+      summary.innerHTML = `
+        <p class="text-[9px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>${modeNote} 経過実績は ${year}-03-01 〜 ${st.startMonth} の前月末までの入力済みデータ (委託・店舗間移動の補正込み) を使用。過去月の目標マスタは変更されません。</p>
+        ${tableHtml}
         ${warns.map(w => `<p class="text-[10px] text-amber-500 mt-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${w}</p>`).join('')}
       `;
     }
@@ -1768,7 +1915,7 @@
               const dtStr = dt ? `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '--';
               const sp = h.sim_params || {};
               const latestBadge = i === 0 ? '<span class="bg-emerald-950/60 border border-emerald-800 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded mr-1">現在のマスタ</span>' : '';
-              const midBadge = sp.midRevision ? `<span class="bg-indigo-950/60 border border-indigo-800 text-indigo-400 text-[9px] font-bold px-1.5 py-0.5 rounded mr-1"><i class="fa-solid fa-scissors mr-0.5"></i>期中修正・${sp.midRevision.mode === 'goal' ? 'ゴール死守' : '現実ペース'}</span>` : '';
+              const midBadge = sp.midRevision ? `<span class="bg-indigo-950/60 border border-indigo-800 text-indigo-400 text-[9px] font-bold px-1.5 py-0.5 rounded mr-1"><i class="fa-solid fa-scissors mr-0.5"></i>期中修正・${sp.midRevision.mode === 'goal' ? (sp.midRevision.settle === 'branch' ? 'ゴール死守(店舗別)' : 'ゴール死守(全社)') : '現実ペース'}</span>` : '';
               return `
                 <div class="flex justify-between items-center gap-2 py-2">
                   <div class="text-[10px] leading-relaxed min-w-0">
@@ -1828,6 +1975,8 @@
            if (mr) {
                const mmEl = document.getElementById('midRevMode');
                if (mmEl && mr.mode) mmEl.value = mr.mode;
+               const stEl = document.getElementById('midRevSettle');
+               if (stEl) stEl.value = mr.settle || 'company';
                const msEl = document.getElementById('midRevStartMonth');
                if (msEl && mr.startMonth && Array.from(msEl.options).some(o => o.value === mr.startMonth)) msEl.value = mr.startMonth;
            }
@@ -1882,23 +2031,34 @@
        let tSales = currentCalcData.sales || 0;
        let weightDivisor = 100;
        let midRevRec = null; // 配信履歴に残すスナップショット
+       let midRevPerBranch = null; // 店舗別精算のときの店ごとの残額
        if (midRev.enabled) {
-           const r = computeMidRevision(year, startMonthInput, midRev.mode);
+           const r = computeMidRevision(year, startMonthInput, midRev.mode, midRev.settle);
            if (!r) { alert("今期実績の読み込みが完了していないため、期中修正での適用ができません。\nページを再読み込みしてから再度お試しください。"); return; }
            if (r.remW <= 0) { alert("残り期間の季節指数の合計が0%です。季節指数を確認してください。"); return; }
            if (midRev.mode === 'goal') {
                tSales = r.dist.sales; tCash = r.dist.cash; tInv = r.dist.inv;
                weightDivisor = r.remW; // 残期間内で100%に正規化
+               midRevPerBranch = r.perBranch; // 店舗別精算なら店ごとの残額を直接使う
            }
-           midRevRec = { mode: midRev.mode, startMonth: startMonthInput,
+           midRevRec = { mode: midRev.mode, settle: midRev.mode === 'goal' ? (midRev.settle || 'company') : null, startMonth: startMonthInput,
                actuals: { salesW: Math.round(r.actW.sales), cashW: Math.round(r.actW.cash), invW: Math.round(r.actW.inv) },
                distributed: { salesW: Math.round(r.dist.sales), cashW: Math.round(r.dist.cash), invW: Math.round(r.dist.inv) } };
+           if (midRevPerBranch) {
+               midRevRec.perBranch = {};
+               Object.entries(midRevPerBranch).forEach(([b, p]) => {
+                   midRevRec.perBranch[b] = { salesW: Math.round(p.rem.sales), cashW: Math.round(p.rem.cash), invW: Math.round(p.rem.inv) };
+               });
+           }
        }
 
        const hasWarning = document.querySelectorAll('.warning-bg').length > 0;
        let confirmMsg;
        if (midRev.enabled && midRev.mode === 'goal') {
-           confirmMsg = `⚠️【期中修正・年間ゴール死守】\n${startMonthInput} 以降の目標を「年間計画 − 経過実績」の残額ベースで引き直します。\n\n残期間への配信額:\n・売上 ${Math.round(tSales).toLocaleString()}万円\n・現金化 ${Math.round(tCash).toLocaleString()}万円\n・在庫増加枠 ${Math.round(tInv).toLocaleString()}万円\n\n${startMonthInput} より前の過去月の目標は上書きされません。よろしいですか？`;
+           const settleNote = midRevPerBranch
+               ? '精算単位: 店舗別 (各店が自店の貯金・遅れを持ち越します)'
+               : '精算単位: 全社一括 (全店の実績を合算して配分率で再分配します)';
+           confirmMsg = `⚠️【期中修正・年間ゴール死守】\n${startMonthInput} 以降の目標を「年間計画 − 経過実績」の残額ベースで引き直します。\n${settleNote}\n\n残期間への配信額 (全社計):\n・売上 ${Math.round(tSales).toLocaleString()}万円\n・現金化 ${Math.round(tCash).toLocaleString()}万円\n・在庫増加枠 ${Math.round(tInv).toLocaleString()}万円\n\n${startMonthInput} より前の過去月の目標は上書きされません。よろしいですか？`;
        } else if (midRev.enabled) {
            confirmMsg = `⚠️【期中修正・現実ペース】\n現在の年間シミュレーションの月割で ${startMonthInput} 以降のみ上書きします。\n年間ゴールは「経過実績 + 残期間配信分」に実質的に引き直されます。\n過去月の目標は上書きされません。よろしいですか？`;
        } else {
@@ -1931,9 +2091,18 @@
            const cashPct = parseFloat(document.getElementById(`distCashPct_${b}`).value) || 0;
            const invPct = parseFloat(document.getElementById(`distInvPct_${b}`).value) || 0;
            
-           const cValTotal = Math.round(tCash * (cashPct / 100)) * 10000;
-           const iValTotal = Math.round(tInv * (invPct / 100)) * 10000;
-           const sValTotal = Math.round(tSales * (cashPct / 100)) * 10000;
+           let cValTotal, iValTotal, sValTotal;
+           if (midRevPerBranch) {
+               // 店舗別精算: この店自身の残額をそのまま配信 (配分率での再分配はしない)
+               const p = midRevPerBranch[b] || { rem: { sales: 0, cash: 0, inv: 0 } };
+               cValTotal = Math.round(p.rem.cash) * 10000;
+               iValTotal = Math.round(p.rem.inv) * 10000;
+               sValTotal = Math.round(p.rem.sales) * 10000;
+           } else {
+               cValTotal = Math.round(tCash * (cashPct / 100)) * 10000;
+               iValTotal = Math.round(tInv * (invPct / 100)) * 10000;
+               sValTotal = Math.round(tSales * (cashPct / 100)) * 10000;
+           }
 
            months.forEach(monthObj => {
                const targetYear = monthObj.isNextYear ? String(parseInt(year, 10) + 1) : year;
