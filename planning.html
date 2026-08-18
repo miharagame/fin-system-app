@@ -494,16 +494,26 @@
                <input type="checkbox" id="midRevEnabled" class="accent-indigo-500 w-4 h-4 cursor-pointer" onchange="updateMidRevisionPanel()">
                <span class="font-bold text-indigo-300 text-xs"><i class="fa-solid fa-scissors mr-1"></i>期中修正モード — 期の途中から、実績を踏まえて残り期間の目標を引き直す</span>
              </label>
-             <div id="midRevControls" class="hidden flex flex-wrap items-center gap-2">
+             <div id="midRevControls" class="hidden items-center gap-2">
                <label class="text-[10px] text-slate-500 font-bold">修正開始月</label>
                <select id="midRevStartMonth" onchange="updateMidRevisionPanel()" class="bg-slate-900 border border-indigo-900/60 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer"></select>
-               <select id="midRevMode" onchange="updateMidRevisionPanel()" class="bg-slate-900 border border-indigo-900/60 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer">
-                 <option value="goal">年間ゴール死守 (不足分を残り月へ上乗せ)</option>
-                 <option value="pace">現実ペース (新しい年間計画の月割で配信)</option>
-               </select>
              </div>
            </div>
-           <div id="midRevBody" class="hidden mt-3"></div>
+           <div id="midRevBody" class="hidden mt-3">
+             <input type="hidden" id="midRevMode" value="goal">
+             <p class="text-[9px] text-slate-500 font-bold mb-1.5">残り期間の目標の作り方 (クリックで切替):</p>
+             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+               <button type="button" id="midRevModeGoalBtn" onclick="setMidRevMode('goal')" class="text-left p-3 rounded-xl border-2 transition-all cursor-pointer">
+                 <span class="block text-xs font-black"><i class="fa-solid fa-bullseye mr-1.5"></i>年間ゴール死守</span>
+                 <span class="block text-[9px] mt-0.5 opacity-80">年間計画は動かさない。経過実績との差額 (不足分) を残り月に上乗せして配分</span>
+               </button>
+               <button type="button" id="midRevModePaceBtn" onclick="setMidRevMode('pace')" class="text-left p-3 rounded-xl border-2 transition-all cursor-pointer">
+                 <span class="block text-xs font-black"><i class="fa-solid fa-person-running mr-1.5"></i>現実ペース</span>
+                 <span class="block text-[9px] mt-0.5 opacity-80">年間ゴール自体を引き直す。現在の年間シミュレーションの月割をそのまま残り月に配信</span>
+               </button>
+             </div>
+             <div id="midRevSummary"></div>
+           </div>
          </div>
 
          <div class="mb-10">
@@ -1227,27 +1237,42 @@
                anchorMismatch: anchorRaw && anchorRaw.fyStart !== `${year}-03-01` };
     }
 
+    function setMidRevMode(mode) {
+      const el = document.getElementById('midRevMode');
+      if (el) el.value = mode;
+      updateMidRevisionPanel();
+    }
+
     function updateMidRevisionPanel() {
       const en = document.getElementById('midRevEnabled');
       const controls = document.getElementById('midRevControls');
       const body = document.getElementById('midRevBody');
+      const summary = document.getElementById('midRevSummary') || body;
       const btn = document.getElementById('btnExecuteApply');
       if (!en || !controls || !body) return;
       const st = midRevisionState();
       controls.classList.toggle('hidden', !st.enabled);
+      controls.classList.toggle('flex', st.enabled);
       body.classList.toggle('hidden', !st.enabled);
       if (btn && !btn.disabled) btn.innerHTML = st.enabled
         ? '<i class="fa-solid fa-scissors"></i> 期中修正として ' + (st.startMonth || '--') + ' 以降のみ一括適用'
         : '<i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用';
       if (!st.enabled) return;
+      // モード切替ボタンのアクティブ表示
+      const goalBtn = document.getElementById('midRevModeGoalBtn'), paceBtn = document.getElementById('midRevModePaceBtn');
+      const baseCls = 'text-left p-3 rounded-xl border-2 transition-all cursor-pointer ';
+      const onCls = 'bg-indigo-600/25 border-indigo-500 text-white shadow-[0_0_12px_rgba(99,102,241,0.25)]';
+      const offCls = 'bg-slate-900 border-slate-700 text-slate-500 hover:border-indigo-700 hover:text-slate-300';
+      if (goalBtn) goalBtn.className = baseCls + (st.mode === 'goal' ? onCls : offCls);
+      if (paceBtn) paceBtn.className = baseCls + (st.mode === 'pace' ? onCls : offCls);
       const year = document.getElementById('applyTargetYear').value;
-      if (!anchorRaw) { body.innerHTML = '<p class="text-[10px] text-slate-500 py-2">今期実績を読み込み中です...</p>'; return; }
+      if (!anchorRaw) { summary.innerHTML = '<p class="text-[10px] text-slate-500 py-2">今期実績を読み込み中です...</p>'; return; }
       if (!(currentCalcData.sales > 0 || currentCalcData.fieldCashTarget > 0)) {
-        body.innerHTML = '<p class="text-[10px] text-amber-500 py-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>先に「年次経営計画」タブでシミュレーションを実行してください (年間計画が0のままです)。配信履歴から元の計画を復元してから修正するのがおすすめです。</p>';
+        summary.innerHTML = '<p class="text-[10px] text-amber-500 py-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>先に「年次経営計画」タブでシミュレーションを実行してください (年間計画が0のままです)。配信履歴から元の計画を復元してから修正するのがおすすめです。</p>';
         return;
       }
       const r = computeMidRevision(year, st.startMonth, st.mode);
-      if (!r) { body.innerHTML = '<p class="text-[10px] text-slate-500 py-2">実績データを読み込めません。</p>'; return; }
+      if (!r) { summary.innerHTML = '<p class="text-[10px] text-slate-500 py-2">実績データを読み込めません。</p>'; return; }
       const fmt = v => Math.round(v).toLocaleString();
       const row = (label, k, unitNote) => {
         const avg = r.remN > 0 ? r.dist[k] / r.remN : 0;
@@ -1272,7 +1297,7 @@
       const modeNote = st.mode === 'goal'
         ? `年間計画 − 経過実績 = 残期間の必要額として、${st.startMonth} 以降の各月へ季節指数の比率 (残期間内で100%に正規化) で配分します。`
         : `現在の年間計画の月割 (季節指数そのまま) を ${st.startMonth} 以降のみ上書きします。年間ゴールは「経過実績 + 残期間配信分」に引き直されます。`;
-      body.innerHTML = `
+      summary.innerHTML = `
         <p class="text-[9px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>${modeNote} 経過実績は ${year}-03-01 〜 ${st.startMonth} の前月末までの入力済みデータ (委託・店舗間移動の補正込み) を使用。過去月の目標マスタは変更されません。</p>
         <table class="w-full text-[10px]">
           <thead><tr class="text-[9px] text-slate-600 border-b border-slate-700">
