@@ -349,6 +349,7 @@
     let evalChildrenMap = {}; // ★追加: 親店舗名 → [子店舗名...]
     const evalBranchOf = (b) => evalGroupMap[b] || b; // ★追加: 集計上の店舗名(親)を返す
     let internalConsignAll = []; // ★追加: 社内委託記録（B案・粗利按分）
+    let transfersAll = [];       // ★追加: 店舗間移動記録（開店支援の評価振替用）
     let targetBranches = [];
     let currentPeriodMode = 'monthly'; 
     let currentMonthStr = "";
@@ -606,7 +607,20 @@
             icFrom += limitSize;
           }
         } catch (e) { console.warn('社内委託記録の取得スキップ:', e); }
-        
+
+        // ★追加: 店舗間移動記録の取得（開店支援フラグの評価振替用 / テーブル未作成でも動作継続）
+        transfersAll = [];
+        try {
+          let trFrom = 0;
+          while (true) {
+            const { data: trChunk, error: trErr } = await db.from('inventory_transfer_records').select('*').order('id', { ascending: true }).range(trFrom, trFrom + limitSize - 1);
+            if (trErr) break;
+            if (trChunk && trChunk.length > 0) transfersAll = transfersAll.concat(trChunk);
+            if (!trChunk || trChunk.length < limitSize) break;
+            trFrom += limitSize;
+          }
+        } catch (e) { console.warn('移動記録の取得スキップ:', e); }
+
         targetBranches = [...new Set(allRecords.map(r => r.branch))];
         if (targetBranches.length === 0) targetBranches = globalBranches;
         
@@ -1106,6 +1120,31 @@
                 o.invChange += iAdj; totalInv += iAdj;
                 o.consignProfit = (o.consignProfit || 0) + ownerShare;
             }
+        });
+
+        // ==========================================
+        // ★追加: 開店支援(評価振替)フラグ付きの店舗間移動
+        //   買取の負担ごと移動先に付け替える: 移動元 = 現金化+原価・在庫−原価 / 移動先 = その逆。
+        //   両側で相殺されるため全社合計(totalCash/totalInv)は不変。粗利は元々移動の影響なし。
+        // ==========================================
+        // ★修正: 店舗間移動は全件振替扱いに統一 (フラグ判定を廃止)
+        transfersAll.forEach(r => {
+            const d = String(r.target_date).substring(0, 10);
+            if (!(d >= startDate && d <= endDate)) return;
+            const C = Number(r.cost_amount) || 0;
+            if (!C) return;
+            // 移動先(開店準備中の新店など)がまだ日報ゼロで集計対象にない場合も、負担の受け皿として行を作る
+            const ensureB = (b) => {
+                if (!bStats[b]) {
+                    bStats[b] = { sales: 0, purchase: 0, grossProfit: 0, cashFlow: 0, invChange: 0, discount: 0, workHours: 0, isConfirmed: false };
+                    if (!targetBranches.includes(b)) targetBranches.push(b);
+                }
+                return bStats[b];
+            };
+            const fromS = ensureB(r.from_branch);
+            const toS = ensureB(r.to_branch);
+            fromS.cashFlow += C; fromS.invChange -= C;
+            toS.cashFlow -= C; toS.invChange += C;
         });
 
         document.getElementById('totSales').innerText = Math.round(totalSales).toLocaleString();
