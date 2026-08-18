@@ -66,7 +66,22 @@
           <div class="flex justify-between items-center border-b border-slate-800 pb-2">
             <h2 class="font-bold text-sky-400">戦略パラメータ設定</h2>
           </div>
-          <div class="flex justify-between items-center"><span class="text-sm font-bold">年間売上目標</span><div><input type="text" id="inpSales" value="20,000" oninput="formatIntAndCalc(this)" class="input-num text-sky-400"><span class="text-xs ml-1">万円</span></div></div>
+
+          <!-- ★追加: 今期実績アンカー (B案補正済み・年換算) -->
+          <div id="anchorPanel" class="hidden bg-sky-950/20 border border-sky-900/40 rounded-xl p-3 space-y-2">
+            <div class="flex justify-between items-center gap-2">
+              <p class="text-[10px] font-bold text-sky-300 leading-tight"><i class="fa-solid fa-location-crosshairs mr-1"></i>今期の着地予測 <span id="anchorScopeLabel" class="text-slate-500 font-normal"></span></p>
+              <button onclick="applyAnchorDefaults()" class="shrink-0 text-[10px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 px-2 py-1 rounded transition-colors whitespace-nowrap"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>実績を初期値にセット</button>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="bg-slate-950/60 rounded-lg py-1.5"><p class="text-[9px] text-slate-500 font-bold">売上(年換算)</p><p id="anchorSales" class="text-[11px] font-mono font-black text-sky-300">--</p></div>
+              <div class="bg-slate-950/60 rounded-lg py-1.5"><p class="text-[9px] text-slate-500 font-bold">実質粗利率</p><p id="anchorMargin" class="text-[11px] font-mono font-black text-emerald-400">--</p></div>
+              <div class="bg-slate-950/60 rounded-lg py-1.5"><p class="text-[9px] text-slate-500 font-bold">在庫増(年換算)</p><p id="anchorInv" class="text-[11px] font-mono font-black text-amber-400">--</p></div>
+            </div>
+            <p class="text-[9px] text-slate-600">委託・店舗間移動の補正込みの実績ペースです。目標入力の現実的な出発点として使えます。</p>
+          </div>
+
+          <div class="flex justify-between items-center"><span class="text-sm font-bold">年間売上目標 <span id="salesGrowthBadge" class="hidden"></span></span><div><input type="text" id="inpSales" value="20,000" oninput="formatIntAndCalc(this)" class="input-num text-sky-400"><span class="text-xs ml-1">万円</span></div></div>
           <div class="flex justify-between items-center"><span class="text-sm font-bold text-emerald-400">想定粗利率</span><div><input type="text" id="inpMargin" value="30" oninput="formatIntAndCalc(this)" class="input-num text-emerald-400"><span class="text-xs ml-1">%</span></div></div>
           
           <div class="border-t border-slate-800 pt-4 space-y-4">
@@ -94,6 +109,8 @@
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
             <div class="flex justify-between items-center"><span class="text-xs font-bold text-amber-500">想定 在庫増加額</span><div><input type="text" id="inpInvIncrease" value="500" oninput="formatIntAndCalc(this)" class="input-num text-amber-500 border-slate-800"><span class="text-[10px] ml-1 text-slate-500">万円</span></div></div>
             <div class="flex justify-between items-center"><span class="text-xs font-bold text-sky-400">目標 最終手残り現金</span><div><input type="text" id="inpTargetCash" value="2,000" oninput="formatIntAndCalc(this)" class="input-num text-sky-400 border-slate-800"><span class="text-[10px] ml-1 text-slate-500">万円</span></div></div>
+            <!-- ★追加: 逆算ゴールシーク -->
+            <button onclick="goalSeekSales()" class="w-full bg-slate-800 hover:bg-slate-700 border border-sky-900/50 text-sky-300 text-[10px] font-bold py-2 rounded-lg transition-colors"><i class="fa-solid fa-calculator mr-1"></i>逆算: 目標手残りに必要な売上を計算してセット</button>
           </div>
         </div>
 
@@ -153,7 +170,16 @@
                 <div class="text-4xl font-black text-white" id="resFinalCash">-- 万円</div>
               </div>
             </div>
+            <!-- ★追加: 目標未達時の逆算ヒント -->
+            <p id="goalHint" class="hidden text-[10px] font-bold text-rose-300 bg-rose-950/30 border border-rose-900/40 rounded-xl px-3 py-2 leading-relaxed"></p>
           </div>
+        </div>
+
+        <!-- ★追加: 感度分析パネル -->
+        <div class="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-xl">
+          <h2 class="font-bold text-violet-400 mb-4 border-b border-slate-800 pb-2 text-sm"><i class="fa-solid fa-scale-unbalanced mr-2"></i>感度分析 (最終手残りへの影響)</h2>
+          <div class="grid grid-cols-2 xl:grid-cols-4 gap-3" id="sensitivityGrid"></div>
+          <p class="text-[9px] text-slate-600 mt-3">他の条件を固定したまま、その項目だけが動いた場合に最終手残りがいくら変わるか。数字が大きい項目ほど、この計画の「急所」です。</p>
         </div>
         
         <div class="bg-slate-900 rounded-3xl p-8 border border-emerald-900/50 shadow-xl">
@@ -450,6 +476,36 @@
             </div>
          </div>
 
+         <!-- ★追加: マスタ配信履歴 (どのシミュレーションから配信したかの記録と復元) -->
+         <div class="mb-8 bg-slate-950 border border-slate-800 rounded-2xl p-4">
+           <div class="flex justify-between items-center mb-1">
+             <h3 class="font-bold text-sky-300 text-xs"><i class="fa-solid fa-clock-rotate-left mr-2"></i>この年度のマスタ配信履歴</h3>
+             <span class="text-[9px] text-slate-600">一括適用のたびに、使用した計画一式が自動保存されます</span>
+           </div>
+           <div id="applyHistoryList" class="divide-y divide-slate-800/50">
+             <p class="text-[10px] text-slate-600 py-2">読み込み中...</p>
+           </div>
+         </div>
+
+         <!-- ★追加: 期中修正モード (前半実績を踏まえた残期間の目標引き直し) -->
+         <div class="mb-8 bg-slate-950 border border-indigo-900/60 rounded-2xl p-4">
+           <div class="flex flex-wrap justify-between items-center gap-3">
+             <label class="flex items-center gap-2 cursor-pointer">
+               <input type="checkbox" id="midRevEnabled" class="accent-indigo-500 w-4 h-4 cursor-pointer" onchange="updateMidRevisionPanel()">
+               <span class="font-bold text-indigo-300 text-xs"><i class="fa-solid fa-scissors mr-1"></i>期中修正モード — 期の途中から、実績を踏まえて残り期間の目標を引き直す</span>
+             </label>
+             <div id="midRevControls" class="hidden flex flex-wrap items-center gap-2">
+               <label class="text-[10px] text-slate-500 font-bold">修正開始月</label>
+               <select id="midRevStartMonth" onchange="updateMidRevisionPanel()" class="bg-slate-900 border border-indigo-900/60 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer"></select>
+               <select id="midRevMode" onchange="updateMidRevisionPanel()" class="bg-slate-900 border border-indigo-900/60 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer">
+                 <option value="goal">年間ゴール死守 (不足分を残り月へ上乗せ)</option>
+                 <option value="pace">現実ペース (新しい年間計画の月割で配信)</option>
+               </select>
+             </div>
+           </div>
+           <div id="midRevBody" class="hidden mt-3"></div>
+         </div>
+
          <div class="mb-10">
            <div class="flex justify-between items-end mb-4 border-b border-slate-800 pb-2">
               <h3 class="font-bold text-emerald-400 text-sm"><i class="fa-solid fa-chart-pie mr-2"></i>A. 店舗への目標分配率</h3>
@@ -639,6 +695,14 @@
           const { data: globalData, error: globalErr } = await db.from('fin_global_settings').select('*');
           if (globalErr) throw globalErr;
 
+          // ★追加: 委託の取り分率・按分率(実績アンカーのB案補正用)
+          if (globalData) {
+              const tRow = globalData.find(d => d.key === 'consign_external_take_rate');
+              if (tRow) consignRatesPlan.tk = Number(tRow.value) || 10;
+              const sRow = globalData.find(d => d.key === 'consign_internal_owner_share');
+              if (sRow) consignRatesPlan.sh = Number(sRow.value) || 50;
+          }
+
           if (currentUser.roleId === 'role_admin' || currentUser.permissions.editAll) {
               let sgaHead = 0, repayTot = 0;
               if (globalData) {
@@ -673,16 +737,19 @@
           
           recalcBranchFixedTotal();
           
-          document.getElementById('loading').classList.add('hidden'); 
-          document.getElementById('content').classList.remove('hidden'); 
-          calc(); 
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('content').classList.remove('hidden');
+          calc();
           calcAction();
       } catch (err) {
           console.error("マスタデータの取得に失敗しました:", err);
-          document.getElementById('loading').classList.add('hidden'); 
-          document.getElementById('content').classList.remove('hidden'); 
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('content').classList.remove('hidden');
           calc(); calcAction();
       }
+
+      // ★追加: 今期実績アンカーの取得(バックグラウンド / 完了後にパネル・今期比バッジが表示される)
+      fetchActualAnchor().then(() => { try { calc(); } catch (e) {} });
     };
 
     function recalcBranchFixedTotal() {
@@ -817,17 +884,17 @@
       const invInc = getNum('inpInvIncrease'), target = getNum('inpTargetCash');
       const cashlessRatio = getNum('inpCashlessRatio') / 100;
       const cashlessFeeRate = getNum('inpCashlessFeeRate') / 100;
-      
-      const gross = sales * margin;
-      const cashlessSales = sales * cashlessRatio;
-      const cashlessFee = cashlessSales * cashlessFeeRate;
-      
-      const preTax = gross - sgaYearly - cashlessFee;
-      const corpTax = preTax > 0 ? preTax * corpRate : 0;
-      let consTax = Math.max(0, (gross - (sgaYearly * taxRatio)) * 0.1); 
-      
-      const netProfit = preTax - corpTax - consTax;
-      const finalCash = netProfit - repayYearly - invInc, cashDiff = finalCash - target;
+
+      // ★修正: 計算式を共通モデル関数に一本化 (逆算ゴールシーク・感度分析と同一式を保証)
+      lastSimEnv = { sgaYearly, repayYearly, corpRate, taxRatio, clRatio: cashlessRatio, clFee: cashlessFeeRate, invInc, target };
+      const model = simFinalCashModel(sales, getNum('inpMargin'), lastSimEnv);
+      const gross = model.gross;
+      const cashlessFee = model.fee;
+      const preTax = model.preTax;
+      const corpTax = model.corpTax;
+      let consTax = model.consTax;
+      const netProfit = model.net;
+      const finalCash = model.finalCash, cashDiff = finalCash - target;
       
       const fieldCashTarget = gross - cashlessFee - invInc;
       
@@ -888,8 +955,374 @@
       if(!document.getElementById('view_admin').classList.contains('hidden')) {
           calcDistTotal();
       }
+
+      // ★追加: 今期比バッジ・感度分析・逆算ヒント・実績アンカー表示の更新
+      updateSalesGrowthBadge(sales, simBranch);
+      renderSensitivity(sales, getNum('inpMargin'));
+      updateGoalHint(sales, getNum('inpMargin'), target, finalCash);
+      updateAnchorPanel(simBranch);
+      try { updateMidRevisionPanel(); } catch (e) {} // 期中修正プレビューも計画変更に追従
     }
-    
+
+    // ==========================================
+    // ★追加: 共通CFモデル / 逆算ゴールシーク / 感度分析 / 今期実績アンカー
+    // ==========================================
+    let lastSimEnv = null;
+    let consignRatesPlan = { tk: 10, sh: 50 };
+    let anchorRaw = null;     // 今期実績の生データ(全店舗分)
+    let anchorCache = {};     // スコープ別の年換算キャッシュ
+
+    // 年次CFモデル (calc・逆算・感度分析はすべてこの1本の式を使う / 単位: 万円)
+    function simFinalCashModel(salesW, marginPct, env) {
+      const gross = salesW * (marginPct / 100);
+      const fee = salesW * env.clRatio * env.clFee;
+      const preTax = gross - env.sgaYearly - fee;
+      const corpTax = preTax > 0 ? preTax * env.corpRate : 0;
+      const consTax = Math.max(0, (gross - (env.sgaYearly * env.taxRatio)) * 0.1);
+      const net = preTax - corpTax - consTax;
+      return { gross, fee, preTax, corpTax, consTax, net, finalCash: net - env.repayYearly - env.invInc };
+    }
+
+    // 目標手残りに必要な売上を二分探索で逆算 (手残りは売上に対して単調増加)
+    function neededSalesFor(targetCashW, marginPct, env) {
+      if (!env) return null;
+      let lo = 0, hi = 10000000; // 〜1,000億円
+      if (simFinalCashModel(hi, marginPct, env).finalCash < targetCashW) return null;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (simFinalCashModel(mid, marginPct, env).finalCash >= targetCashW) hi = mid; else lo = mid;
+      }
+      return hi;
+    }
+
+    // 売上固定のまま目標手残りに必要な粗利率を逆算
+    function neededMarginFor(targetCashW, salesW, env) {
+      if (!env || salesW <= 0) return null;
+      let lo = 0, hi = 95;
+      if (simFinalCashModel(salesW, hi, env).finalCash < targetCashW) return null;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (simFinalCashModel(salesW, mid, env).finalCash >= targetCashW) hi = mid; else lo = mid;
+      }
+      return hi;
+    }
+
+    function goalSeekSales() {
+      if (!lastSimEnv) { calc(); }
+      const target = getNum('inpTargetCash');
+      const marginPct = getNum('inpMargin');
+      const need = neededSalesFor(target, marginPct, lastSimEnv);
+      if (need === null) {
+        alert("この粗利率・コスト構造では、売上をいくら伸ばしても目標手残りに届きません。\n粗利率を上げるか、固定費・在庫増加・目標額を見直してください。");
+        return;
+      }
+      document.getElementById('inpSales').value = Math.ceil(need).toLocaleString();
+      calc();
+    }
+
+    function updateGoalHint(salesW, marginPct, targetW, finalCashW) {
+      const el = document.getElementById('goalHint');
+      if (!el) return;
+      const diff = finalCashW - targetW;
+      if (diff >= -0.5 || targetW <= 0) { el.classList.add('hidden'); return; }
+      const needS = neededSalesFor(targetW, marginPct, lastSimEnv);
+      const needM = neededMarginFor(targetW, salesW, lastSimEnv);
+      let parts = [];
+      if (needS !== null) parts.push(`売上 +${Math.ceil(needS - salesW).toLocaleString()}万円 (計 ${Math.ceil(needS).toLocaleString()}万円)`);
+      if (needM !== null) parts.push(`粗利率 +${(needM - marginPct).toFixed(1)}pt (計 ${needM.toFixed(1)}%)`);
+      el.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>目標手残りまで ${Math.round(-diff).toLocaleString()}万円 不足。達成には ${parts.length ? parts.join(' または ') : '構造の見直しが必要'} です。`;
+      el.classList.remove('hidden');
+    }
+
+    function renderSensitivity(salesW, marginPct) {
+      const grid = document.getElementById('sensitivityGrid');
+      if (!grid || !lastSimEnv) return;
+      const base = simFinalCashModel(salesW, marginPct, lastSimEnv).finalCash;
+      const dv = (s, m) => simFinalCashModel(s, m, lastSimEnv).finalCash - base;
+      const items = [
+        { label: '粗利率 +1pt', v: dv(salesW, marginPct + 1) },
+        { label: '粗利率 −1pt', v: dv(salesW, marginPct - 1) },
+        { label: '売上 +5%', v: dv(salesW * 1.05, marginPct) },
+        { label: '売上 −5%', v: dv(salesW * 0.95, marginPct) },
+      ];
+      grid.innerHTML = items.map(it => `
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+          <p class="text-[10px] text-slate-500 font-bold mb-1">${it.label}</p>
+          <p class="text-base font-mono font-black ${it.v >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${it.v >= 0 ? '+' : ''}${Math.round(it.v).toLocaleString()} <span class="text-[9px] font-sans text-slate-500">万円</span></p>
+        </div>`).join('');
+    }
+
+    // ---- 今期実績アンカー (B案補正込みの年換算) ----
+    async function fetchActualAnchor() {
+      try {
+        const now = new Date();
+        const fyStartYear = (now.getMonth() + 1) >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const fyStart = `${fyStartYear}-03-01`;
+        const elapsedDays = Math.max(1, Math.floor((now - new Date(fyStart.replace(/-/g, '/'))) / 86400000) + 1);
+
+        let daily = [], from = 0; const PAGE = 1000;
+        while (true) {
+          const { data, error } = await db.from('daily_records')
+            .select('branch,target_date,sales,discount,gross_profit,cash_flow,inv_change,consignment_sales')
+            .gte('target_date', fyStart)
+            .order('target_date', { ascending: true }).order('id', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (data && data.length > 0) daily = daily.concat(data);
+          if (!data || data.length < PAGE) break;
+          from += PAGE;
+        }
+
+        let internal = [], transfers = [];
+        try { const { data } = await db.from('internal_consign_records').select('*').gte('target_date', fyStart).order('id', { ascending: true }); if (data) internal = data; } catch (e) {}
+        try { const { data } = await db.from('inventory_transfer_records').select('*').gte('target_date', fyStart).order('id', { ascending: true }); if (data) transfers = data; } catch (e) {}
+
+        anchorRaw = { daily, internal, transfers, elapsedDays, fyStart };
+        anchorCache = {};
+        updateAnchorPanel(null);
+        try { updateMidRevisionPanel(); } catch (e) {}
+      } catch (e) { console.warn('今期実績の取得をスキップ:', e); }
+    }
+
+    function computeAnchor(scope) {
+      if (!anchorRaw) return null;
+      if (anchorCache[scope]) return anchorCache[scope];
+      const tk = consignRatesPlan.tk / 100, sh = consignRatesPlan.sh / 100;
+      const inScope = b => scope === '全店舗' || b === scope;
+      let netSales = 0, gross = 0, inv = 0;
+      anchorRaw.daily.forEach(r => {
+        if (!inScope(r.branch)) return;
+        const net = (Number(r.sales) || 0) - (Number(r.discount) || 0);
+        netSales += net;
+        gross += Number(r.gross_profit) || 0;
+        inv += Number(r.inv_change) || 0;
+        const ext = Number(r.consignment_sales) || 0;
+        if (ext) inv += ext * (1 - tk); // POS原価混入による見かけの在庫減を戻す
+      });
+      anchorRaw.internal.forEach(r => {
+        const X = Number(r.sales_amount) || 0, C = Number(r.cost_amount) || 0;
+        if (!X) return;
+        const ownerShare = (X - C) * sh, sellerShare = (X - C) - ownerShare;
+        if (inScope(r.seller_branch)) { gross += sellerShare - X * tk; inv += X * (1 - tk); }
+        if (inScope(r.owner_branch)) { gross += ownerShare; inv -= C; }
+      });
+      anchorRaw.transfers.forEach(r => {
+        const C = Number(r.cost_amount) || 0;
+        if (!C) return;
+        if (inScope(r.from_branch)) inv -= C;
+        if (inScope(r.to_branch)) inv += C;
+      });
+      const factor = 365 / anchorRaw.elapsedDays;
+      const res = {
+        annualSalesW: netSales * factor / 10000,
+        marginPct: netSales > 0 ? (gross / netSales * 100) : 0,
+        annualInvW: inv * factor / 10000,
+        elapsedDays: anchorRaw.elapsedDays
+      };
+      anchorCache[scope] = res;
+      return res;
+    }
+
+    function currentSimScope() {
+      const selEl = document.getElementById('simBranchSelector');
+      return selEl && !selEl.disabled ? cleanShopName(selEl.value) : (currentUser ? currentUser.branch : '全店舗');
+    }
+
+    // ==========================================
+    // ★追加: 期中修正モード (半期後などに前半実績を踏まえて残期間の目標を引き直す)
+    // ==========================================
+    // 年度の会計月リスト (3月始まり)。ym は 'YYYY-MM'
+    function fiscalMonthsOf(year) {
+      const y = parseInt(year, 10);
+      return ['03','04','05','06','07','08','09','10','11','12','01','02']
+        .map(m => ({ m, ym: (m === '01' || m === '02') ? `${y + 1}-${m}` : `${year}-${m}` }));
+    }
+
+    // 年度初来〜指定月の前月末までの全社実績を絶対額(円)で集計 (B案補正込み・未確定基準)
+    function computePeriodActualsAbs(year, beforeYm) {
+      if (!anchorRaw) return null;
+      const fyStart = `${year}-03-01`;
+      const boundary = `${beforeYm}-01`;
+      const tk = consignRatesPlan.tk / 100, sh = consignRatesPlan.sh / 100;
+      let netSales = 0, gross = 0, cash = 0, inv = 0;
+      const within = d => d && d >= fyStart && d < boundary;
+      anchorRaw.daily.forEach(r => {
+        if (!within(r.target_date)) return;
+        const net = (Number(r.sales) || 0) - (Number(r.discount) || 0);
+        netSales += net;
+        gross += Number(r.gross_profit) || 0;
+        cash += Number(r.cash_flow) || 0;
+        inv += Number(r.inv_change) || 0;
+        const ext = Number(r.consignment_sales) || 0;
+        if (ext) { inv += ext * (1 - tk); cash -= ext * (1 - tk); } // POS上の見かけの現金増・在庫減を補正
+      });
+      anchorRaw.internal.forEach(r => {
+        if (!within(r.target_date)) return;
+        const X = Number(r.sales_amount) || 0, C = Number(r.cost_amount) || 0;
+        if (!X) return;
+        gross += (X - C) - X * tk;   // 全社 = 販売店取り分 + 出品店取り分
+        inv += X * (1 - tk) - C;     // 入金前は債権を在庫側で保持・出品店の原価は減
+        // 現金は販売店の支払と出品店の受取が全社で相殺
+      });
+      // 店舗間在庫移動は全社では現金・在庫とも相殺されるため加算不要
+      return { netSales, gross, cash, inv };
+    }
+
+    function midRevisionState() {
+      const en = document.getElementById('midRevEnabled');
+      if (!en || !en.checked) return { enabled: false };
+      return {
+        enabled: true,
+        mode: (document.getElementById('midRevMode') || {}).value || 'goal',
+        startMonth: (document.getElementById('midRevStartMonth') || {}).value || ''
+      };
+    }
+
+    function populateMidRevMonths() {
+      const sel = document.getElementById('midRevStartMonth');
+      if (!sel) return;
+      const year = document.getElementById('applyTargetYear').value;
+      const prev = sel.value;
+      const list = fiscalMonthsOf(year);
+      sel.innerHTML = list.map((mo, i) =>
+        `<option value="${mo.ym}" ${i === 0 ? 'disabled' : ''}>${mo.ym} 以降</option>`).join('');
+      const now = new Date();
+      const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      if (prev && list.some((mo, i) => i > 0 && mo.ym === prev)) sel.value = prev;
+      else if (list.some((mo, i) => i > 0 && mo.ym === nowYm)) sel.value = nowYm;
+      else sel.value = list[1].ym; // 年度2ヶ月目 (初月は実績が存在し得ないため選択不可)
+    }
+
+    // 期中修正の中核計算 — プレビューと一括適用の両方がこの1本を使う
+    function computeMidRevision(year, startYm, mode) {
+      const plan = {
+        sales: currentCalcData.sales || 0,
+        cash: currentCalcData.fieldCashTarget || 0,
+        inv: currentCalcData.invIncrease || 0
+      };
+      const act = computePeriodActualsAbs(year, startYm);
+      if (!act) return null;
+      const actW = { sales: act.netSales / 10000, cash: act.cash / 10000, inv: act.inv / 10000 };
+      const list = fiscalMonthsOf(year);
+      const wMap = {};
+      document.querySelectorAll('.weight-input').forEach(inp => { wMap[inp.getAttribute('data-month')] = parseFloat(inp.value) || 0; });
+      let elapsedW = 0, remW = 0, elapsedN = 0, remN = 0;
+      list.forEach(mo => {
+        const w = wMap[mo.m] || 0;
+        if (mo.ym < startYm) { elapsedW += w; elapsedN++; } else { remW += w; remN++; }
+      });
+      let dist; // 残期間に配信する総額 (万円)
+      const clamped = {};
+      if (mode === 'goal') {
+        dist = {};
+        ['sales', 'cash', 'inv'].forEach(k => {
+          const raw = plan[k] - actW[k];
+          dist[k] = Math.max(0, raw);
+          if (raw < 0) clamped[k] = true; // 既に年間計画を達成済み → 残目標0
+        });
+      } else {
+        dist = { sales: plan.sales * remW / 100, cash: plan.cash * remW / 100, inv: plan.inv * remW / 100 };
+      }
+      return { plan, actW, dist, clamped, elapsedW, remW, elapsedN, remN, mode, startYm,
+               anchorMismatch: anchorRaw && anchorRaw.fyStart !== `${year}-03-01` };
+    }
+
+    function updateMidRevisionPanel() {
+      const en = document.getElementById('midRevEnabled');
+      const controls = document.getElementById('midRevControls');
+      const body = document.getElementById('midRevBody');
+      const btn = document.getElementById('btnExecuteApply');
+      if (!en || !controls || !body) return;
+      const st = midRevisionState();
+      controls.classList.toggle('hidden', !st.enabled);
+      body.classList.toggle('hidden', !st.enabled);
+      if (btn && !btn.disabled) btn.innerHTML = st.enabled
+        ? '<i class="fa-solid fa-scissors"></i> 期中修正として ' + (st.startMonth || '--') + ' 以降のみ一括適用'
+        : '<i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用';
+      if (!st.enabled) return;
+      const year = document.getElementById('applyTargetYear').value;
+      if (!anchorRaw) { body.innerHTML = '<p class="text-[10px] text-slate-500 py-2">今期実績を読み込み中です...</p>'; return; }
+      if (!(currentCalcData.sales > 0 || currentCalcData.fieldCashTarget > 0)) {
+        body.innerHTML = '<p class="text-[10px] text-amber-500 py-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>先に「年次経営計画」タブでシミュレーションを実行してください (年間計画が0のままです)。配信履歴から元の計画を復元してから修正するのがおすすめです。</p>';
+        return;
+      }
+      const r = computeMidRevision(year, st.startMonth, st.mode);
+      if (!r) { body.innerHTML = '<p class="text-[10px] text-slate-500 py-2">実績データを読み込めません。</p>'; return; }
+      const fmt = v => Math.round(v).toLocaleString();
+      const row = (label, k, unitNote) => {
+        const avg = r.remN > 0 ? r.dist[k] / r.remN : 0;
+        return `<tr class="border-b border-slate-800/50">
+          <td class="py-1.5 pr-2 text-slate-400 font-bold">${label}</td>
+          <td class="py-1.5 px-2 text-right font-mono text-slate-300">${fmt(r.plan[k])}</td>
+          <td class="py-1.5 px-2 text-right font-mono text-sky-300">${fmt(r.actW[k])}</td>
+          <td class="py-1.5 px-2 text-right font-mono font-bold ${r.clamped[k] ? 'text-emerald-400' : 'text-fuchsia-300'}">${fmt(r.dist[k])}${r.clamped[k] ? ' ✓達成済' : ''}</td>
+          <td class="py-1.5 pl-2 text-right font-mono text-slate-500">${fmt(avg)}</td>
+        </tr>`;
+      };
+      let warns = [];
+      if (r.anchorMismatch) warns.push(`実績データは ${anchorRaw.fyStart.slice(0,4)}年度分を読み込んでいます。選択中の ${year}年度 とズレているため、経過実績が正しく集計されない可能性があります。`);
+      if (r.actW.sales <= 0) warns.push('経過実績の売上が0円です。日報の入力状況を確認してください。');
+      if (st.mode === 'goal' && r.elapsedN > 0 && r.remN > 0) {
+        const actPace = r.actW.cash / r.elapsedN, needPace = r.dist.cash / r.remN;
+        if (actPace > 0 && needPace > actPace * 1.3) {
+          warns.push(`ゴール死守には残り${r.remN}ヶ月で月平均 ${fmt(needPace)}万円の現金化が必要です (経過実績ペース ${fmt(actPace)}万円/月 の ${(needPace/actPace).toFixed(1)}倍)。現実的でない場合は「現実ペース」への切替や年間計画の見直しを検討してください。`);
+        }
+      }
+      const progPct = r.plan.cash > 0 ? (r.actW.cash / r.plan.cash * 100) : 0;
+      const modeNote = st.mode === 'goal'
+        ? `年間計画 − 経過実績 = 残期間の必要額として、${st.startMonth} 以降の各月へ季節指数の比率 (残期間内で100%に正規化) で配分します。`
+        : `現在の年間計画の月割 (季節指数そのまま) を ${st.startMonth} 以降のみ上書きします。年間ゴールは「経過実績 + 残期間配信分」に引き直されます。`;
+      body.innerHTML = `
+        <p class="text-[9px] text-slate-500 mb-2"><i class="fa-solid fa-circle-info mr-1"></i>${modeNote} 経過実績は ${year}-03-01 〜 ${st.startMonth} の前月末までの入力済みデータ (委託・店舗間移動の補正込み) を使用。過去月の目標マスタは変更されません。</p>
+        <table class="w-full text-[10px]">
+          <thead><tr class="text-[9px] text-slate-600 border-b border-slate-700">
+            <th class="text-left py-1 pr-2">項目 (万円)</th><th class="text-right px-2">年間計画</th>
+            <th class="text-right px-2">経過実績 (${r.elapsedN}ヶ月)</th><th class="text-right px-2">残期間配信額 (${r.remN}ヶ月)</th><th class="text-right pl-2">残月平均</th>
+          </tr></thead>
+          <tbody>
+            ${row('売上', 'sales')}
+            ${row('現場 現金化目標', 'cash')}
+            ${row('在庫増加枠', 'inv')}
+          </tbody>
+        </table>
+        <p class="text-[9px] text-slate-500 mt-2">計画では経過${r.elapsedN}ヶ月で ${r.elapsedW.toFixed(1)}% 消化の予定 → 現金化の実績消化率 ${progPct.toFixed(1)}%</p>
+        ${warns.map(w => `<p class="text-[10px] text-amber-500 mt-1.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${w}</p>`).join('')}
+      `;
+    }
+
+    function updateAnchorPanel(scope) {
+      const panel = document.getElementById('anchorPanel');
+      if (!panel || !anchorRaw) return;
+      const sc = scope || currentSimScope();
+      const a = computeAnchor(sc);
+      if (!a || a.annualSalesW <= 0) { panel.classList.add('hidden'); return; }
+      panel.classList.remove('hidden');
+      document.getElementById('anchorScopeLabel').innerText = `(${sc} / 経過${a.elapsedDays}日ペース×365日換算)`;
+      document.getElementById('anchorSales').innerText = Math.round(a.annualSalesW).toLocaleString() + ' 万円';
+      document.getElementById('anchorMargin').innerText = a.marginPct.toFixed(1) + ' %';
+      document.getElementById('anchorInv').innerText = (a.annualInvW >= 0 ? '+' : '') + Math.round(a.annualInvW).toLocaleString() + ' 万円';
+    }
+
+    function applyAnchorDefaults() {
+      const a = computeAnchor(currentSimScope());
+      if (!a) { alert("今期の実績データがまだ読み込めていません。"); return; }
+      document.getElementById('inpSales').value = Math.round(a.annualSalesW).toLocaleString();
+      document.getElementById('inpMargin').value = Math.round(a.marginPct);
+      document.getElementById('inpInvIncrease').value = Math.max(0, Math.round(a.annualInvW)).toLocaleString();
+      calc();
+    }
+
+    function updateSalesGrowthBadge(salesW, scope) {
+      const badge = document.getElementById('salesGrowthBadge');
+      if (!badge) return;
+      const a = anchorRaw ? computeAnchor(scope || currentSimScope()) : null;
+      if (!a || a.annualSalesW <= 0 || salesW <= 0) { badge.classList.add('hidden'); return; }
+      const pct = (salesW / a.annualSalesW - 1) * 100;
+      badge.innerText = `今期比 ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+      badge.className = `text-[9px] font-bold px-1.5 py-0.5 rounded ml-1 ${pct >= 0 ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900' : 'bg-rose-950/60 text-rose-400 border border-rose-900'}`;
+      badge.classList.remove('hidden');
+    }
+
     async function saveData() {
       const b = document.getElementById('saveBtn'), m = document.getElementById('saveMsg');
       b.disabled = true; b.innerHTML = '保存中...';
@@ -1054,7 +1487,10 @@
        if(!btn) return;
        if(isDistValid && isWeightValid) {
            btn.disabled = false;
-           btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用';
+           const mrSt = midRevisionState();
+           btn.innerHTML = mrSt.enabled
+               ? '<i class="fa-solid fa-scissors"></i> 期中修正として ' + (mrSt.startMonth || '--') + ' 以降のみ一括適用'
+               : '<i class="fa-solid fa-cloud-arrow-up"></i> 確定して月次予算マスタへ一括適用';
            btn.className = "w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-5 rounded-2xl shadow-[0_0_20px_rgba(192,38,211,0.4)] transition-all text-lg cursor-pointer flex items-center justify-center gap-2";
        } else {
            btn.disabled = true;
@@ -1274,10 +1710,109 @@
           document.getElementById('weightTotalValue').setAttribute('data-loaded', 'true');
           calcWeightTotal();
           calcDistTotal();
+          loadApplyHistory(); // ★追加: この年度の配信履歴を表示
+          populateMidRevMonths(); // ★追加: 期中修正の開始月リストを年度に合わせて再生成
+          try { updateMidRevisionPanel(); } catch (e) {}
        } catch (err) {
           document.getElementById('loading').classList.add('hidden');
           console.error("マスタ読込エラー:", err);
        }
+    }
+
+    // ==========================================
+    // ★追加: マスタ配信履歴の表示・復元
+    // ==========================================
+    let applyHistoryCache = [];
+
+    async function loadApplyHistory() {
+       const listEl = document.getElementById('applyHistoryList');
+       if (!listEl) return;
+       const year = document.getElementById('applyTargetYear').value;
+       try {
+          const { data, error } = await db.from('fin_apply_history')
+              .select('*').eq('target_year', year)
+              .order('created_at', { ascending: false }).limit(8);
+          if (error) throw error;
+          applyHistoryCache = data || [];
+          if (applyHistoryCache.length === 0) {
+              listEl.innerHTML = '<p class="text-[10px] text-slate-600 py-2">この年度の配信履歴はまだありません。一括適用すると自動で記録されます。</p>';
+              return;
+          }
+          listEl.innerHTML = applyHistoryCache.map((h, i) => {
+              const dt = h.created_at ? new Date(h.created_at) : null;
+              const dtStr = dt ? `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '--';
+              const sp = h.sim_params || {};
+              const latestBadge = i === 0 ? '<span class="bg-emerald-950/60 border border-emerald-800 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded mr-1">現在のマスタ</span>' : '';
+              const midBadge = sp.midRevision ? `<span class="bg-indigo-950/60 border border-indigo-800 text-indigo-400 text-[9px] font-bold px-1.5 py-0.5 rounded mr-1"><i class="fa-solid fa-scissors mr-0.5"></i>期中修正・${sp.midRevision.mode === 'goal' ? 'ゴール死守' : '現実ペース'}</span>` : '';
+              return `
+                <div class="flex justify-between items-center gap-2 py-2">
+                  <div class="text-[10px] leading-relaxed min-w-0">
+                    <p class="font-bold text-slate-300 truncate">${latestBadge}${midBadge}${dtStr} <span class="text-slate-500 font-normal">by ${h.author || '--'}</span></p>
+                    <p class="text-slate-500 font-mono truncate">${h.start_month}以降 / 売上 ${(Number(sp.sales)||0).toLocaleString()}万・粗利率 ${sp.margin || '--'}%・在庫増 ${(Number(sp.invIncrease)||0).toLocaleString()}万 (${sp.scope || '全店舗'})</p>
+                  </div>
+                  <button onclick="restoreApplyHistory(${h.id})" class="shrink-0 text-[10px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap"><i class="fa-solid fa-rotate-left mr-1"></i>この計画を復元</button>
+                </div>`;
+          }).join('');
+       } catch (e) {
+          listEl.innerHTML = '<p class="text-[10px] text-amber-500 py-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>配信履歴テーブルが未作成です。fin_apply_history_setup.sql を実行すると、次回の一括適用から記録が始まります。</p>';
+       }
+    }
+
+    function restoreApplyHistory(id) {
+       const h = applyHistoryCache.find(x => x.id === id);
+       if (!h) return;
+       if (!confirm(`${h.start_month}以降に適用した計画 (${h.author} / ${new Date(h.created_at).toLocaleString('ja-JP')}) を画面に復元します。\n現在入力中のシミュレーション・配分・季節指数は上書きされます。よろしいですか？`)) return;
+
+       // 1. 年次シミュレーションの入力を復元
+       const sp = h.sim_params || {};
+       const setV = (id2, v, comma) => { const el = document.getElementById(id2); if (el && v !== undefined && v !== null) el.value = comma ? Number(v).toLocaleString() : v; };
+       setV('inpSales', sp.sales, true);
+       setV('inpMargin', sp.margin);
+       setV('inpCashlessRatio', sp.cashlessRatio);
+       setV('inpCashlessFeeRate', sp.cashlessFeeRate);
+       setV('inpCorpTaxRate', sp.corpTaxRate);
+       setV('inpTaxableFixed', sp.taxableFixed);
+       setV('inpInvIncrease', sp.invIncrease, true);
+       setV('inpTargetCash', sp.targetCash, true);
+       const selEl = document.getElementById('simBranchSelector');
+       if (selEl && sp.scope && !selEl.disabled && Array.from(selEl.options).some(o => o.value === sp.scope)) selEl.value = sp.scope;
+
+       // 2. 店舗配分を復元 (現在存在しない店舗はスキップ / 履歴にない新店舗は0%)
+       const dist = Array.isArray(h.distribution) ? h.distribution : [];
+       document.querySelectorAll('.dist-row').forEach(row => {
+           const b = row.getAttribute('data-branch');
+           const d = dist.find(x => x.branch === b);
+           const mEl = document.getElementById(`distMargin_${b}`), cEl = document.getElementById(`distCashPct_${b}`), iEl = document.getElementById(`distInvPct_${b}`);
+           if (mEl) mEl.value = d ? d.marginPct : 0;
+           if (cEl) cEl.value = d ? d.cashPct : 0;
+           if (iEl) iEl.value = d ? d.invPct : 0;
+       });
+
+       // 3. 季節指数を復元
+       const sw = h.season_weights || {};
+       document.querySelectorAll('.weight-input').forEach(input => {
+           const m = input.getAttribute('data-month');
+           if (sw[m] !== undefined && sw[m] !== null) input.value = sw[m];
+       });
+
+       // 4. 期中修正モードの設定を復元
+       const mrEn = document.getElementById('midRevEnabled');
+       if (mrEn) {
+           const mr = sp.midRevision;
+           mrEn.checked = !!mr;
+           if (mr) {
+               const mmEl = document.getElementById('midRevMode');
+               if (mmEl && mr.mode) mmEl.value = mr.mode;
+               const msEl = document.getElementById('midRevStartMonth');
+               if (msEl && mr.startMonth && Array.from(msEl.options).some(o => o.value === mr.startMonth)) msEl.value = mr.startMonth;
+           }
+       }
+
+       calc();
+       calcDistTotal();
+       calcWeightTotal();
+       try { updateMidRevisionPanel(); } catch (e) {}
+       alert("計画を復元しました。\n年次経営計画タブでシミュレーションを確認・修正し、再度「一括適用」すると新しい配信履歴として記録されます。");
     }
 
     async function executeApplyMaster() {
@@ -1291,29 +1826,63 @@
            return;
        }
 
-       let startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
-       if (!startMonthInput) return;
-       // ★追加: 入力形式の検証・正規化 (「2026/07」「2026年7月」等の揺れで過去月まで上書きされる事故を防ぐ)
-       startMonthInput = toHalfWidth(String(startMonthInput)).trim()
-           .replace(/[\/.年]/g, '-').replace(/月/g, '').replace(/-+/g, '-').replace(/-$/, '');
-       const mParts = startMonthInput.match(/^(\d{4})-(\d{1,2})$/);
-       if (!mParts || Number(mParts[2]) < 1 || Number(mParts[2]) > 12) {
-           alert(`対象月の形式が正しくありません: 「${startMonthInput}」\n「2026-07」のように 年-月 の形式で入力してください。処理を中断しました。`);
-           return;
+       // ★追加: 期中修正モード — 開始月はパネルの選択値を使い、プロンプトはスキップ
+       const midRev = midRevisionState();
+       let startMonthInput;
+       if (midRev.enabled) {
+           startMonthInput = midRev.startMonth;
+           if (!startMonthInput || !/^\d{4}-\d{2}$/.test(startMonthInput)) {
+               alert("期中修正モードの「修正開始月」が選択されていません。");
+               return;
+           }
+       } else {
+           startMonthInput = prompt("何月以降の目標を更新しますか？\n（例: 2026-07 と入力すると、2026-06以前の目標は完全に保護されます）", `${year}-03`);
+           if (!startMonthInput) return;
+           // ★追加: 入力形式の検証・正規化 (「2026/07」「2026年7月」等の揺れで過去月まで上書きされる事故を防ぐ)
+           startMonthInput = toHalfWidth(String(startMonthInput)).trim()
+               .replace(/[\/.年]/g, '-').replace(/月/g, '').replace(/-+/g, '-').replace(/-$/, '');
+           const mParts = startMonthInput.match(/^(\d{4})-(\d{1,2})$/);
+           if (!mParts || Number(mParts[2]) < 1 || Number(mParts[2]) > 12) {
+               alert(`対象月の形式が正しくありません: 「${startMonthInput}」\n「2026-07」のように 年-月 の形式で入力してください。処理を中断しました。`);
+               return;
+           }
+           startMonthInput = `${mParts[1]}-${String(Number(mParts[2])).padStart(2, '0')}`;
        }
-       startMonthInput = `${mParts[1]}-${String(Number(mParts[2])).padStart(2, '0')}`;
+
+       // ★追加: 期中修正の配信総額・按分係数を決定
+       //   通常/現実ペース: 年間総額 × 各月の季節指数%
+       //   ゴール死守:      (年間計画 − 経過実績) × 残期間内で正規化した季節指数
+       let tCash = currentCalcData.fieldCashTarget || 0;
+       let tInv = currentCalcData.invIncrease || 0;
+       let tSales = currentCalcData.sales || 0;
+       let weightDivisor = 100;
+       let midRevRec = null; // 配信履歴に残すスナップショット
+       if (midRev.enabled) {
+           const r = computeMidRevision(year, startMonthInput, midRev.mode);
+           if (!r) { alert("今期実績の読み込みが完了していないため、期中修正での適用ができません。\nページを再読み込みしてから再度お試しください。"); return; }
+           if (r.remW <= 0) { alert("残り期間の季節指数の合計が0%です。季節指数を確認してください。"); return; }
+           if (midRev.mode === 'goal') {
+               tSales = r.dist.sales; tCash = r.dist.cash; tInv = r.dist.inv;
+               weightDivisor = r.remW; // 残期間内で100%に正規化
+           }
+           midRevRec = { mode: midRev.mode, startMonth: startMonthInput,
+               actuals: { salesW: Math.round(r.actW.sales), cashW: Math.round(r.actW.cash), invW: Math.round(r.actW.inv) },
+               distributed: { salesW: Math.round(r.dist.sales), cashW: Math.round(r.dist.cash), invW: Math.round(r.dist.inv) } };
+       }
 
        const hasWarning = document.querySelectorAll('.warning-bg').length > 0;
-       let confirmMsg = `⚠️選択された ${startMonthInput} 以降の月に対して、シミュレーション結果を反映します。\nそれより前の過去月の目標は上書きされず保持されます。よろしいですか？`;
-       
+       let confirmMsg;
+       if (midRev.enabled && midRev.mode === 'goal') {
+           confirmMsg = `⚠️【期中修正・年間ゴール死守】\n${startMonthInput} 以降の目標を「年間計画 − 経過実績」の残額ベースで引き直します。\n\n残期間への配信額:\n・売上 ${Math.round(tSales).toLocaleString()}万円\n・現金化 ${Math.round(tCash).toLocaleString()}万円\n・在庫増加枠 ${Math.round(tInv).toLocaleString()}万円\n\n${startMonthInput} より前の過去月の目標は上書きされません。よろしいですか？`;
+       } else if (midRev.enabled) {
+           confirmMsg = `⚠️【期中修正・現実ペース】\n現在の年間シミュレーションの月割で ${startMonthInput} 以降のみ上書きします。\n年間ゴールは「経過実績 + 残期間配信分」に実質的に引き直されます。\n過去月の目標は上書きされません。よろしいですか？`;
+       } else {
+           confirmMsg = `⚠️選択された ${startMonthInput} 以降の月に対して、シミュレーション結果を反映します。\nそれより前の過去月の目標は上書きされず保持されます。よろしいですか？`;
+       }
        if (hasWarning) {
-           confirmMsg = `⚠️【警告】赤字計画の店舗が含まれていますが、${startMonthInput} 以降の月へ強制反映しますか？`;
+           confirmMsg = `⚠️【警告】赤字計画の店舗が含まれています。\n\n` + confirmMsg;
        }
        if (!confirm(confirmMsg)) return;
-
-       const tCash = currentCalcData.fieldCashTarget || 0;
-       const tInv = currentCalcData.invIncrease || 0;
-       const tSales = currentCalcData.sales || 0;
 
        let upserts = [];
        const months = [
@@ -1350,7 +1919,7 @@
                }
 
                const recordId = `${targetMonthStr}_${b}`;
-               const w = monthObj.w / 100;
+               const w = monthObj.w / weightDivisor; // ゴール死守時は残期間内で正規化
 
                upserts.push({
                    id: recordId,
@@ -1387,6 +1956,47 @@
               const { error: wErr } = await db.from('fin_season_weights').upsert(wPayload, { onConflict: 'target_year' });
               if (wErr) console.warn('季節指数の保存に失敗 (fin_season_weights_setup.sql が未実行の可能性):', wErr.message);
           } catch (e) { console.warn('季節指数の保存をスキップ:', e); }
+
+          // ★追加: 配信履歴の自動保存 — 使用したシミュレーション条件・配分・季節指数の全スナップショット
+          //   (後から「今のマスタはどの計画から作ったか」を特定し、ワンクリックで画面に復元するため)
+          try {
+              const simParams = {
+                  scope: currentSimScope(),
+                  sales: getNum('inpSales'), margin: getNum('inpMargin'),
+                  cashlessRatio: getNum('inpCashlessRatio'), cashlessFeeRate: getNum('inpCashlessFeeRate'),
+                  corpTaxRate: getNum('inpCorpTaxRate'), taxableFixed: getNum('inpTaxableFixed'),
+                  invIncrease: getNum('inpInvIncrease'), targetCash: getNum('inpTargetCash'),
+                  midRevision: midRevRec // 期中修正で配信した場合はその条件と経過実績スナップショット
+              };
+              const distribution = [];
+              document.querySelectorAll('.dist-row').forEach(row => {
+                  const b = row.getAttribute('data-branch');
+                  distribution.push({
+                      branch: b,
+                      marginPct: parseFloat(document.getElementById(`distMargin_${b}`).value) || 0,
+                      cashPct: parseFloat(document.getElementById(`distCashPct_${b}`).value) || 0,
+                      invPct: parseFloat(document.getElementById(`distInvPct_${b}`).value) || 0
+                  });
+              });
+              const seasonWeights = {};
+              document.querySelectorAll('.weight-input').forEach(input => {
+                  seasonWeights[input.getAttribute('data-month')] = parseFloat(input.value) || 0;
+              });
+              const { error: ahErr } = await db.from('fin_apply_history').insert({
+                  target_year: year,
+                  start_month: startMonthInput,
+                  author: currentUser.name,
+                  sim_params: simParams,
+                  distribution: distribution,
+                  season_weights: seasonWeights,
+                  results: {
+                      finalCash: currentCalcData.finalCash, netProfit: currentCalcData.netProfit,
+                      fieldCashTarget: currentCalcData.fieldCashTarget
+                  }
+              });
+              if (ahErr) console.warn('配信履歴の保存に失敗 (fin_apply_history_setup.sql が未実行の可能性):', ahErr.message);
+              else loadApplyHistory(); // 一覧を即時更新
+          } catch (e) { console.warn('配信履歴の保存をスキップ:', e); }
 
           alert(`✅ ${startMonthInput} 以降の月次予算マスタへの反映が完了しました！\n（それ以前の過去月は無傷で保護されました）`);
        } catch (err) {
