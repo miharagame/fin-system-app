@@ -132,15 +132,19 @@
           </div>
 
           <!-- ★追加: 委託・社内販売の日次入力 (B案) / ★修正: 普段使わないため折りたたみ式に -->
-          <div class="space-y-3 border-t border-slate-800 pt-4">
-            <button type="button" onclick="toggleConsignSection()" class="w-full flex justify-between items-center text-left group">
+          <div class="space-y-3 border-t border-slate-800 pt-4 pb-2">
+            <button type="button" onclick="toggleConsignSection()" class="w-full flex justify-between items-center text-left group py-1">
               <p class="text-xs font-bold text-fuchsia-400"><i class="fa-solid fa-handshake mr-1"></i>委託・社内販売・店舗間移動 (該当日のみ)</p>
               <span class="text-slate-500 group-hover:text-fuchsia-300 transition-colors text-xs"><i id="consignSectionChevron" class="fa-solid fa-chevron-down"></i></span>
             </button>
             <div id="consignSectionBody" class="hidden space-y-3">
-            <div>
-              <label class="text-[10px] font-bold text-slate-400 block mb-1">外部委託販売額 (円) ※外部委託元の商品を販売した当日合計</label>
-              <input type="text" id="inpConsignExt" oninput="formatNumber(this)" class="input-box text-fuchsia-300 text-sm">
+            <!-- ★修正: 外部委託も社内委託・店舗間移動と同じカード形式に統一 -->
+            <div class="bg-slate-950 p-3 rounded-xl border border-fuchsia-900/30">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] font-bold text-fuchsia-300"><i class="fa-solid fa-box-open mr-1"></i>外部委託 (外部委託元の商品を販売した分)</label>
+              </div>
+              <input type="text" id="inpConsignExt" oninput="formatNumber(this)" placeholder="販売額の当日合計 (円)" class="input-box text-fuchsia-300 text-sm">
+              <p class="text-[10px] text-slate-500 mt-2">外部の委託元から預かっている商品を販売した当日の合計額を入力すると、現金化・在庫・粗利率が自動補正されます。</p>
             </div>
             <div class="bg-slate-950 p-3 rounded-xl border border-fuchsia-900/30">
               <div class="flex justify-between items-center mb-2">
