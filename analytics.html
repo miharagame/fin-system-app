@@ -1702,6 +1702,15 @@
             if (!icErr && icData) internalRecsPeriod = icData;
         } catch (e) { console.warn('委託データ取得スキップ:', e); }
 
+        // ★修正: 店舗間移動は全件「評価振替」扱いに統一 (原価での社内売買と同じ経済実態)。
+        //   従来の「送り手が負担を持ち続ける」方式は、供給側に回る店舗が系統的に損をするため廃止。
+        let transferShiftPeriod = [];
+        try {
+            const { data: tsData, error: tsErr } = await db.from('inventory_transfer_records').select('*')
+                .gte('target_date', startDateStr).lte('target_date', endDateStr).order('id', { ascending: true });
+            if (!tsErr && tsData) transferShiftPeriod = tsData;
+        } catch (e) { console.warn('移動記録の取得スキップ:', e); }
+
         // ★修正: 評価グループ(例: 秋葉原+池袋)は親店舗に合算して評価する
         //   子店舗はランキングから除外し、日報・確定値・目標・固定費・棚卸をすべて親へ合算
         let targetBranches = currentUser.permissions.viewAll
@@ -1822,6 +1831,26 @@
             });
         }
 
+        // ==========================================
+        // ★追加: 開店支援(評価振替)の補正マップ
+        //   フラグ付き移動は「買取の負担ごと移動先に付け替える」:
+        //   移動元 = 現金化+原価・在庫−原価(買わなかったのと同じ扱い) / 移動先 = その逆。
+        //   全社合計は相殺されるため賞与原資には影響しない。粗利は元々移動の影響なし。
+        // ==========================================
+        const transferAdjMap = {};
+        transferShiftPeriod.forEach(r => {
+            const m = String(r.target_date).substring(0, 7);
+            if (!targetMonthsList.includes(m)) return;
+            const C = Number(r.cost_amount) || 0;
+            if (!C) return;
+            const addAdj = (b, c, i) => {
+                if (!transferAdjMap[b]) transferAdjMap[b] = { cash: 0, inv: 0 };
+                transferAdjMap[b].cash += c; transferAdjMap[b].inv += i;
+            };
+            addAdj(r.from_branch, C, -C);
+            addAdj(r.to_branch, -C, C);
+        });
+
         let fixedCostMap = {};
         if (fixedRes.data) {
             fixedRes.data.forEach(r => {
@@ -1909,6 +1938,12 @@
                 consignSales += cAdj.consignSales;
                 consignProfit += cAdj.consignProfit;
             }
+
+            // ★追加: 開店支援(評価振替)の適用(グループ合算)
+            members.forEach(mb => {
+                const tAdj = transferAdjMap[mb];
+                if (tAdj) { cashFlowBase += tAdj.cash; actualInvChange += tAdj.inv; }
+            });
 
             // 粗利率は委託を完全に除外した「自社商品ベース」で評価
             let marginNetSales = actualNetSales - consignSales;
