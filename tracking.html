@@ -131,9 +131,13 @@
             </div>
           </div>
 
-          <!-- ★追加: 委託・社内販売の日次入力 (B案) -->
+          <!-- ★追加: 委託・社内販売の日次入力 (B案) / ★修正: 普段使わないため折りたたみ式に -->
           <div class="space-y-3 border-t border-slate-800 pt-4">
-            <p class="text-xs font-bold text-fuchsia-400"><i class="fa-solid fa-handshake mr-1"></i>委託・社内販売 (該当店舗のみ / なければ空欄のまま)</p>
+            <button type="button" onclick="toggleConsignSection()" class="w-full flex justify-between items-center text-left group">
+              <p class="text-xs font-bold text-fuchsia-400"><i class="fa-solid fa-handshake mr-1"></i>委託・社内販売・店舗間移動 (該当日のみ)</p>
+              <span class="text-slate-500 group-hover:text-fuchsia-300 transition-colors text-xs"><i id="consignSectionChevron" class="fa-solid fa-chevron-down"></i></span>
+            </button>
+            <div id="consignSectionBody" class="hidden space-y-3">
             <div>
               <label class="text-[10px] font-bold text-slate-400 block mb-1">外部委託販売額 (円) ※外部委託元の商品を販売した当日合計</label>
               <input type="text" id="inpConsignExt" oninput="formatNumber(this)" class="input-box text-fuchsia-300 text-sm">
@@ -155,6 +159,7 @@
               <div id="transferRows" class="space-y-2"></div>
               <p class="text-[10px] text-slate-500 mt-2">移動先店舗と「買取原価ベース」の金額を入力してください。受け取った側の入力は不要です。評価上は「原価での社内売買」として扱われ、買取の負担(現金化・在庫)は移動先の店舗へ自動的に付け替わります。粗利への影響はありません。</p>
             </div>
+            </div><!-- /consignSectionBody -->
           </div>
 
           <div class="space-y-3 border-t border-slate-800 pt-4">
@@ -695,6 +700,12 @@
       // ★追加: 選択日の社内委託行・店舗間移動行を復元
       renderInternalConsignRows(dateVal);
       renderTransferRows(dateVal);
+      // ★追加: 委託・移動の入力がある日は折りたたみを自動で開く(入力済みデータの見落とし防止)
+      const extVal = parseFloat(((document.getElementById('inpConsignExt') || {}).value || '').replace(/,/g, '')) || 0;
+      const hasSpecial = extVal > 0
+        || document.querySelectorAll('#internalConsignRows .ic-row').length > 0
+        || document.querySelectorAll('#transferRows .tr-row').length > 0;
+      setConsignSectionOpen(hasSpecial);
       updatePreview();
     }
 
@@ -707,6 +718,20 @@
       if (sel) names = Array.from(sel.options).map(o => o.value).filter(v => v && v !== '全店舗' && v !== targetBranch);
       if (names.length === 0) names = ['大阪本店', 'バトルタワー店', '秋葉原店', '福岡天神店', '名古屋大須店', '池袋店'].filter(v => v !== targetBranch);
       return names.map(n => `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`).join('');
+    }
+
+    // ★追加: 委託・移動セクションの開閉制御
+    function setConsignSectionOpen(open) {
+      const body = document.getElementById('consignSectionBody');
+      const chev = document.getElementById('consignSectionChevron');
+      if (!body) return;
+      body.classList.toggle('hidden', !open);
+      if (chev) { chev.classList.toggle('fa-chevron-down', !open); chev.classList.toggle('fa-chevron-up', open); }
+    }
+    function toggleConsignSection() {
+      const body = document.getElementById('consignSectionBody');
+      if (!body) return;
+      setConsignSectionOpen(body.classList.contains('hidden'));
     }
 
     function addInternalConsignRow(owner, sales, cost) {
